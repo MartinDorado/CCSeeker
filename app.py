@@ -4,9 +4,17 @@ from googleapiclient.discovery import build
 import re
 from googleapiclient.errors import HttpError
 from collections import Counter
+import google.generativeai as genai
+import os
+from dotenv import load_dotenv
 
-# --- Configuration ---
-API_KEY = "REDACTED_YOUTUBE_KEY"
+
+# --- Securely Load API Keys ---
+load_dotenv()
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+# --- Constants ---
 YOUTUBE_API_SERVICE_NAME = "youtube"
 YOUTUBE_API_VERSION = "v3"
 
@@ -210,19 +218,19 @@ with st.form("search_form"):
 
 # --- Main Execution Logic ---
 if submitted:
-    if not API_KEY or API_KEY == "PASTE_YOUR_API_KEY_HERE":
-        st.error("Please paste your YouTube API key into the script.")
+    if not YOUTUBE_API_KEY:
+        st.error("Please ensure your YOUTUBE_API_KEY is set in your .env file.")
     else:
-        youtube = build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, developerKey=API_KEY)
+        youtube = build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, developerKey=YOUTUBE_API_KEY)
         final_query = ""
 
-        # --- MODIFICATION: Handle different URL types for Channel-as-Seed ---
         if search_method == "Channel-as-Seed":
             identifier = extract_channel_id_from_url(seed_url_input)
             seed_channel_id = None  # Initialize to None
 
             if not identifier:
                 st.error("Could not extract a valid Channel ID or Username from the URL. Please use a standard YouTube channel URL (e.g., youtube.com/channel/ID or youtube.com/@username).")
+                final_query = None # Stop execution
             # If it looks like a channel ID, use it directly.
             elif identifier.startswith("UC"):
                 seed_channel_id = identifier
@@ -233,21 +241,23 @@ if submitted:
                     seed_channel_id = get_channel_id_from_handle(youtube, identifier)
                 if not seed_channel_id:
                     st.error(f"Could not find a channel ID for the handle '@{identifier}'. Please check the URL and try again.")
+                    final_query = None # Stop execution
                 else:
                     st.success(f"Resolved handle '@{identifier}' to Channel ID: {seed_channel_id}")
+
             if seed_channel_id:
                 final_query = analyze_seed_channel(youtube, seed_channel_id)
         else:
             # Use the query from the text box
             final_query = query_input
-        
+
         # --- Proceed with the rest of the logic only if we have a valid query ---
         if final_query:
             # The rest of the execution logic is the same as before,
             # but it uses `final_query` instead of `query_input`.
             with st.spinner("Step 1/4: Searching for channels..."):
                 initial_channels = Youtube(youtube, final_query, region_input, total_results_to_fetch=50)
-            
+
             # ... (the rest of the script continues as before)
             if not initial_channels:
                 st.error("Search did not return any channels.")
@@ -255,10 +265,10 @@ if submitted:
                 df_initial = pd.DataFrame(initial_channels)
                 with st.expander("See raw channels found"):
                     st.dataframe(df_initial)
-
+ 
                 with st.spinner("Step 2/4: Fetching channel statistics..."):
                     channel_statistics = get_channel_stats(youtube, df_initial['channel_id'].tolist())
-
+ 
                 if not channel_statistics:
                     st.warning("Could not retrieve detailed stats for the found channels.")
                 else:
@@ -267,7 +277,7 @@ if submitted:
 
                     with st.spinner("Step 3/4: Fetching recent video details..."):
                         video_data = get_video_details(youtube, enriched_channel_data.to_dict('records'), max_videos_per_channel=10)
-
+ 
                     if not video_data:
                         st.warning("Could not retrieve any video details from the channels.")
                         st.dataframe(enriched_channel_data.sort_values(by="subscribers", ascending=False))
@@ -278,13 +288,13 @@ if submitted:
                             df_videos['published_at'] = pd.to_datetime(df_videos['published_at'])
                             df_videos['engagement_rate'] = (df_videos['video_likes'] + df_videos['video_comments']) / (df_videos['video_views'] + 1)
                             df_full = pd.merge(df_videos, enriched_channel_data, on='channel_id')
-                            
+
                             filtered_df = df_full[df_full['subscribers'] >= min_subs_input]
-                            
+
                             if use_date_filter:
                                 date_cutoff = pd.Timestamp.now(tz='UTC') - pd.DateOffset(months=months_ago_input)
                                 filtered_df = filtered_df[filtered_df['published_at'] >= date_cutoff]
-                            
+
                             if country_filter_input:
                                 filtered_df = filtered_df[filtered_df['country'] == country_filter_input.upper()]
 
@@ -294,13 +304,13 @@ if submitted:
                             avg_engagement = filtered_df.groupby('channel_id')['engagement_rate'].mean().reset_index()
                             final_channels = pd.merge(enriched_channel_data, avg_engagement, on='channel_id')
                             final_channels = pd.merge(final_channels, relevance_scores, on='channel_id', how='left')
-                            
+
                             top_channels = final_channels.sort_values(by=['relevance_score', 'subscribers'], ascending=False)
-                            
+
                             st.success(f"Analysis Complete! Found {len(top_channels)} channels matching your criteria.")
                             st.info("ℹ️ Results are sorted by Keyword Relevance score, then by subscriber count.")
-                            
+
                             top_channels['relevance_score'] = top_channels['relevance_score'].map('{:.0%}'.format)
                             top_channels['engagement_rate'] = top_channels['engagement_rate'].map('{:.2%}'.format)
-                            
+
                             st.dataframe(top_channels[['channel_title', 'relevance_score', 'subscribers', 'country', 'engagement_rate']])

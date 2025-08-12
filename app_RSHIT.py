@@ -8,6 +8,21 @@ import google.generativeai as genai
 import os
 from dotenv import load_dotenv
 
+try:
+    import pycountry
+    COUNTRY_OPTIONS_BASE = [f"{c.name} ({c.alpha_2})" for c in pycountry.countries]
+except Exception:
+    COUNTRY_OPTIONS_BASE = [
+        "Argentina (AR)",
+        "Australia (AU)",
+        "Canada (CA)",
+        "France (FR)",
+        "Germany (DE)",
+        "India (IN)",
+        "Japan (JP)",
+        "United Kingdom (GB)",
+        "United States (US)",
+    ]
 
 # --- Securely Load API Keys ---
 load_dotenv()
@@ -218,7 +233,17 @@ with st.form("search_form"):
                 3.  **Discover:** It then uses those learned keywords to launch a new, highly specific search to find other channels with similar content.
             """)
 
-    region_input = st.text_input("Search Region (for search bias)", "AR", help="Leave blank for global search.")
+    country_options = COUNTRY_OPTIONS_BASE.copy()
+    country_options.sort()
+    country_options.insert(0, "Global")
+    default_index = next((i for i, v in enumerate(country_options) if v.endswith("(AR)")), 0)
+    selected_country = st.selectbox(
+        "Search Region (for search bias)",
+        country_options,
+        index=default_index,
+        help="Start typing a country name or its two-letter code.",
+    )
+    region_input = "" if selected_country == "Global" else selected_country.split("(")[-1][:2]
 
     st.header("2. Filtering Criteria")
     c1, c2, c3 = st.columns(3)

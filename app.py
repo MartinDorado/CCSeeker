@@ -364,4 +364,3 @@ if submitted:
                             top_channels['engagement_rate'] = top_channels['engagement_rate'].map('{:.2%}'.format)
 
                             st.dataframe(top_channels[['channel_title', 'relevance_score', 'subscribers', 'country', 'engagement_rate']])
-

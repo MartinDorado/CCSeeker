@@ -248,7 +248,23 @@ with st.form("search_form"):
     st.header("2. Filtering Criteria")
     c1, c2, c3 = st.columns(3)
     with c1: min_subs_input = st.number_input("Minimum Subscribers", value=10000, help="Set to 0 to ignore.")
-    with c2: country_filter_input = st.text_input("Channel Country (strict filter)", "AR", help="Leave blank to ignore.")
+    with c2:
+        country_filter_options = COUNTRY_OPTIONS_BASE.copy()
+        country_filter_options.sort()
+        country_filter_options.insert(0, "Any Country")
+        default_filter_index = next((i for i, v in enumerate(country_filter_options) if v.endswith("(AR)")), 0)
+
+        selected_country_filter = st.selectbox(
+            "Channel Country (strict filter)",
+            country_filter_options,
+            index=default_filter_index,
+            help="Start typing a country name or its two-letter code to filter."
+        )
+        country_filter_input = ""
+        if selected_country_filter != "Any Country":
+            match = re.search(r'\((\w{2})\)', selected_country_filter)
+            if match:
+                country_filter_input = match.group(1)
     with c3:
         use_date_filter = st.checkbox("Filter by Date", value=True)
         months_ago_input = st.number_input("Published within last (months)", value=18, disabled=not use_date_filter)

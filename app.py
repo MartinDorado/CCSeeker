@@ -203,6 +203,110 @@ def generate_summary(df_results, query):
     except Exception as e:
         return f"An error occurred while generating the summary: {e}"
 
+def generate_outreach_drafts(
+    top_channels_df: pd.DataFrame,
+    original_query: str,
+    limit: int = 3,
+    temperature: float = 0.7,
+    retries: int = 2,
+    language: str = "en",   # <- NEW: "en" or "es"
+) -> list[dict]:
+    """
+    Generate short, friendly outreach email drafts for the top N channels using Gemini.
+
+    Parameters
+    ----------
+    top_channels_df : pd.DataFrame
+        Must contain a 'channel_title' column (string-like).
+    original_query : str
+        The original search query to reference for authenticity.
+    limit : int
+        Number of channels to process (default 3).
+    temperature : float
+        Sampling temperature for Gemini (0.0-1.0 usually).
+    retries : int
+        How many times to retry a failed API call (default 2).
+    language : str
+        "en" for English or "es" for Spanish (default "en").
+
+    Returns
+    -------
+    List[dict]: [{'channel_title': str, 'draft_text': str}, ...]
+    """
+    results: list[dict] = []
+
+    if top_channels_df is None or top_channels_df.empty:
+        return results
+    if 'channel_title' not in top_channels_df.columns:
+        return results
+
+    genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel(
+        'gemini-1.5-pro-latest',
+        generation_config={"temperature": float(temperature)}
+    )
+
+    df = (
+        top_channels_df[['channel_title']]
+        .dropna(subset=['channel_title'])
+        .copy()
+    )
+    df['channel_title'] = df['channel_title'].astype(str).str.strip()
+    df = df[df['channel_title'] != ""].drop_duplicates(subset=['channel_title'])
+    df = df.head(max(0, int(limit)))
+
+    oq = (original_query or "").strip() or "my audience’s interests"
+
+    # Language instruction
+    lang = (language or "en").lower()
+    if lang.startswith("es"):
+        lang_line = "Write the email in Spanish. Usa un español claro, neutro y profesional."
+    else:
+        lang_line = "Write the email in English in a clear, professional yet friendly tone."
+
+    for _, row in df.iterrows():
+        channel_name = row['channel_title']
+
+        prompt = f"""
+Act as a marketing professional. Your task is to write a short, friendly, and professional outreach email to a YouTube creator.
+
+**Instructions:**
+- The tone should be respectful and concise.
+- Mention the creator's channel name specifically.
+- Reference the topic of my original search, which was "{oq}".
+- The goal is to express interest in a potential collaboration.
+- Do not use overly corporate language.
+- {lang_line}
+
+**Creator Channel Name:** {channel_name}
+
+**Email Draft:**
+"""
+
+        draft_text = ""
+        last_err = None
+        for attempt in range(retries + 1):
+            try:
+                resp = model.generate_content(prompt)
+                draft_text = (getattr(resp, "text", None) or str(resp)).strip()
+                if draft_text.startswith("```"):
+                    draft_text = draft_text.strip("`").strip()
+                break
+            except Exception as e:
+                last_err = e
+                continue
+
+        if not draft_text and last_err:
+            draft_text = f"(Error generating draft for '{channel_name}': {type(last_err).__name__}: {last_err})"
+
+        results.append({
+            "channel_title": channel_name,
+            "draft_text": draft_text
+        })
+
+    return results
+
+
 # --- Streamlit User Interface ---
 
 st.set_page_config(layout="wide")
@@ -276,6 +380,10 @@ with st.form("search_form"):
 
 # --- Main Execution Logic ---
 if submitted:
+    # New search: clear previous outreach/session caches
+    st.session_state.pop('top_channels_for_outreach', None)
+    st.session_state.pop('final_query', None)
+    st.session_state.pop('display_df', None)
     if not YOUTUBE_API_KEY:
         st.error("Please ensure your YOUTUBE_API_KEY is set in your .env file.")
     else:
@@ -379,4 +487,47 @@ if submitted:
                             top_channels['relevance_score'] = top_channels['relevance_score'].map('{:.0%}'.format)
                             top_channels['engagement_rate'] = top_channels['engagement_rate'].map('{:.2%}'.format)
 
-                            st.dataframe(top_channels[['channel_title', 'relevance_score', 'subscribers', 'country', 'engagement_rate']])
+                            # Persist minimal data for outreach across reruns
+                            st.session_state['top_channels_for_outreach'] = top_channels[['channel_title']].reset_index(drop=True)
+                            st.session_state['final_query'] = final_query
+
+                            # (optional) also persist the displayed table so it stays visible after reruns
+                            st.session_state['display_df'] = top_channels[['channel_title', 'relevance_score', 'subscribers', 'country', 'engagement_rate']].copy()
+
+# Keep the results table visible across reruns
+if 'display_df' in st.session_state:
+    st.dataframe(st.session_state['display_df'])
+
+# === Global Outreach Section (works across reruns) ===
+if 'top_channels_for_outreach' in st.session_state and not st.session_state['top_channels_for_outreach'].empty:
+    st.write("")  # spacer
+
+    # Language switch
+    lang_label = st.radio("Email language", ["English", "Español"], horizontal=True, key="outreach_lang")
+    lang_code = "es" if lang_label == "Español" else "en"
+
+    if st.button("Generate Outreach Drafts", key="btn_outreach"):
+        if not GEMINI_API_KEY:
+            st.error("Please ensure your GEMINI_API_KEY is set in your .env file to generate outreach drafts.")
+        else:
+            with st.spinner("Generating outreach drafts..."):
+                try:
+                    drafts = generate_outreach_drafts(
+                        st.session_state['top_channels_for_outreach'],
+                        st.session_state.get('final_query', ""),
+                        limit=3,
+                        language=lang_code,  # <-- pass the selected language
+                    )
+                    st.header("📧 AI Generated Outreach Drafts")
+                    for i, d in enumerate(drafts, start=1):
+                        st.subheader(f"{i}. {d['channel_title']}")
+                        st.text_area(
+                            label=f"Draft for {d['channel_title']}",
+                            value=d['draft_text'],
+                            height=220,
+                            key=f"draft_text_{i}"
+                        )
+                except Exception as e:
+                    st.error(f"Unexpected error while generating drafts: {type(e).__name__}: {e}")
+
+                            

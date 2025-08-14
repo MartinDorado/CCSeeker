@@ -351,7 +351,18 @@ with st.form("search_form"):
 
     st.header("2. Filtering Criteria")
     c1, c2, c3 = st.columns(3)
-    with c1: min_subs_input = st.number_input("Minimum Subscribers", value=10000, help="Set to 0 to ignore.")
+    with c1:
+        min_subs_input = st.number_input(
+        "Minimum Subscribers",
+        min_value=0,
+        value=10000,
+        step=1000,              # ⬅️ increments/decrements by 1,000
+        format="%d",
+        help="Set to 0 to ignore."
+    )
+
+    st.caption(f"Current: {min_subs_input:,} subscribers")
+
     with c2:
         country_filter_options = COUNTRY_OPTIONS_BASE.copy()
         country_filter_options.sort()

@@ -312,9 +312,6 @@ Act as a marketing professional. Your task is to write a short, friendly, and pr
 st.set_page_config(layout="wide")
 st.title("🤖 YouTube Creator Search Agent")
 
-with st.expander("ℹ️ Search Tips and Best Practices"):
-    st.info("""... (search tips from before) ...""")
-
 # The search method selector is outside the form to allow instant UI updates.
 st.header("1. Search Method")
 search_method = st.radio("Choose your search method:", ("Keywords", "Channel-as-Seed"), horizontal=True)

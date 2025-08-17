@@ -507,7 +507,17 @@ if submitted:
 
 # Keep the results table visible across reruns
 if 'display_df' in st.session_state:
-    st.dataframe(st.session_state['display_df'])
+    st.dataframe(
+        st.session_state['display_df'],
+        column_config={
+            "relevance_score": st.column_config.Column(
+                help="The percentage of a channel's recent videos that contain your search keywords in the title. A higher score means the channel is more focused on your topic."
+            ),
+            "engagement_rate": st.column_config.Column(
+                help="Calculated as (Likes + Comments) / Views, averaged across a channel's recent videos. This shows how interactive the audience is."
+            ),
+        }
+    )
 
 # === Global Outreach Section (works across reruns) ===
 if 'top_channels_for_outreach' in st.session_state and not st.session_state['top_channels_for_outreach'].empty:

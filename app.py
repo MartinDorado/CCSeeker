@@ -339,10 +339,10 @@ with st.form("search_form"):
     country_options.insert(0, "Global")
     default_index = next((i for i, v in enumerate(country_options) if v.endswith("(AR)")), 0)
     selected_country = st.selectbox(
-        "Search Region (for search bias)",
+        "Search Region (Bias)",
         country_options,
         index=default_index,
-        help="Start typing a country name or its two-letter code.",
+        help="This tells YouTube to prioritize results popular in this country. It is not a strict filter.",
     )
     region_input = "" if selected_country == "Global" else selected_country.split("(")[-1][:2]
 
@@ -367,10 +367,10 @@ with st.form("search_form"):
         default_filter_index = next((i for i, v in enumerate(country_filter_options) if v.endswith("(AR)")), 0)
 
         selected_country_filter = st.selectbox(
-            "Channel Country (strict filter)",
+            "Channel Country (Filter)",
             country_filter_options,
             index=default_filter_index,
-            help="Start typing a country name or its two-letter code to filter."
+            help="This will strictly filter the final results to *only* show channels that have officially set this as their country."
         )
         country_filter_input = ""
         if selected_country_filter != "Any Country":

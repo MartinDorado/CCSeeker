@@ -309,8 +309,15 @@ Act as a marketing professional. Your task is to write a short, friendly, and pr
 
 # --- Streamlit User Interface ---
 
-st.set_page_config(layout="wide")
-st.title("🤖 YouTube Creator Search Agent")
+st.set_page_config(
+    page_title="CCSeeker - YouTube Creator Search",
+    page_icon="appicons/app-icon-192x192.png",  # Relative path to your favicon
+    layout="wide"
+)
+
+c1, c2 = st.columns([1, 10], vertical_alignment="center")
+c1.image("appicons/app-icon-192x192.png", width=64)
+c2.title("YouTube Creator Search Agent")
 
 # The search method selector is outside the form to allow instant UI updates.
 st.header("1. Search Method")

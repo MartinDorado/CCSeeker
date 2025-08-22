@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CC Seeker – Go beyond keywords</title>
+  <meta name="description" content="CC Seeker is an AI-powered agent that helps marketers discover relevant YouTube creators—fast. Go beyond keywords and find the creators you’re really looking for." />
+  <meta name="robots" content="index,follow" />
+  <!-- Open Graph -->
+  <meta property="og:title" content="CC Seeker – Go beyond keywords" />
+  <meta property="og:description" content="Discover the creators you’re really looking for with AI-powered search and Channel-as-Seed." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://ccseeker.ai/" />
+  <meta property="og:image" content="og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="CC Seeker — Go beyond keywords" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="/og-image.png" />
+
+  <!-- Favicon -->
+  <link rel="icon" href="favicons/favicon.ico" type="image/x-icon" />
+  <link rel="apple-touch-icon" href="favicons/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicons/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicons/favicon-16x16.png">
+  <style>
+    :root{
+      --bg: #0b0c10;
+      --panel: #111218;
+      --text: #e9eef4;
+      --muted: #b9c2cf;
+      --brand: #6ee7b7; /* mint */
+      --brand-ink: #0f766e;
+      --cta: #60a5fa; /* blue */
+      --card: #151823;
+      --border: #23283a;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius: 14px;
+      --maxw: 1100px;
+    }
+
+    *{box-sizing:border-box}
+    html,body{margin:0}
+    body{
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      color:var(--text);
+      background: radial-gradient(1200px 600px at 10% -10%, rgba(96,165,250,.15), transparent 60%),
+                  radial-gradient(900px 500px at 110% 10%, rgba(110,231,183,.12), transparent 50%),
+                  var(--bg);
+      line-height:1.6;
+    }
+    a{color:inherit;text-decoration:none}
+    .wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
+
+    /* Header */
+    header{
+      position:sticky;top:0;z-index:50;
+      backdrop-filter:saturate(150%) blur(6px);
+      background:linear-gradient(to bottom, rgba(11,12,16,.9), rgba(11,12,16,.65) 70%, transparent);
+      border-bottom:1px solid rgba(255,255,255,.04);
+    }
+    .nav{display:flex;align-items:center;justify-content:space-between;padding:14px 0}
+    .brand{display:flex;align-items:center;gap:14px;font-weight:700;letter-spacing:.2px}
+    .brand-mark{width:84px;height:84px;border-radius:24px;background:conic-gradient(from 210deg, var(--brand), var(--cta));box-shadow:0 0 0 3px rgba(255,255,255,.05)}
+    .nav a.cta{padding:10px 16px;background:var(--cta);color:#081226;font-weight:600;border-radius:10px;box-shadow:var(--shadow)}
+
+    .lang{display:flex;align-items:center;gap:10px}
+    .lang a{color:var(--muted)}
+    .lang a + a::before {
+      content: '•';
+      margin-right: 10px;
+      color: var(--muted);
+    }
+    .lang select{background:var(--card);color:var(--text);border:1px solid var(--border);padding:8px 10px;border-radius:10px}
+
+    @media (max-width: 850px) {
+      .nav {
+        flex-direction: column;
+        gap: 20px;
+      }
+      .lang {
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      .lang a + a::before { display: none; }
+    }
+
+    /* Hero */
+    .hero{padding:80px 0 40px}
+    .hero h1{font-size:clamp(34px,4vw,56px);line-height:1.05;margin:0 0 14px}
+    .tagline{color:var(--muted);font-size:18px;margin-bottom:22px}
+    .cta-row{display:flex;gap:12px;flex-wrap:wrap}
+    .btn{display:inline-flex;align-items:center;gap:8px;padding:12px 16px;border-radius:12px;border:1px solid var(--border);background:linear-gradient(180deg, #1a1f2b, #151823);color:var(--text);box-shadow:var(--shadow)}
+    .btn.primary{background:linear-gradient(180deg, var(--cta), #3b82f6);color:#071022;border:0}
+    .hint{font-size:13px;color:var(--muted);margin-top:10px}
+
+    /* Sections */
+    section{padding:56px 0;border-top:1px solid rgba(255,255,255,.04)}
+    h2{font-size:clamp(24px,2.6vw,34px);margin:0 0 14px}
+    p.lead{font-size:18px;color:var(--muted);max-width:70ch}
+
+    /* Cards Grid */
+    .grid{display:grid;gap:16px;margin-top:22px}
+    @media (min-width: 720px){.grid{grid-template-columns:repeat(2,1fr)}}
+    @media (min-width: 980px){.grid{grid-template-columns:repeat(3,1fr)}}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 18px 18px;box-shadow:var(--shadow)}
+    .card h3{margin:8px 0 6px;font-size:18px}
+    .card p{margin:0;color:var(--muted)}
+
+    /* Feature Steps */
+    .steps{display:grid;gap:16px;margin-top:22px}
+    @media (min-width: 860px){.steps{grid-template-columns:repeat(3,1fr)}}
+    .step{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;position:relative}
+    .badge{position:absolute;top:14px;right:14px;background:linear-gradient(180deg, var(--brand), #34d399);color:#052016;font-weight:700;border-radius:999px;padding:4px 10px;font-size:12px}
+    .step h3{margin:6px 0 8px;font-size:18px}
+
+    /* Video */
+    .video-section{text-align:center}
+    .video-section h2{font-size:clamp(24px,2.6vw,34px);margin-bottom:20px}
+    .video-container{position:relative;padding-bottom:56.25%;height:0;overflow:hidden;max-width:100%;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+    .video-container iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0;border-radius:14px}
+
+    /* Footer */
+    footer{padding:40px 0;color:var(--muted)}
+
+    /* Utilities */
+    .muted{color:var(--muted)}
+    .check{display:inline-block;width:18px;height:18px;border-radius:6px;background:linear-gradient(180deg, var(--brand), #34d399);margin-right:8px;vertical-align:-3px}
+    .divider{height:1px;background:rgba(255,255,255,.06);margin:30px 0}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap nav">
+      <div class="brand">
+        <img src="logo/ccseeker_logo.png" alt="CC Seeker Logo" class="brand-mark">
+      </div>
+      <nav class="lang">
+        <a class="muted" href="#problem" data-i18n="nav_problem">Problem</a>
+        <a class="muted" href="#solution" data-i18n="nav_solution">Solution</a>
+        <a class="muted" href="#features" data-i18n="nav_features">Features</a>
+        <a class="muted" href="#onboarding" data-i18n="nav_tutorial">Tutorial</a>
+        <a class="cta" href="https://app.ccseeker.ai" target="_blank" rel="noopener" data-i18n="nav_tryapp">Try the App</a>
+        <select id="langSelect" aria-label="Language">
+          <option value="en">EN</option>
+          <option value="es">ES</option>
+        </select>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <!-- HERO -->
+    <section class="hero">
+      <div class="wrap">
+        <h1 data-i18n="hero_h1">Go beyond keywords. <br />Discover the creators you’re really looking for.</h1>
+        <p class="tagline" data-i18n="hero_tag">An AI-powered scout that finds relevant, high‑fit YouTube creators fast—so your campaigns can launch on time and land with impact.</p>
+        <div class="cta-row">
+          <a class="btn primary" href="https://app.ccseeker.ai" target="_blank" rel="noopener" data-i18n="hero_cta1">Start Finding Creators</a>
+          <a class="btn" href="#features" data-i18n="hero_cta2">See how it works</a>
+          <a class="btn" href="#onboarding" data-i18n="hero_cta3">▶ Watch tutorial</a>
+        </div>
+        <p class="hint" data-i18n="hero_hint">No sign‑up required for the demo. Works worldwide.</p>
+      </div>
+    </section>
+
+    <!-- INTRO -->
+    <section id="intro">
+      <div class="wrap">
+        <h2 data-i18n="intro_h2">What is CC Seeker?</h2>
+        <p class="lead" data-i18n="intro_p">CC Seeker automates creator discovery and analysis. It surfaces hidden‑gem channels and scores true relevance using activity, engagement, and your campaign’s context—so you spend less time searching and more time shipping.</p>
+      </div>
+    </section>
+
+    <!-- PROBLEM -->
+    <section id="problem">
+      <div class="wrap">
+        <h2 data-i18n="problem_h2">The Problem: The Endless, Frustrating Search</h2>
+        <div class="grid">
+          <div class="card"><h3><span class="check"></span><span data-i18n="p1_h3">You Miss Hidden Gems</span></h3><p data-i18n="p1_p">Popular channels dominate results while niche authorities remain buried.</p></div>
+          <div class="card"><h3><span class="check"></span><span data-i18n="p2_h3">It Requires “Inside Knowledge”</span></h3><p data-i18n="p2_p">Communities speak their own language. Basic keywords miss the nuance.</p></div>
+          <div class="card"><h3><span class="check"></span><span data-i18n="p3_h3">Creators Are Hard to Find</span></h3><p data-i18n="p3_p">Poorly optimized names/descriptions make many channels nearly invisible.</p></div>
+          <div class="card"><h3><span class="check"></span><span data-i18n="p4_h3">Logistics Are a Nightmare</span></h3><p data-i18n="p4_p">Need a specific country for shipping or targeting? Location is often unclear.</p></div>
+          <div class="card"><h3><span class="check"></span><span data-i18n="p5_h3">You’re Always Too Late</span></h3><p data-i18n="p5_p">By the time you find the perfect fit, the campaign window has shrunk.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SOLUTION -->
+    <section id="solution">
+      <div class="wrap">
+        <h2 data-i18n="solution_h2">Our Solution: Intelligent Creator Discovery</h2>
+        <p class="lead" data-i18n="solution_p">CC Seeker acts as your expert scout—automating research, learning each niche’s language, and surfacing creators who actually move the needle for your brief.</p>
+        <div class="grid">
+          <div class="card"><h3 data-i18n="s1_h3">AI‑Powered Search</h3><p data-i18n="s1_p">Go beyond the platform’s black box. Find true topical authority—not just popularity.</p></div>
+          <div class="card"><h3 data-i18n="s2_h3">Smarter Targeting</h3><p data-i18n="s2_p">Filter by country, recency, subscriber floor, and engagement—fast.</p></div>
+          <div class="card"><h3 data-i18n="s3_h3">Actionable Output</h3><p data-i18n="s3_p">Auto‑generate outreach drafts in English or Spanish. Ship faster.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FEATURES -->
+    <section id="features">
+      <div class="wrap">
+        <h2 data-i18n="features_h2">Key Features</h2>
+        <div class="steps">
+          <div class="step">
+            <span class="badge" data-i18n="feat_badge">Secret Sauce</span>
+            <h3 data-i18n="feat1_h3">Channel‑as‑Seed</h3>
+            <p data-i18n="feat1_p">Provide one perfect channel. CC Seeker analyzes its recent videos, titles, and tags to learn the community’s unique language.</p>
+          </div>
+          <div class="step">
+            <h3 data-i18n="feat2_h3">Learn the Inside Language</h3>
+            <p data-i18n="feat2_p">We extract common topics and keywords, then build a hyper‑specific query that reflects how the niche really speaks.</p>
+          </div>
+          <div class="step">
+            <h3 data-i18n="feat3_h3">Discover Similar Creators</h3>
+            <p data-i18n="feat3_p">Using the learned signals, we surface relevant channels normal keyword searches would miss.</p>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="grid">
+          <div class="card"><h3 data-i18n="f1_h3">Keyword Mode</h3><p data-i18n="f1_p">Run advanced queries (AND/OR) and rank results by measured topical relevance.</p></div>
+          <div class="card"><h3 data-i18n="f2_h3">Engagement Signals</h3><p data-i18n="f2_p">We compute an average engagement rate from likes/comments per view to compare health.</p></div>
+          <div class="card"><h3 data-i18n="f3_h3">Region Bias & Filters</h3><p data-i18n="f3_p">Bias discovery by country and strictly filter final lists by creator‑set location.</p></div>
+        </div>
+        <div class="cta-row" style="margin-top:24px">
+          <a class="btn primary" href="https://app.ccseeker.ai" target="_blank" rel="noopener" data-i18n="features_cta1">Try Channel‑as‑Seed</a>
+          <a class="btn" href="#intro" data-i18n="features_cta2">Read more</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIDEO ONBOARDING SECTION -->
+    <section class="video-section" id="onboarding">
+      <div class="wrap">
+        <h2 data-i18n="video_h2">Watch the Onboarding Tutorial</h2>
+        <p class="lead" data-i18n="video_p">See how to get started with CC Seeker in just a few minutes.</p>
+        <div class="video-container">
+          <!-- Replace VIDEO_ID with your YouTube or Vimeo ID once tutorial is uploaded -->
+          <iframe src="https://www.youtube.com/embed/VIDEO_ID" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <div class="divider"></div>
+      <p><span>© </span><span id="y"></span><span> CC Seeker. </span><span data-i18n="footer_rights">All rights reserved.</span></p>
+    </div>
+  </footer>
+
+  <script>
+    // i18n dictionary
+    const I18N = {
+      en: {
+        nav_problem: "Problem",
+        nav_solution: "Solution",
+        nav_features: "Features",
+        nav_tutorial: "Tutorial",
+        nav_tryapp: "Try the App",
+        hero_h1: "Go beyond keywords. <br />Discover the creators you’re really looking for.",
+        hero_tag: "An AI-powered scout that finds relevant, high‑fit YouTube creators fast—so your campaigns can launch on time and land with impact.",
+        hero_cta1: "Start Finding Creators",
+        hero_cta2: "See how it works",
+        hero_cta3: "▶ Watch tutorial",
+        hero_hint: "No sign‑up required for the demo. Works worldwide.",
+        intro_h2: "What is CC Seeker?",
+        intro_p: "CC Seeker automates creator discovery and analysis. It surfaces hidden‑gem channels and scores true relevance using activity, engagement, and your campaign’s context—so you spend less time searching and more time shipping.",
+        problem_h2: "The Problem: The Endless, Frustrating Search",
+        p1_h3: "You Miss Hidden Gems",
+        p1_p: "Popular channels dominate results while niche authorities remain buried.",
+        p2_h3: "It Requires “Inside Knowledge”",
+        p2_p: "Communities speak their own language. Basic keywords miss the nuance.",
+        p3_h3: "Creators Are Hard to Find",
+        p3_p: "Poorly optimized names/descriptions make many channels nearly invisible.",
+        p4_h3: "Logistics Are a Nightmare",
+        p4_p: "Need a specific country for shipping or targeting? Location is often unclear.",
+        p5_h3: "You’re Always Too Late",
+        p5_p: "By the time you find the perfect fit, the campaign window has shrunk.",
+        solution_h2: "Our Solution: Intelligent Creator Discovery",
+        solution_p: "CC Seeker acts as your expert scout—automating research, learning each niche’s language, and surfacing creators who actually move the needle for your brief.",
+        s1_h3: "AI‑Powered Search",
+        s1_p: "Go beyond the platform’s black box. Find true topical authority—not just popularity.",
+        s2_h3: "Smarter Targeting",
+        s2_p: "Filter by country, recency, subscriber floor, and engagement—fast.",
+        s3_h3: "Actionable Output",
+        s3_p: "Auto‑generate outreach drafts in English or Spanish. Ship faster.",
+        features_h2: "Key Features",
+        feat_badge: "Secret Sauce",
+        feat1_h3: "Channel‑as‑Seed",
+        feat1_p: "Provide one perfect channel. CC Seeker analyzes its recent videos, titles, and tags to learn the community’s unique language.",
+        feat2_h3: "Learn the Inside Language",
+        feat2_p: "We extract common topics and keywords, then build a hyper‑specific query that reflects how the niche really speaks.",
+        feat3_h3: "Discover Similar Creators",
+        feat3_p: "Using the learned signals, we surface relevant channels normal keyword searches would miss.",
+        f1_h3: "Keyword Mode",
+        f1_p: "Run advanced queries (AND/OR) and rank results by measured topical relevance.",
+        f2_h3: "Engagement Signals",
+        f2_p: "We compute an average engagement rate from likes/comments per view to compare health.",
+        f3_h3: "Region Bias & Filters",
+        f3_p: "Bias discovery by country and strictly filter final lists by creator‑set location.",
+        features_cta1: "Try Channel‑as‑Seed",
+        features_cta2: "Read more",
+        video_h2: "Watch the Onboarding Tutorial",
+        video_p: "See how to get started with CC Seeker in just a few minutes.",
+        footer_rights: "All rights reserved."
+      },
+      es: {
+        nav_problem: "Problema",
+        nav_solution: "Solución",
+        nav_features: "Funciones",
+        nav_tutorial: "Tutorial",
+        nav_tryapp: "Probar la app",
+        hero_h1: "Ve más allá de las palabras clave. <br />Descubre a los creadores que realmente estás buscando.",
+        hero_tag: "Un asistente con IA que encuentra creadores de YouTube relevantes y de alto encaje rápidamente, para que tus campañas se lancen a tiempo y con impacto.",
+        hero_cta1: "Comenzar a encontrar creadores",
+        hero_cta2: "Cómo funciona",
+        hero_cta3: "▶ Ver tutorial",
+        hero_hint: "No se requiere registro para la demo. Funciona en todo el mundo.",
+        intro_h2: "¿Qué es CC Seeker?",
+        intro_p: "CC Seeker automatiza el descubrimiento y análisis de creadores. Destaca canales poco visibles y mide la verdadera relevancia usando actividad, engagement y el contexto de tu campaña, para que pases menos tiempo buscando y más ejecutando.",
+        problem_h2: "El problema: una búsqueda interminable y frustrante",
+        p1_h3: "Pierdes joyas ocultas",
+        p1_p: "Los canales populares dominan los resultados mientras las autoridades de nicho quedan enterradas.",
+        p2_h3: "Requiere ‘conocimiento interno’",
+        p2_p: "Cada comunidad habla su idioma. Las palabras clave básicas no capturan los matices.",
+        p3_h3: "Los creadores son difíciles de encontrar",
+        p3_p: "Nombres y descripciones poco optimizados vuelven invisibles a muchos canales.",
+        p4_h3: "La logística es un dolor",
+        p4_p: "¿Necesitas un país específico para envíos o segmentación? La ubicación suele ser difusa.",
+        p5_h3: "Siempre llegas tarde",
+        p5_p: "Cuando encuentras el encaje ideal, la ventana de la campaña ya se achicó.",
+        solution_h2: "Nuestra solución: descubrimiento inteligente de creadores",
+        solution_p: "CC Seeker actúa como tu scout experto: automatiza la investigación, aprende el lenguaje de cada nicho y encuentra creadores que realmente mueven la aguja para tu brief.",
+        s1_h3: "Búsqueda con IA",
+        s1_p: "Ve más allá de la ‘caja negra’ de la plataforma. Encuentra verdadera autoridad temática, no solo popularidad.",
+        s2_h3: "Segmentación más inteligente",
+        s2_p: "Filtra por país, recencia, umbral de suscriptores y engagement—rápido.",
+        s3_h3: "Salida accionable",
+        s3_p: "Genera borradores de outreach en inglés o español. Lanza más rápido.",
+        features_h2: "Funciones clave",
+        feat_badge: "Fórmula secreta",
+        feat1_h3: "Canal como semilla",
+        feat1_p: "Proporciona un canal ideal. CC Seeker analiza sus videos, títulos y etiquetas recientes para aprender el lenguaje único de la comunidad.",
+        feat2_h3: "Aprende el lenguaje interno",
+        feat2_p: "Extraemos temas y palabras comunes y construimos una consulta hiper‑específica que refleja cómo habla el nicho.",
+        feat3_h3: "Descubre creadores similares",
+        feat3_p: "Con las señales aprendidas, encontramos canales relevantes que una búsqueda por palabras clave no vería.",
+        f1_h3: "Modo palabras clave",
+        f1_p: "Ejecuta consultas avanzadas (AND/OR) y clasifica por relevancia temática medida.",
+        f2_h3: "Señales de engagement",
+        f2_p: "Calculamos una tasa promedio de engagement (me gusta + comentarios / vistas) para comparar salud.",
+        f3_h3: "Sesgo regional y filtros",
+        f3_p: "Orientación por país y filtrado estricto por ubicación declarada por el creador.",
+        features_cta1: "Probar Canal como semilla",
+        features_cta2: "Leer más",
+        video_h2: "Mira el tutorial de introducción",
+        video_p: "Aprende a comenzar con CC Seeker en solo unos minutos.",
+        footer_rights: "Todos los derechos reservados."
+      }
+    };
+
+    function setLang(lang){
+      const dict = I18N[lang] || I18N.en;
+      document.documentElement.setAttribute('lang', lang);
+      localStorage.setItem('ccs_lang', lang);
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        const html = dict[key];
+        if (typeof html === 'string') { el.innerHTML = html; }
+      });
+      const sel = document.getElementById('langSelect');
+      if (sel && sel.value !== lang) sel.value = lang;
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('y').textContent = new Date().getFullYear();
+      const saved = localStorage.getItem('ccs_lang');
+      const browser = (navigator.language || 'en').slice(0,2);
+      const initial = saved || (browser === 'es' ? 'es' : 'en');
+      setLang(initial);
+      const sel = document.getElementById('langSelect');
+      sel.addEventListener('change', () => setLang(sel.value));
+    });
+
+    // Smooth anchor scrolling
+    document.querySelectorAll('a[href^="#"]').forEach(a => {
+      a.addEventListener('click', e => {
+        const id = a.getAttribute('href');
+        if (id.length > 1){ e.preventDefault(); document.querySelector(id).scrollIntoView({behavior:'smooth'}); }
+      });
+    });
+  </script>
+</body>
+</html>

@@ -315,6 +315,23 @@ st.set_page_config(
     layout="wide"
 )
 
+from pathlib import Path
+import streamlit as st
+
+def inject_css(path: str):
+    p = Path(path)
+    if not p.exists():
+        st.warning(f"CSS not found: {path}")
+        return
+    try:
+        css = p.read_text(encoding="utf-8-sig")  # handles UTF-8 + BOM too
+    except UnicodeDecodeError:
+        css = p.read_text(encoding="latin-1", errors="replace")
+    st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+
+inject_css("theme_ccseeker_dark.css")
+
+
 c1, c2 = st.columns([1, 10], vertical_alignment="center")
 c1.image("appicons/app-icon-192x192.png", width=64)
 c2.title("YouTube Creator Search Agent")
@@ -326,8 +343,7 @@ search_method = st.radio("Choose your search method:", ("Keywords", "Channel-as-
 with st.form("search_form"):
     # Inputs change depending on the selected method
     if search_method == "Keywords":
-        st.info("💡 Enter search terms like 'Game Reviews' or 'Python Tutorial AND Beginner'.")
-        query_input = st.text_input("Search Keywords", "Manga OR Anime")
+        query_input = st.text_input("Search Keywords", "Manga or Anime")
         seed_url_input = ""  # keep defined
     else:
         st.info("💡 Enter the full URL of a YouTube channel to find similar creators.")

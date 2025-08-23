@@ -1,0 +1,185 @@
+/* ===== CCSeeker — Single Dark Stylesheet (merged) ===== */
+/* Order matters: ccseeker base first, then theme_dark to keep the current dark look authoritative. */
+
+/* ---- Begin ccseeker_streamlit_style.css ---- */
+/* Force dark background globally */
+html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
+    background-color: #111827 !important;
+    color: #e9eef4 !important;
+}
+
+section.main {
+    background-color: #111827 !important;
+}
+
+
+/* Title headers */
+h1, h2, h3, .stTitle {
+    color: #ffffff;
+}
+
+/* Sidebar (if used) */
+section[data-testid="stSidebar"] {
+    background-color: #1f2937;
+    border-right: 1px solid #374151;
+}
+
+/* Buttons */
+button[kind="primary"] {
+    background: linear-gradient(to right, #3b82f6, #34d399);
+    color: #ffffff;
+    font-weight: 600;
+    border-radius: 6px;
+    border: none;
+}
+
+button[kind="primary"]:hover {
+    background: linear-gradient(to right, #60a5fa, #6ee7b7);
+}
+
+/* Inputs */
+input, textarea, select {
+    background-color: #1e293b !important;
+    color: #e9eef4 !important;
+    border: 1px solid #374151 !important;
+    border-radius: 6px !important;
+}
+
+input:focus, textarea:focus, select:focus {
+    border-color: #60a5fa !important;
+}
+
+/* Checkboxes and radio buttons */
+label, .stCheckbox, .stRadio {
+    color: #e9eef4;
+}
+
+/* Info boxes and alerts */
+.stAlert {
+    background-color: #0f172a !important;
+    border-left: 4px solid #60a5fa !important;
+    color: #e9eef4 !important;
+}
+
+/* DataFrame box */
+div[data-testid="stDataFrame"] {
+    background-color: #1e293b;
+    color: #e9eef4;
+    border-radius: 6px;
+    padding: 1rem;
+}
+
+/* Captions, help texts */
+.stCaption, .stHelp {
+    color: #9ca3af;
+}
+
+/* Form section spacing */
+form {
+    padding: 1rem;
+    border-radius: 8px;
+    background-color: #1f2937;
+    border: 1px solid #374151;
+    margin-bottom: 1.5rem;
+}
+
+/* Fix selectbox dropdown */
+.css-1wa3eu0-placeholder, .css-qc6sy-singleValue {
+    color: #e9eef4 !important;
+}
+/* 🧠 Fix text labels and help text */
+label, .css-1cpxqw2, .css-16huue1, .stRadio > div, .stCheckbox > div, .st-bf, .st-dx {
+    color: #e5e7eb !important;  /* soft white */
+    font-weight: 500;
+}
+
+/* 🖱️ Fix button text */
+button span, .stButton button {
+    color: #0f172a !important;  /* dark blue-gray */
+    font-weight: 600;
+}
+
+/* 🧩 Tooltip or hint text */
+.css-qrbaxs, .css-1v0mbdj, .stTooltip {
+    color: #94a3b8 !important;
+}
+
+/* 🧩 Fix select labels */
+.css-1wa3eu0-placeholder,
+.css-qc6sy-singleValue {
+    color: #e5e7eb !important;
+}
+
+
+
+/* ---- Begin theme_dark.css (authoritative overrides) ---- */
+/* === DARK THEME === */
+html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
+    background-color: #111827 !important;
+    color: #e9eef4 !important;
+    font-family: 'Segoe UI', sans-serif;
+}
+
+/* Headings */
+h1, h2, h3, .stTitle {
+    color: #ffffff !important;
+    font-weight: 600;
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background-color: #1f2937 !important;
+    border-right: 1px solid #374151;
+}
+
+/* Buttons */
+.stButton button {
+    background: linear-gradient(to right, #3b82f6, #10b981);
+    color: #ffffff !important;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem 1rem;
+}
+
+.stButton button:hover {
+    background: linear-gradient(to right, #60a5fa, #34d399);
+}
+
+/* Inputs, text areas, selects */
+input, textarea, select {
+    background-color: #1e293b !important;
+    color: #e9eef4 !important;
+    border: 1px solid #374151 !important;
+    border-radius: 6px !important;
+}
+
+input:focus, textarea:focus, select:focus {
+    border-color: #60a5fa !important;
+    outline: none !important;
+}
+
+/* Labels & captions */
+label, .stRadio > div, .stCheckbox > div, .stSelectbox, .stNumberInput label {
+    color: #e9eef4 !important;
+    font-weight: 500;
+}
+
+.stCaption, .stHelp {
+    color: #9ca3af !important;
+}
+
+/* Alerts */
+.stAlert {
+    background-color: #0f172a !important;
+    border-left: 4px solid #60a5fa !important;
+    color: #e9eef4 !important;
+}
+
+/* DataFrames */
+div[data-testid="stDataFrame"] {
+    background-color: #1e293b !important;
+    color: #e9eef4 !important;
+    border-radius: 6px;
+    padding: 1rem;
+}

@@ -9,6 +9,8 @@ C:.
 ¦   README.md
 ¦   requirements.txt
 ¦   structure.txt
+¦   theme_dark.css
+¦   theme_light.css
 ¦   
 +---appicons
 ¦       app-icon-192x192.png

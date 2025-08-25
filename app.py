@@ -315,6 +315,15 @@ st.set_page_config(
     layout="wide"
 )
 
+st.markdown("""
+<style>
+/* tighten the small toggle so it sits on the same baseline */
+[data-testid="stToggle"] label { margin-top: 0 !important; }
+/* ensure the right input matches the general field height */
+[data-testid="stNumberInput"] input { padding-top: .55rem; padding-bottom: .55rem; }
+</style>
+""", unsafe_allow_html=True)
+
 from pathlib import Path
 import streamlit as st
 
@@ -371,43 +380,35 @@ with st.form("search_form"):
 
     st.header("2. Filtering Criteria")
     c1, c2, c3 = st.columns(3)
+
     with c1:
         min_subs_input = st.number_input(
-        "Minimum Subscribers",
-        min_value=0,
-        value=10000,
-        step=1000,              # ⬅️ increments/decrements by 1,000
-        format="%d",
-        help="Set to 0 to ignore."
-    )
-
-    st.caption(f"Current: {min_subs_input:,} subscribers")
+            "Minimum Subscribers",
+            min_value=0, value=10000, step=1000, format="%d",
+            help="Set to 0 to ignore."
+        )
 
     with c2:
-        country_filter_options = COUNTRY_OPTIONS_BASE.copy()
-        country_filter_options.sort()
-        country_filter_options.insert(0, "Any Country")
-        default_filter_index = next((i for i, v in enumerate(country_filter_options) if v.endswith("(AR)")), 0)
-
-        selected_country_filter = st.selectbox(
-            "Channel Country (Filter)",
-            country_filter_options,
-            index=default_filter_index,
-            help="This will strictly filter the final results to *only* show channels that have officially set this as their country."
+        country_filter_input = st.text_input(
+            "Channel Country (strict filter)", "AR",
+            help="Leave blank to ignore."
         )
-        country_filter_input = ""
-        if selected_country_filter != "Any Country":
-            match = re.search(r'\((\w{2})\)', selected_country_filter)
-            if match:
-                country_filter_input = match.group(1)
+
     with c3:
-        use_date_filter = st.checkbox("Filter by Date", value=True)
-        months_ago_input = st.number_input("Published within last (months)", value=18, disabled=not use_date_filter)
+        months_ago_input = st.number_input(
+            "Published within last (months)",
+            value=18, min_value=0, step=1,
+            help="Set to 0 to ignore this filter."
+        )
+
+    submitted = st.form_submit_button("Find Creators")
+
+
 
     # --- NEW: Checkbox for AI Summary (inside the form) ---
     generate_summary_checkbox = st.checkbox("Generate AI Summary of Top Results")
 
-    submitted = st.form_submit_button("Find Creators")
+    
 
 # --- Main Execution Logic ---
 if submitted:
@@ -482,10 +483,10 @@ if submitted:
 
                             filtered_df = df_full[df_full['subscribers'] >= min_subs_input]
 
-                            if use_date_filter:
+                            # Conditionally apply the date filter
+                            if months_ago_input > 0:
                                 date_cutoff = pd.Timestamp.now(tz='UTC') - pd.DateOffset(months=months_ago_input)
                                 filtered_df = filtered_df[filtered_df['published_at'] >= date_cutoff]
-
                             if country_filter_input:
                                 filtered_df = filtered_df[filtered_df['country'] == country_filter_input.upper()]
 

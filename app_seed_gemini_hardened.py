@@ -6,6 +6,7 @@ from googleapiclient.errors import HttpError
 from collections import Counter
 import google.generativeai as genai
 import os
+<<<<<<< HEAD
 from seed_topics_hardened import analyze_seed_channel3
 from pathlib import Path
 from dotenv import load_dotenv
@@ -15,6 +16,10 @@ ENV_PATH = Path(__file__).resolve().parent / ".env"
 if ENV_PATH.exists():
     load_dotenv(dotenv_path=ENV_PATH)
 
+=======
+from dotenv import load_dotenv
+from seed_topics_hardened import analyze_seed_channel
+>>>>>>> 4459589a32af4b05cab7fd19a365c2cd4682cf7b
 
 try:
     import pycountry

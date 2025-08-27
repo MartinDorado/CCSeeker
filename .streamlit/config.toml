@@ -1,15 +1,9 @@
-# .streamlit/config.toml
-[theme]
-base = "dark"
-primaryColor = "#7C4DFF"
-backgroundColor = "#0E1117"
-secondaryBackgroundColor = "#161B22"
-textColor = "#E6EDF3"
-font = "sans serif"
-
 [server]
+# Headless works both locally and in Codex; we won’t hardcode port/address here.
 headless = true
-address = "0.0.0.0"
-port = 8501        # or 7860 if you prefer; just use the same in your setup script
 enableCORS = false
 enableXsrfProtection = false
+
+[browser]
+gatherUsageStats = false
+

@@ -345,6 +345,27 @@ with st.form("search_form"):
         # New: language selector and ignore list for seed analysis
         seed_lang_label = st.radio("Seed analysis language", ["English", "Español"], horizontal=True)
         seed_language_code = "es" if seed_lang_label == "Español" else "en"
+        # Output language (post-translation) selector
+        output_lang_label = st.selectbox(
+            "Translate topics into",
+            [
+                "Original (auto)",
+                "English",
+                "Español",
+                "Português",
+                "Français",
+                "Deutsch",
+            ],
+            help="Extraction stays in the seed's original language; this only affects the final topic phrasing.")
+        _lang_map = {
+            "Original (auto)": "auto",
+            "English": "en",
+            "Español": "es",
+            "Português": "pt",
+            "Français": "fr",
+            "Deutsch": "de",
+        }
+        target_language_code = _lang_map.get(output_lang_label, "auto")
         ignore_words_input = st.text_input(
             "Ignore words (comma-separated)",
             value="",
@@ -438,7 +459,7 @@ if submitted:
                     top_k=10,
                     use_gemini=True,
                     gemini_api_key=GEMINI_API_KEY,
-                    language=seed_language_code,
+                    language=target_language_code,
                     include_descriptions=False,
                 )
         else:

@@ -33,6 +33,56 @@ STOPWORDS_COMMON = {"oficial","official","channel","canal","clips","clip","podca
 # Unified stopwords set used by analyzers
 STOPWORDS = set().union(STOPWORDS_EN, STOPWORDS_ES, STOPWORDS_COMMON)
 
+# --- Lightweight language detection + translation helpers ---
+def _detect_language_from_texts(texts: list[str]) -> str:
+    """Very simple detector: compare EN vs ES stopword hits over tokens.
+    Returns 'es' or 'en'. Defaults to 'en' on ties/low-signal.
+    """
+    en_hits, es_hits = 0, 0
+    for t in texts or []:
+        for w in _tokens(t):
+            if w in STOPWORDS_EN:
+                en_hits += 1
+            if w in STOPWORDS_ES:
+                es_hits += 1
+    if es_hits > en_hits:
+        return "es"
+    return "en"
+
+def translate_terms_with_gemini(terms: list[str], target_language: str, gemini_api_key: str | None):
+    """Translate topic terms into the target language using Gemini. Fallback: return original.
+    Expected target_language codes like 'en','es','pt','fr','de'.
+    """
+    if not terms:
+        return terms
+    if not gemini_api_key or genai is None:
+        return terms
+    try:
+        genai.configure(api_key=gemini_api_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        prompt = f"""
+Traduce estas frases de TÓPICOS al idioma objetivo ({target_language}).
+Mantén el significado y la concisión. Devuelve una lista simple (una por línea),
+sin agregar ni quitar elementos.
+
+Tópicos de entrada:
+{chr(10).join(f"- {t}" for t in terms)}
+"""
+        resp = model.generate_content(prompt)
+        text = (resp.text or "").strip()
+        out = []
+        seen = set()
+        for line in text.splitlines():
+            t = line.strip().lstrip("-•·").strip().strip('"').strip("'")
+            low = _norm_text(t)
+            if not low or low in seen:
+                continue
+            seen.add(low)
+            out.append(t)
+        return out or terms
+    except Exception:
+        return terms
+
 
 def _tokens(text: str):
     for m in _WORD_RE.finditer(_norm_text(text or "")):
@@ -223,6 +273,15 @@ def analyze_seed_channel(
         st.error("No recent videos to analyze for the seed channel.")
         return None
 
+    # 3b) Detect original language from titles+tags (simple heuristic)
+    sample_titles = [it["snippet"].get("title", "") for it in vids]
+    sample_tags = []
+    for it in vids:
+        tg = it["snippet"].get("tags", []) or []
+        sample_tags.extend(tg)
+    orig_lang = _detect_language_from_texts(sample_titles + sample_tags)
+    st.info(f"Detected seed language: {orig_lang.upper()}")
+
     # 4) Collect per-video candidate sets (titles+tags; descriptions optional)
     title_unigrams, title_bigrams, tag_terms, desc_unigrams = [], [], [], []
     for it in vids:
@@ -331,13 +390,19 @@ def analyze_seed_channel(
                 )
                 cand = inferred[:top_k]
 
-    # 7) Optional Gemini cleanup to snap to topic phrases
+    # 7) Optional Gemini cleanup to snap to topic phrases (in ORIGINAL language)
     if use_gemini and gemini_api_key and cand:
         cand = refine_topics_with_gemini(
-            cand, language=language, max_terms=min(6, top_k),
+            cand, language=orig_lang, max_terms=min(6, top_k),
             ban_terms=name_bits | COUNTRIES | ORG_WORDS | EVENT_WORDS | MEDIA_PROMO | MONTHS_ES | MONTHS_EN,
             gemini_api_key=gemini_api_key
         )
+
+    # 7b) Optional translation of the final topic phrases into requested output language
+    # language == 'auto' or 'original' => keep original
+    desired = (language or "auto").lower()
+    if cand and desired not in ("auto", "original") and desired in {"en","es","pt","fr","de"} and desired != orig_lang:
+        cand = translate_terms_with_gemini(cand, desired, gemini_api_key)
 
     # 8) Build query (quote multi-word)
     final, seen = [], set()

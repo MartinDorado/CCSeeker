@@ -30,6 +30,9 @@ STOPWORDS_ES = {
 }
 STOPWORDS_COMMON = {"oficial","official","channel","canal","clips","clip","podcast","tv","shorts","live","directo","en","de","y"}
 
+# Unified stopwords set used by analyzers
+STOPWORDS = set().union(STOPWORDS_EN, STOPWORDS_ES, STOPWORDS_COMMON)
+
 
 def _tokens(text: str):
     for m in _WORD_RE.finditer(_norm_text(text or "")):

@@ -1,1 +1,7 @@
 *.sh text eol=lf
+
+# Normalize text files; store with LF in repo
+* text=auto
+
+# Enforce LF endings for Python sources
+*.py text eol=lf

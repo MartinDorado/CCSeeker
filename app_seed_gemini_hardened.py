@@ -6,20 +6,10 @@ from googleapiclient.errors import HttpError
 from collections import Counter
 import google.generativeai as genai
 import os
-<<<<<<< HEAD
-from seed_topics_hardened import analyze_seed_channel3
 from pathlib import Path
 from dotenv import load_dotenv
-
-# Load .env only if present; otherwise rely on Codex secrets (env vars)
-ENV_PATH = Path(__file__).resolve().parent / ".env"
-if ENV_PATH.exists():
-    load_dotenv(dotenv_path=ENV_PATH)
-
-=======
-from dotenv import load_dotenv
 from seed_topics_hardened import analyze_seed_channel
->>>>>>> 4459589a32af4b05cab7fd19a365c2cd4682cf7b
+import seed_topics_hardened as seedmod
 
 try:
     import pycountry
@@ -312,8 +302,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-from pathlib import Path
-import streamlit as st
 
 def inject_css(path: str):
     p = Path(path)
@@ -353,6 +341,15 @@ with st.form("search_form"):
                 2.  **Learn:** It extracts the most common topics and keywords from that channel's video titles and tags.
                 3.  **Discover:** It then uses those learned keywords to launch a new, highly specific search to find other channels with similar content.
             """)
+
+        # New: language selector and ignore list for seed analysis
+        seed_lang_label = st.radio("Seed analysis language", ["English", "Español"], horizontal=True)
+        seed_language_code = "es" if seed_lang_label == "Español" else "en"
+        ignore_words_input = st.text_input(
+            "Ignore words (comma-separated)",
+            value="",
+            help="Words to always ignore in topic extraction (e.g., brand names)."
+        )
 
     country_options = COUNTRY_OPTIONS_BASE.copy()
     country_options.sort()
@@ -430,7 +427,20 @@ if submitted:
                     st.success(f"Resolved handle '@{identifier}' to Channel ID: {seed_channel_id}")
 
             if seed_channel_id:
-                final_query = analyze_seed_channel(youtube, seed_channel_id, max_seed_videos=30, top_k=10, use_gemini=True, gemini_api_key=GEMINI_API_KEY, language="es", include_descriptions=False)
+                # Apply user-provided penalties to the seed analyzer
+                penalties = set(w.strip().lower() for w in (ignore_words_input or "").split(",") if w.strip())
+                seedmod.USER_PENALTIES = penalties
+
+                final_query = analyze_seed_channel(
+                    youtube,
+                    seed_channel_id,
+                    max_seed_videos=30,
+                    top_k=10,
+                    use_gemini=True,
+                    gemini_api_key=GEMINI_API_KEY,
+                    language=seed_language_code,
+                    include_descriptions=False,
+                )
         else:
             final_query = query_input
 

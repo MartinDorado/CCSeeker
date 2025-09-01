@@ -342,9 +342,6 @@ with st.form("search_form"):
                 3.  **Discover:** It then uses those learned keywords to launch a new, highly specific search to find other channels with similar content.
             """)
 
-        # New: language selector and ignore list for seed analysis
-        seed_lang_label = st.radio("Seed analysis language", ["English", "Español"], horizontal=True)
-        seed_language_code = "es" if seed_lang_label == "Español" else "en"
         # Output language (post-translation) selector
         output_lang_label = st.selectbox(
             "Translate topics into",

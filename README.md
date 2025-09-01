@@ -23,3 +23,9 @@ It combines the YouTube Data API with Google Gemini to provide:
    ```bash
    git clone https://github.com/MartinDorado/CCSeeker
    cd CCSeeker
+
+## Quick start (everyday run)
+```bash
+cd "/mnt/c/Users/marti/OneDrive/Escritorio/Martin/Formacion/AI/CCSeeker"
+. ~/.venvs/ccseeker/bin/activate
+streamlit run app_seed_gemini_hardened.py  # http://localhost:8501

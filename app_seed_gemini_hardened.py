@@ -38,8 +38,12 @@ YOUTUBE_API_VERSION = "v3"
 
 # --- Helper & API Functions ---
 
-def extract_channel_id_from_url(url):
-    """Extracts the channel ID from various YouTube URL formats."""
+def extract_identifier_from_url(url):
+    """Extract a channel identifier from common YouTube URL formats.
+
+    Returns either a channel ID (starting with 'UC...') or a handle/username
+    (e.g., 'SomeCreator'). Resolution to an actual channel ID is done elsewhere.
+    """
     patterns = [
         r'(?:youtube\.com/channel/)([^/?&]+)',
         r'(?:youtube\.com/@)([^/?&]+)'
@@ -50,7 +54,7 @@ def extract_channel_id_from_url(url):
             return match.group(1)
     return None
 
-def Youtube(youtube_service, query, region_code, total_results_to_fetch):
+def search_channels(youtube_service, query, region_code, total_results_to_fetch):
     """Channel search with proper parts so channelId is present."""
     channels = []
     next_page_token = None
@@ -62,7 +66,11 @@ def Youtube(youtube_service, query, region_code, total_results_to_fetch):
         search_params['maxResults'] = min(50, total_results_to_fetch - len(channels))
         if next_page_token:
             search_params['pageToken'] = next_page_token
-        response = youtube_service.search().list(**search_params).execute()
+        try:
+            response = youtube_service.search().list(**search_params).execute()
+        except HttpError as e:
+            st.error(f"YouTube search API error: {e}")
+            break
         for item in response.get("items", []):
             channel_id = item.get("id", {}).get("channelId")
             if not channel_id:
@@ -201,7 +209,7 @@ def run_search(
 ):
     """Run the 4-step search + analysis pipeline and render results."""
     with st.spinner("Step 1/4: Searching for channels..."):
-        initial_channels = Youtube(youtube, final_query, region_input, total_results_to_fetch=50)
+        initial_channels = search_channels(youtube, final_query, region_input, total_results_to_fetch=50)
 
     if not initial_channels:
         st.error("Search did not return any channels.")
@@ -574,7 +582,7 @@ if submitted:
         final_query = ""
 
         if search_method == "Channel-as-Seed":
-            identifier = extract_channel_id_from_url(seed_url_input)
+            identifier = extract_identifier_from_url(seed_url_input)
             seed_channel_id = None
 
             if not identifier:
@@ -624,83 +632,15 @@ if submitted:
 
         # --- Proceed only if we have a valid query ---
         if final_query:
-            with st.spinner("Step 1/4: Searching for channels..."):
-                initial_channels = Youtube(youtube, final_query, region_input, total_results_to_fetch=50)
-
-            if not initial_channels:
-                st.error("Search did not return any channels.")
-            else:
-                df_initial = pd.DataFrame(initial_channels)
-                with st.expander("See raw channels found"):
-                    st.dataframe(df_initial)
-
-                with st.spinner("Step 2/4: Fetching channel statistics..."):
-                    channel_statistics = get_channel_stats(youtube, df_initial['channel_id'].tolist())
-
-                if not channel_statistics:
-                    st.warning("Could not retrieve detailed stats for the found channels.")
-                else:
-                    df_stats = pd.DataFrame(channel_statistics)
-                    enriched_channel_data = pd.merge(df_initial, df_stats, on='channel_id')
-
-                    with st.spinner("Step 3/4: Fetching recent video details..."):
-                        video_data = get_video_details(youtube, enriched_channel_data.to_dict('records'), max_videos_per_channel=10)
-
-                    if not video_data:
-                        st.warning("Could not retrieve any video details from the channels.")
-                        st.dataframe(enriched_channel_data.sort_values(by="subscribers", ascending=False))
-                    else:
-                        with st.spinner("Step 4/4: Analyzing and filtering results..."):
-                            df_videos = pd.DataFrame(video_data)
-                            relevance_scores = calculate_keyword_relevance(df_videos.copy(), final_query)
-                            df_videos['published_at'] = pd.to_datetime(df_videos['published_at'])
-                            df_videos['engagement_rate'] = (df_videos['video_likes'] + df_videos['video_comments']) / (df_videos['video_views'] + 1)
-                            df_full = pd.merge(df_videos, enriched_channel_data, on='channel_id')
-
-                            filtered_df = df_full[df_full['subscribers'] >= min_subs_input]
-
-                            # Conditionally apply the date filter
-                            if months_ago_input > 0:
-                                date_cutoff = pd.Timestamp.now(tz='UTC') - pd.DateOffset(months=months_ago_input)
-                                filtered_df = filtered_df[filtered_df['published_at'] >= date_cutoff]
-                            if country_filter_input:
-                                filtered_df = filtered_df[filtered_df['country'] == country_filter_input.upper()]
-
-                        if filtered_df.empty:
-                            st.error("No channels matched all your filtering criteria after full analysis.")
-                        else:
-                            avg_engagement = filtered_df.groupby('channel_id')['engagement_rate'].mean().reset_index()
-                            final_channels = pd.merge(enriched_channel_data, avg_engagement, on='channel_id')
-                            final_channels = pd.merge(final_channels, relevance_scores, on='channel_id', how='left')
-
-                            top_channels = final_channels.sort_values(by=['relevance_score', 'subscribers'], ascending=False)
-
-                            st.success(f"Analysis Complete! Found {len(top_channels)} channels matching your criteria.")
-                            st.info("ℹ️ Results are sorted by Keyword Relevance score, then by subscriber count.")
-
-                            # --- AI Summary BEFORE formatting numbers for the table ---
-                            if generate_summary_checkbox:
-                                if not GEMINI_API_KEY:
-                                    st.error("Please ensure your GEMINI_API_KEY is set in your .env file to generate a summary.")
-                                else:
-                                    with st.spinner("Generating AI Summary..."):
-                                        summary_df = top_channels.copy()
-                                        summary_df['relevance_score'] = summary_df['relevance_score'].map('{:.0%}'.format)
-                                        summary_df['engagement_rate'] = summary_df['engagement_rate'].map('{:.2%}'.format)
-                                        summary_text = generate_summary(summary_df, final_query)
-                                        st.subheader("📝 AI Generated Summary")
-                                        st.markdown(summary_text)
-
-                            # Format for display
-                            top_channels['relevance_score'] = top_channels['relevance_score'].map('{:.0%}'.format)
-                            top_channels['engagement_rate'] = top_channels['engagement_rate'].map('{:.2%}'.format)
-
-                            # Persist minimal data for outreach across reruns
-                            st.session_state['top_channels_for_outreach'] = top_channels[['channel_title']].reset_index(drop=True)
-                            st.session_state['final_query'] = final_query
-
-                            # (optional) also persist the displayed table so it stays visible after reruns
-                            st.session_state['display_df'] = top_channels[['channel_title', 'relevance_score', 'subscribers', 'country', 'engagement_rate']].copy()
+            run_search(
+                youtube=youtube,
+                final_query=final_query,
+                region_input=region_input,
+                min_subs_input=min_subs_input,
+                months_ago_input=months_ago_input,
+                country_filter_input=country_filter_input,
+                generate_summary_checkbox=generate_summary_checkbox,
+            )
 
 # === Seed Topic Review (iterate + ignore bag) ===
 if st.session_state.get('seed_candidates'):
@@ -708,7 +648,7 @@ if st.session_state.get('seed_candidates'):
     candidates = st.session_state.get('seed_candidates', [])
 
     # Selection of topics to keep
-    default_keep = st.session_state.get('seed_selected', candidates)
+    default_keep = st.session_state.get('seed_selected_topics', candidates)
     selected_topics = st.multiselect(
         "Select topics to keep",
         options=candidates,

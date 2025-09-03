@@ -265,7 +265,7 @@ def analyze_seed_channel(
     # 2) Name/brand stoplist from channel title
     name_bits = set(_tokens(ch_title)) | {"oficial","official","canal","channel","tv","podcast","clips"}
 
-    # 3) Recent videos
+    # 3) Recent videos from uploads playlist
     vids = youtube_service.playlistItems().list(
         part="snippet", playlistId=uploads, maxResults=min(50, max_seed_videos)
     ).execute().get("items", [])
@@ -273,12 +273,31 @@ def analyze_seed_channel(
         st.error("No recent videos to analyze for the seed channel.")
         return None
 
-    # 3b) Detect original language from titles+tags (simple heuristic)
+    # 3b) Fetch real video snippets to access tags/descriptions
+    video_ids = []
+    for it in vids:
+        sn = it.get("snippet", {})
+        rid = (sn.get("resourceId", {}) or {}).get("videoId")
+        if rid:
+            video_ids.append(rid)
+    video_meta: dict[str, dict] = {}
+    for i in range(0, len(video_ids), 50):
+        chunk = video_ids[i:i+50]
+        vresp = youtube_service.videos().list(part="snippet", id=",".join(chunk)).execute()
+        for v in vresp.get("items", []):
+            vid = v.get("id")
+            vsn = v.get("snippet", {})
+            video_meta[vid] = {
+                "tags": vsn.get("tags", []) or [],
+                "description": vsn.get("description", "") or "",
+                "title": vsn.get("title", "") or "",
+            }
+
+    # 3c) Detect original language from titles + fetched tags
     sample_titles = [it["snippet"].get("title", "") for it in vids]
     sample_tags = []
-    for it in vids:
-        tg = it["snippet"].get("tags", []) or []
-        sample_tags.extend(tg)
+    for vid in video_ids:
+        sample_tags.extend(video_meta.get(vid, {}).get("tags", []) or [])
     orig_lang = _detect_language_from_texts(sample_titles + sample_tags)
     st.info(f"Detected seed language: {orig_lang.upper()}")
 
@@ -287,8 +306,11 @@ def analyze_seed_channel(
     for it in vids:
         sn = it["snippet"]
         title = sn.get("title", "") or ""
-        tags  = sn.get("tags", []) or []
-        desc  = sn.get("description", "") or ""
+        # Pull tags/description from videos().list, not playlistItems
+        vid = (sn.get("resourceId", {}) or {}).get("videoId")
+        meta = video_meta.get(vid, {}) if vid else {}
+        tags  = meta.get("tags", []) or []
+        desc  = meta.get("description", "") or ""
 
         # tokens
         t_unis = [w for w in _tokens(title) if w not in STOPWORDS and w not in name_bits]

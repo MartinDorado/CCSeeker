@@ -1,4 +1,4 @@
-import pandas as pd
+﻿import pandas as pd
 import streamlit as st
 from googleapiclient.discovery import build
 import re
@@ -123,15 +123,164 @@ def get_video_details(youtube_service, channel_data, max_videos_per_channel):
     return all_video_details
 
 def calculate_keyword_relevance(df, query):
-    # ... (This function remains the same)
-    if df.empty:
+    """Compute per-channel relevance by matching query terms against title and tags.
+
+    - Strips outer quotes from multi-word phrases.
+    - Escapes regex metacharacters in terms.
+    - Matches in video title OR video tags.
+    """
+    if df.empty or not isinstance(query, str) or not query.strip():
         return pd.DataFrame(columns=['channel_id', 'relevance_score'])
-    keywords = [word.strip() for word in re.split('OR|AND', query, flags=re.IGNORECASE)]
-    pattern = '|'.join(keywords)
-    df['is_relevant'] = df['video_title'].str.contains(pattern, case=False, na=False)
+
+    # Split on OR/AND tokens, then normalize terms
+    raw_terms = [word.strip() for word in re.split(r"OR|AND", query, flags=re.IGNORECASE)]
+    cleaned = []
+    for t in raw_terms:
+        if not t:
+            continue
+        # remove outer quotes if present and escape for regex
+        if (len(t) >= 2) and ((t.startswith('"') and t.endswith('"')) or (t.startswith("'") and t.endswith("'"))):
+            t = t[1:-1]
+        t = t.strip()
+        if not t:
+            continue
+        cleaned.append(re.escape(t))
+
+    if not cleaned:
+        return pd.DataFrame(columns=['channel_id', 'relevance_score'])
+
+    pattern = '(' + '|'.join(cleaned) + ')'
+
+    # Build a combined text field: title + joined tags
+    def _tags_to_text(x):
+        if isinstance(x, list):
+            return ' '.join([str(i) for i in x if i is not None])
+        return str(x) if x is not None else ''
+
+    df = df.copy()
+    title_series = df['video_title'] if 'video_title' in df.columns else pd.Series([''] * len(df))
+    tags_series = df['video_tags'] if 'video_tags' in df.columns else pd.Series([''] * len(df))
+    df['combined_text'] = title_series.fillna('') + ' ' + tags_series.apply(_tags_to_text)
+    df['is_relevant'] = df['combined_text'].str.contains(pattern, case=False, na=False)
     relevance = df.groupby('channel_id')['is_relevant'].mean().reset_index()
     relevance = relevance.rename(columns={'is_relevant': 'relevance_score'})
     return relevance
+
+# --- Helpers for seed topic iteration ---
+def _parse_topics_from_query(q: str) -> list[str]:
+    """Split an OR-joined query into topic phrases, removing outer quotes."""
+    if not q:
+        return []
+    parts = [p.strip() for p in q.split(" OR ") if p.strip()]
+    out: list[str] = []
+    for p in parts:
+        if len(p) >= 2 and p.startswith('"') and p.endswith('"'):
+            out.append(p[1:-1])
+        else:
+            out.append(p)
+    return out
+
+def _build_query_from_topics(topics: list[str]) -> str:
+    """Join topic phrases into an OR query, quoting multi-word phrases."""
+    bits = []
+    for t in topics:
+        t = (t or "").strip()
+        if not t:
+            continue
+        bits.append(t if " " not in t else f'"{t}"')
+    return " OR ".join(bits)
+
+def run_search(
+    youtube,
+    final_query: str,
+    region_input: str,
+    min_subs_input: int,
+    months_ago_input: int,
+    country_filter_input: str,
+    generate_summary_checkbox: bool,
+):
+    """Run the 4-step search + analysis pipeline and render results."""
+    with st.spinner("Step 1/4: Searching for channels..."):
+        initial_channels = Youtube(youtube, final_query, region_input, total_results_to_fetch=50)
+
+    if not initial_channels:
+        st.error("Search did not return any channels.")
+        return
+
+    df_initial = pd.DataFrame(initial_channels)
+    with st.expander("See raw channels found"):
+        st.dataframe(df_initial)
+
+    with st.spinner("Step 2/4: Fetching channel statistics..."):
+        channel_statistics = get_channel_stats(youtube, df_initial['channel_id'].tolist())
+
+    if not channel_statistics:
+        st.warning("Could not retrieve detailed stats for the found channels.")
+        return
+
+    df_stats = pd.DataFrame(channel_statistics)
+    enriched_channel_data = pd.merge(df_initial, df_stats, on='channel_id')
+
+    with st.spinner("Step 3/4: Fetching recent video details..."):
+        video_data = get_video_details(youtube, enriched_channel_data.to_dict('records'), max_videos_per_channel=10)
+
+    if not video_data:
+        st.warning("Could not retrieve any video details from the channels.")
+        st.dataframe(enriched_channel_data.sort_values(by="subscribers", ascending=False))
+        return
+
+    with st.spinner("Step 4/4: Analyzing and filtering results..."):
+        df_videos = pd.DataFrame(video_data)
+        relevance_scores = calculate_keyword_relevance(df_videos.copy(), final_query)
+        df_videos['published_at'] = pd.to_datetime(df_videos['published_at'])
+        df_videos['engagement_rate'] = (df_videos['video_likes'] + df_videos['video_comments']) / (df_videos['video_views'] + 1)
+        df_full = pd.merge(df_videos, enriched_channel_data, on='channel_id')
+
+        filtered_df = df_full[df_full['subscribers'] >= min_subs_input]
+
+        # Conditionally apply the date filter
+        if months_ago_input > 0:
+            date_cutoff = pd.Timestamp.now(tz='UTC') - pd.DateOffset(months=months_ago_input)
+            filtered_df = filtered_df[filtered_df['published_at'] >= date_cutoff]
+        if country_filter_input:
+            filtered_df = filtered_df[filtered_df['country'] == country_filter_input.upper()]
+
+        if filtered_df.empty:
+            st.error("No channels matched all your filtering criteria after full analysis.")
+            return
+
+        avg_engagement = filtered_df.groupby('channel_id')['engagement_rate'].mean().reset_index()
+        final_channels = pd.merge(enriched_channel_data, avg_engagement, on='channel_id')
+        final_channels = pd.merge(final_channels, relevance_scores, on='channel_id', how='left')
+
+        top_channels = final_channels.sort_values(by=['relevance_score', 'subscribers'], ascending=False)
+
+        st.success(f"Analysis Complete! Found {len(top_channels)} channels matching your criteria.")
+        st.info("Results are sorted by Keyword Relevance score, then by subscriber count.")
+
+        # --- AI Summary BEFORE formatting numbers for the table ---
+        if generate_summary_checkbox:
+            if not GEMINI_API_KEY:
+                st.error("Please ensure your GEMINI_API_KEY is set in your .env file to generate a summary.")
+            else:
+                with st.spinner("Generating AI Summary..."):
+                    summary_df = top_channels.copy()
+                    summary_df['relevance_score'] = summary_df['relevance_score'].map('{:.0%}'.format)
+                    summary_df['engagement_rate'] = summary_df['engagement_rate'].map('{:.2%}'.format)
+                    summary_text = generate_summary(summary_df, final_query)
+                    st.subheader("AI Generated Summary")
+                    st.markdown(summary_text)
+
+        # Format for display
+        top_channels['relevance_score'] = top_channels['relevance_score'].map('{:.0%}'.format)
+        top_channels['engagement_rate'] = top_channels['engagement_rate'].map('{:.2%}'.format)
+
+        # Persist minimal data for outreach across reruns
+        st.session_state['top_channels_for_outreach'] = top_channels[['channel_title']].reset_index(drop=True)
+        st.session_state['final_query'] = final_query
+
+        # (optional) also persist the displayed table so it stays visible after reruns
+        st.session_state['display_df'] = top_channels[['channel_title', 'relevance_score', 'subscribers', 'country', 'engagement_rate']].copy()
 
 # --- Function to resolve a channel handle (@username) to an ID ---
 def get_channel_id_from_handle(youtube_service, handle):
@@ -342,9 +491,6 @@ with st.form("search_form"):
                 3.  **Discover:** It then uses those learned keywords to launch a new, highly specific search to find other channels with similar content.
             """)
 
-        # New: language selector and ignore list for seed analysis
-        seed_lang_label = st.radio("Seed analysis language", ["English", "Español"], horizontal=True)
-        seed_language_code = "es" if seed_lang_label == "Español" else "en"
         # Output language (post-translation) selector
         output_lang_label = st.selectbox(
             "Translate topics into",
@@ -375,11 +521,10 @@ with st.form("search_form"):
     country_options = COUNTRY_OPTIONS_BASE.copy()
     country_options.sort()
     country_options.insert(0, "Global")
-    default_index = next((i for i, v in enumerate(country_options) if v.endswith("(AR)")), 0)
     selected_country = st.selectbox(
         "Search Region (Bias)",
         country_options,
-        index=default_index,
+        index=0,  # Default to Global (no regional bias)
         help="This tells YouTube to prioritize results popular in this country. It is not a strict filter.",
     )
     region_input = "" if selected_country == "Global" else selected_country.split("(")[-1][:2]
@@ -396,7 +541,7 @@ with st.form("search_form"):
 
     with c2:
         country_filter_input = st.text_input(
-            "Channel Country (strict filter)", "AR",
+            "Channel Country (strict filter)", "",
             help="Leave blank to ignore."
         )
 
@@ -452,16 +597,28 @@ if submitted:
                 penalties = set(w.strip().lower() for w in (ignore_words_input or "").split(",") if w.strip())
                 seedmod.USER_PENALTIES = penalties
 
-                final_query = analyze_seed_channel(
+                # Generate an initial topic query from the seed (but do not search yet)
+                generated_query = analyze_seed_channel(
                     youtube,
                     seed_channel_id,
                     max_seed_videos=30,
                     top_k=10,
                     use_gemini=True,
                     gemini_api_key=GEMINI_API_KEY,
-                    language=target_language_code,
+                    language="auto",  # keep original-language topics for search
                     include_descriptions=False,
                 )
+
+                if generated_query:
+                    st.session_state['seed_candidates'] = _parse_topics_from_query(generated_query)
+                    st.session_state['seed_channel_id'] = seed_channel_id
+                    st.session_state['seed_ignore_bag'] = set(penalties)
+                    # Keep original-language topics through the iteration loop
+                    st.session_state['seed_target_language_code'] = "auto"
+                    st.success("Seed topics generated. Review and refine them below, then run the search.")
+
+                # Hold off running search until user reviews topics
+                final_query = None
         else:
             final_query = query_input
 
@@ -545,6 +702,88 @@ if submitted:
                             # (optional) also persist the displayed table so it stays visible after reruns
                             st.session_state['display_df'] = top_channels[['channel_title', 'relevance_score', 'subscribers', 'country', 'engagement_rate']].copy()
 
+# === Seed Topic Review (iterate + ignore bag) ===
+if st.session_state.get('seed_candidates'):
+    st.header("3. Review Seed Topics")
+    candidates = st.session_state.get('seed_candidates', [])
+
+    # Selection of topics to keep
+    default_keep = st.session_state.get('seed_selected', candidates)
+    selected_topics = st.multiselect(
+        "Select topics to keep",
+        options=candidates,
+        default=default_keep,
+        key="seed_selected_topics",
+        help="Keep the topics you like. Unselected ones will be added to the ignore bag when regenerating.")
+
+    # Editable ignore bag
+    ignore_set = set(st.session_state.get('seed_ignore_bag', set()))
+    ignore_str_default = ", ".join(sorted(ignore_set))
+    if 'seed_ignore_input' not in st.session_state:
+        st.session_state['seed_ignore_input'] = ignore_str_default
+    st.session_state['seed_ignore_input'] = st.text_input(
+        "Ignore words (bag)",
+        value=st.session_state['seed_ignore_input'],
+        help="Words to always ignore in topic extraction (e.g., names/brands/places). You can edit this directly.")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Regenerate topics", key="btn_regen_topics"):
+            # Merge manual ignore entries with tokens from unselected topics
+            manual_ignores = {w.strip().lower() for w in (st.session_state['seed_ignore_input'] or "").split(',') if w.strip()}
+            dropped = set(candidates) - set(selected_topics)
+            dropped_tokens = set()
+            for t in dropped:
+                for w in t.split():
+                    w = w.strip().lower()
+                    if w:
+                        dropped_tokens.add(w)
+            new_bag = set(ignore_set) | manual_ignores | dropped_tokens
+            st.session_state['seed_ignore_bag'] = new_bag
+            st.session_state['seed_ignore_input'] = ", ".join(sorted(new_bag))
+
+            # Re-run seed analysis with updated penalties
+            if not YOUTUBE_API_KEY:
+                st.error("Please ensure your YOUTUBE_API_KEY is set in your .env file.")
+            else:
+                youtube2 = build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, developerKey=YOUTUBE_API_KEY)
+                seedmod.USER_PENALTIES = new_bag
+                new_query = analyze_seed_channel(
+                    youtube2,
+                    st.session_state.get('seed_channel_id', ''),
+                    max_seed_videos=30,
+                    top_k=10,
+                    use_gemini=True,
+                    gemini_api_key=GEMINI_API_KEY,
+                    language="auto",
+                    include_descriptions=False,
+                )
+                if new_query:
+                    st.session_state['seed_candidates'] = _parse_topics_from_query(new_query)
+                    st.success("Regenerated topics using updated ignore bag.")
+                else:
+                    st.warning("Could not regenerate topics with the current settings.")
+
+    with c2:
+        if st.button("Search with selected topics", key="btn_search_with_selected"):
+            if not selected_topics:
+                st.warning("Please select at least one topic to search.")
+            else:
+                built_query = _build_query_from_topics(selected_topics)
+                if not YOUTUBE_API_KEY:
+                    st.error("Please ensure your YOUTUBE_API_KEY is set in your .env file.")
+                else:
+                    youtube2 = build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, developerKey=YOUTUBE_API_KEY)
+                    run_search(
+                        youtube=youtube2,
+                        final_query=built_query,
+                        region_input=region_input,
+                        min_subs_input=min_subs_input,
+                        months_ago_input=months_ago_input,
+                        country_filter_input=country_filter_input,
+                        generate_summary_checkbox=generate_summary_checkbox,
+                    )
+
 # Keep the results table visible across reruns
 if 'display_df' in st.session_state:
     st.dataframe(
@@ -592,3 +831,5 @@ if 'top_channels_for_outreach' in st.session_state and not st.session_state['top
                     st.error(f"Unexpected error while generating drafts: {type(e).__name__}: {e}")
 
                             
+
+

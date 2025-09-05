@@ -105,19 +105,17 @@ ORG_WORDS   = {"universidad","universidades","facultad","escuela","instituto","f
 EVENT_WORDS = {"jornada","jornadas","charla","encuentro","ciclo","seminario","congreso","ponencia","presentacion","presentación","evento","workshop","taller","webinar","tour","gira","festival","expo"}
 MEDIA_PROMO = {"trailer","avance","estreno","cine","pelicula","película","viral","fenomeno","fenómeno","exito","éxito","ventas","promocion","promoción","suscribete","suscríbete","like","share"}
 
-USER_PENALTIES = set()  # you can populate this from the app before calling analyze_seed_channel
-
 def token_set(s: str) -> set[str]:
     return set((s or "").split())
 
-def looks_contextual(term: str) -> bool:
+def looks_contextual(term: str, user_penalties: set[str] | None = None) -> bool:
     """Return True if a term looks like org/geo/event/promo/time noise."""
     tokens = token_set(term.lower())
     if not tokens:
         return True
 
     # user-defined penalties
-    if USER_PENALTIES and (tokens & USER_PENALTIES):
+    if user_penalties and (tokens & user_penalties):
         return True
 
     # numbers / years
@@ -183,7 +181,7 @@ Términos prohibidos:
             if low in seen:
                 continue
             seen.add(low)
-            out.append(low)
+            out.append(t)
             if len(out) >= max_terms:
                 break
         return out or candidates
@@ -214,12 +212,12 @@ Términos prohibidos:
         for t in out:
             t = t.strip().strip("-•").strip().strip('"').strip("'")
             low = _norm_text(t)
-            if not low or low in seen: 
+            if not low or low in seen:
                 continue
             if any(w in ban_terms for w in low.split()):
                 continue
             seen.add(low)
-            clean.append(low)
+            clean.append(t)
             if len(clean) >= max_terms:
                 break
         return clean
@@ -237,6 +235,7 @@ def analyze_seed_channel(
     gemini_api_key=None,
     language="auto",
     include_descriptions=False,  # default OFF: descriptions are noisy
+    user_penalties: set[str] | None = None,
 ):
     """
     Domain-agnostic seed analyzer (hardened):
@@ -350,20 +349,20 @@ def analyze_seed_channel(
     scored = []
 
     for t, df in df_tags.items():
-        if df >= min_df and not looks_contextual(t):
+        if df >= min_df and not looks_contextual(t, user_penalties):
             scored.append((t, df * 2.0))      # tags strongest
 
     for t, df in df_title_bi.items():
-        if df >= min_df and not looks_contextual(t):
+        if df >= min_df and not looks_contextual(t, user_penalties):
             scored.append((t, df * 1.6))      # title bigrams next
 
     for t, df in df_title_uni.items():
-        if df >= min_df and not looks_contextual(t):
+        if df >= min_df and not looks_contextual(t, user_penalties):
             scored.append((t, df * 1.0))      # title unigrams last
 
     if include_descriptions:
         for t, df in df_desc_uni.items():
-            if df >= min_df and not looks_contextual(t):
+            if df >= min_df and not looks_contextual(t, user_penalties):
                 scored.append((t, df * 0.5))  # descriptions weakest
 
     # Prefer phrases over single tokens: keep bigrams first, fill with singles
@@ -391,7 +390,7 @@ def analyze_seed_channel(
             # recompute a light-weight score using descriptions (weak weight)
             scored_fallback = []
             for t, df in df_desc_uni.items():
-                if df >= max(2, math.ceil(0.20 * n)) and not looks_contextual(t):
+                if df >= max(2, math.ceil(0.20 * n)) and not looks_contextual(t, user_penalties):
                     scored_fallback.append((t, df * 0.5))
             if scored_fallback:
                 # prefer phrases, then singles

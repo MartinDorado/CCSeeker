@@ -8,7 +8,6 @@ import google.generativeai as genai
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from seed_topics_hardened import analyze_seed_channel
 import seed_topics_hardened as seedmod
 
 try:
@@ -38,6 +37,23 @@ YOUTUBE_API_VERSION = "v3"
 
 # --- Helper & API Functions ---
 
+@st.cache_resource(show_spinner=False)
+def get_youtube():
+    """Create and cache a YouTube Data API client using the env API key."""
+    if not YOUTUBE_API_KEY:
+        raise ValueError("YOUTUBE_API_KEY is not configured")
+    return build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, developerKey=YOUTUBE_API_KEY)
+
+def get_gemini_model(temperature: float | None = None):
+    """Configure and return a Gemini model for content generation."""
+    if not GEMINI_API_KEY:
+        raise ValueError("GEMINI_API_KEY is not configured")
+    genai.configure(api_key=GEMINI_API_KEY)
+    cfg = {}
+    if temperature is not None:
+        cfg["generation_config"] = {"temperature": float(temperature)}
+    return genai.GenerativeModel('gemini-1.5-pro-latest', **cfg)
+
 def extract_identifier_from_url(url):
     """Extract a channel identifier from common YouTube URL formats.
 
@@ -53,6 +69,32 @@ def extract_identifier_from_url(url):
         if match:
             return match.group(1)
     return None
+
+def resolve_channel_id(youtube_service, user_input: str):
+    """Resolve a channel identifier from a URL, @handle, or UC... id.
+
+    Returns channel_id or None.
+    """
+    if not user_input:
+        return None
+    s = user_input.strip()
+    # Direct ID
+    if s.startswith("UC") and len(s) >= 20:
+        return s
+    # Try parsing URL
+    ident = extract_identifier_from_url(s) or s
+    if ident.startswith("UC"):
+        return ident
+    # Treat as handle or name: remove leading '@'
+    handle = ident[1:] if ident.startswith("@") else ident
+    try:
+        response = youtube_service.search().list(q=handle, part="id", type="channel", maxResults=1).execute()
+        items = response.get("items", [])
+        if items:
+            return items[0]["id"]["channelId"]
+        return None
+    except HttpError:
+        return None
 
 def search_channels(youtube_service, query, region_code, total_results_to_fetch):
     """Channel search with proper parts so channelId is present."""
@@ -110,12 +152,29 @@ def get_video_details(youtube_service, channel_data, max_videos_per_channel):
     for channel in channel_data:
         playlist_id = channel["uploads_playlist_id"]
         try:
-            request = youtube_service.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=max_videos_per_channel)
-            response = request.execute()
+            # paginate through playlist items up to the requested limit
+            video_ids = []
+            next_page_token = None
+            fetched = 0
+            while fetched < max_videos_per_channel:
+                page_size = min(50, max_videos_per_channel - fetched)
+                request = youtube_service.playlistItems().list(
+                    part="snippet", playlistId=playlist_id, maxResults=page_size,
+                    pageToken=next_page_token
+                )
+                response = request.execute()
+                items = response.get("items", [])
+                for it in items:
+                    vid = (it.get("snippet", {}).get("resourceId", {}) or {}).get("videoId")
+                    if vid:
+                        video_ids.append(vid)
+                fetched += len(items)
+                next_page_token = response.get("nextPageToken")
+                if not next_page_token or not items:
+                    break
         except HttpError:
-            st.warning(f"Could not fetch videos for '{channel['channel_title']}': Playlist not found or private.")
+            st.warning(f"Could not fetch videos for '{channel.get('channel_title','(unknown)')}': Playlist not found or private.")
             continue
-        video_ids = [item["snippet"]["resourceId"]["videoId"] for item in response.get("items", [])]
         if not video_ids: continue
         video_request = youtube_service.videos().list(part="snippet,statistics", id=",".join(video_ids))
         video_response = video_request.execute()
@@ -292,30 +351,14 @@ def run_search(
 
 # --- Function to resolve a channel handle (@username) to an ID ---
 def get_channel_id_from_handle(youtube_service, handle):
-    """
-    Uses the search API to find a channel ID from a given handle (e.g., GoogleDevelopers).
-    The YouTube Data API v3 does not have a direct endpoint to resolve a handle.
-    The recommended workaround is to use the search endpoint.
-    """
-    try:
-        request = youtube_service.search().list(
-            q=handle, part="id", type="channel", maxResults=1
-        )
-        response = request.execute()
-        items = response.get("items", [])
-        if items:
-            return items[0]["id"]["channelId"]
-        return None
-    except HttpError as e:
-        st.error(f"API Error while resolving handle '@{handle}': {e}")
-        return None
+    """Deprecated: use resolve_channel_id() instead."""
+    return resolve_channel_id(youtube_service, handle)
 
 # --- Channel-as-Seed Function ---
 def generate_summary(df_results, query):
     """Formats the data and calls the Gemini API to generate a summary."""
     try:
-        genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel('gemini-1.5-pro-latest')
+        model = get_gemini_model()
 
         top_5_df = df_results.head(5)
         data_string = ""
@@ -375,11 +418,7 @@ def generate_outreach_drafts(
     if 'channel_title' not in top_channels_df.columns:
         return results
 
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel(
-        'gemini-1.5-pro-latest',
-        generation_config={"temperature": float(temperature)}
-    )
+    model = get_gemini_model(temperature=temperature)
 
     df = (
         top_channels_df[['channel_title']]
@@ -578,35 +617,24 @@ if submitted:
     if not YOUTUBE_API_KEY:
         st.error("Please ensure your YOUTUBE_API_KEY is set in your .env file.")
     else:
-        youtube = build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, developerKey=YOUTUBE_API_KEY)
+        youtube = get_youtube()
         final_query = ""
 
         if search_method == "Channel-as-Seed":
-            identifier = extract_identifier_from_url(seed_url_input)
-            seed_channel_id = None
-
-            if not identifier:
-                st.error("Could not extract a valid Channel ID or Username from the URL. Use youtube.com/channel/ID or youtube.com/@username")
+            with st.spinner("Resolving channel..."):
+                seed_channel_id = resolve_channel_id(youtube, seed_url_input)
+            if not seed_channel_id:
+                st.error("Could not resolve a channel ID from the provided input. Use a full channel URL, @handle, or a UC… ID.")
                 final_query = None
-            elif identifier.startswith("UC"):
-                seed_channel_id = identifier
-                st.info(f"Found Channel ID: {seed_channel_id}")
             else:
-                with st.spinner(f"Resolving handle '@{identifier}'..."):
-                    seed_channel_id = get_channel_id_from_handle(youtube, identifier)
-                if not seed_channel_id:
-                    st.error(f"Could not find a channel ID for the handle '@{identifier}'.")
-                    final_query = None
-                else:
-                    st.success(f"Resolved handle '@{identifier}' to Channel ID: {seed_channel_id}")
+                st.info(f"Using Channel ID: {seed_channel_id}")
 
             if seed_channel_id:
                 # Apply user-provided penalties to the seed analyzer
                 penalties = set(w.strip().lower() for w in (ignore_words_input or "").split(",") if w.strip())
-                seedmod.USER_PENALTIES = penalties
 
                 # Generate an initial topic query from the seed (but do not search yet)
-                generated_query = analyze_seed_channel(
+                generated_query = seedmod.analyze_seed_channel(
                     youtube,
                     seed_channel_id,
                     max_seed_videos=30,
@@ -615,6 +643,7 @@ if submitted:
                     gemini_api_key=GEMINI_API_KEY,
                     language="auto",  # keep original-language topics for search
                     include_descriptions=False,
+                    user_penalties=penalties,
                 )
 
                 if generated_query:
@@ -686,9 +715,8 @@ if st.session_state.get('seed_candidates'):
             if not YOUTUBE_API_KEY:
                 st.error("Please ensure your YOUTUBE_API_KEY is set in your .env file.")
             else:
-                youtube2 = build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, developerKey=YOUTUBE_API_KEY)
-                seedmod.USER_PENALTIES = new_bag
-                new_query = analyze_seed_channel(
+                youtube2 = get_youtube()
+                new_query = seedmod.analyze_seed_channel(
                     youtube2,
                     st.session_state.get('seed_channel_id', ''),
                     max_seed_videos=30,
@@ -697,6 +725,7 @@ if st.session_state.get('seed_candidates'):
                     gemini_api_key=GEMINI_API_KEY,
                     language="auto",
                     include_descriptions=False,
+                    user_penalties=new_bag,
                 )
                 if new_query:
                     st.session_state['seed_candidates'] = _parse_topics_from_query(new_query)
@@ -713,7 +742,7 @@ if st.session_state.get('seed_candidates'):
                 if not YOUTUBE_API_KEY:
                     st.error("Please ensure your YOUTUBE_API_KEY is set in your .env file.")
                 else:
-                    youtube2 = build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, developerKey=YOUTUBE_API_KEY)
+                    youtube2 = get_youtube()
                     run_search(
                         youtube=youtube2,
                         final_query=built_query,

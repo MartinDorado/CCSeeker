@@ -96,6 +96,96 @@ def resolve_channel_id(youtube_service, user_input: str):
     except HttpError:
         return None
 
+# --- Boolean query helpers (minimal) ---
+def _strip_outer_quotes(s: str) -> str:
+    s = (s or "").strip()
+    if len(s) >= 2 and ((s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'"))):
+        return s[1:-1].strip()
+    return s
+
+def _parse_query_to_dnf(q: str) -> list[list[str]]:
+    """Very simple DNF parser: split on OR, then within each split on AND.
+    Assumes OR/AND not inside quoted phrases. Returns list of AND-clauses.
+    """
+    if not q:
+        return []
+    clauses = re.split(r"\bOR\b", q, flags=re.IGNORECASE)
+    dnf: list[list[str]] = []
+    for clause in clauses:
+        parts = [p.strip() for p in re.split(r"\bAND\b", clause, flags=re.IGNORECASE)]
+        terms = [p for p in parts if p]
+        if terms:
+            dnf.append(terms)
+    return dnf
+
+def _search_term_channels(youtube_service, term: str, region_code: str, limit: int = 50) -> dict:
+    """Search channels for a single term/phrase with paging. Returns {channel_id: title}."""
+    term = term.strip()
+    params = {'q': term, 'part': 'id,snippet', 'type': 'channel'}
+    if region_code:
+        params['regionCode'] = region_code
+    out: dict[str, str] = {}
+    next_page_token = None
+    fetched = 0
+    while fetched < limit:
+        page_size = min(50, limit - fetched)
+        if next_page_token:
+            params['pageToken'] = next_page_token
+        params['maxResults'] = page_size
+        try:
+            resp = youtube_service.search().list(**params).execute()
+        except HttpError as e:
+            st.warning(f"YouTube search error for term '{term}': {e}")
+            break
+        items = resp.get('items', [])
+        for item in items:
+            cid = (item.get('id', {}) or {}).get('channelId')
+            if not cid:
+                continue
+            if cid not in out:
+                out[cid] = (item.get('snippet', {}) or {}).get('title', 'Unknown')
+        fetched += len(items)
+        next_page_token = resp.get('nextPageToken')
+        if not next_page_token or not items:
+            break
+    return out
+
+def search_channels_boolean(youtube_service, query: str, region_code: str, per_term_limit: int = 80):
+    """Boolean channel search: (t1 AND t2) OR (t3) …
+    - Splits into AND-clauses and terms
+    - Intersects per-term channel sets for AND
+    - Unions across clauses for OR
+    Returns list[{channel_id, channel_title}]
+    """
+    dnf = _parse_query_to_dnf(query)
+    if not dnf:
+        return []
+    union_ids: set[str] = set()
+    title_by_id: dict[str, str] = {}
+    for clause in dnf:
+        per_term_maps = []
+        for raw in clause:
+            term = raw.strip()
+            # keep quotes for phrase search; YouTube generally supports them
+            ch_map = _search_term_channels(youtube_service, term, region_code, limit=per_term_limit)
+            if not ch_map:
+                per_term_maps = []
+                break
+            per_term_maps.append(ch_map)
+        if not per_term_maps:
+            continue
+        # intersect channel ids across all term maps in the clause
+        sets = [set(m.keys()) for m in per_term_maps]
+        inter = set.intersection(*sets) if sets else set()
+        for cid in inter:
+            union_ids.add(cid)
+            # prefer first available title
+            for m in per_term_maps:
+                if cid in m:
+                    title_by_id.setdefault(cid, m[cid])
+                    break
+    return [{"channel_id": cid, "channel_title": title_by_id.get(cid, "Unknown")} for cid in union_ids]
+
 def search_channels(youtube_service, query, region_code, total_results_to_fetch):
     """Channel search with proper parts so channelId is present."""
     channels = []
@@ -216,7 +306,8 @@ def calculate_keyword_relevance(df, query):
     if not cleaned:
         return pd.DataFrame(columns=['channel_id', 'relevance_score'])
 
-    pattern = '(' + '|'.join(cleaned) + ')'
+    # Use non-capturing group to avoid pandas warning about match groups
+    pattern = '(?:' + '|'.join(cleaned) + ')'
 
     # Build a combined text field: title + joined tags
     def _tags_to_text(x):
@@ -265,10 +356,14 @@ def run_search(
     months_ago_input: int,
     country_filter_input: str,
     generate_summary_checkbox: bool,
+    boolean_fetch: bool = False,
 ):
     """Run the 4-step search + analysis pipeline and render results."""
     with st.spinner("Step 1/4: Searching for channels..."):
-        initial_channels = search_channels(youtube, final_query, region_input, total_results_to_fetch=50)
+        if boolean_fetch:
+            initial_channels = search_channels_boolean(youtube, final_query, region_input, per_term_limit=80)
+        else:
+            initial_channels = search_channels(youtube, final_query, region_input, total_results_to_fetch=50)
 
     if not initial_channels:
         st.error("Search did not return any channels.")
@@ -669,6 +764,7 @@ if submitted:
                 months_ago_input=months_ago_input,
                 country_filter_input=country_filter_input,
                 generate_summary_checkbox=generate_summary_checkbox,
+                boolean_fetch=bool(re.search(r"\b(AND|OR)\b", final_query, re.IGNORECASE)),
             )
 
 # === Seed Topic Review (iterate + ignore bag) ===
@@ -751,6 +847,7 @@ if st.session_state.get('seed_candidates'):
                         months_ago_input=months_ago_input,
                         country_filter_input=country_filter_input,
                         generate_summary_checkbox=generate_summary_checkbox,
+                        boolean_fetch=False,
                     )
 
 # Keep the results table visible across reruns

@@ -150,6 +150,14 @@ def _search_term_channels(youtube_service, term: str, region_code: str, limit: i
             break
     return out
 
+@st.cache_data(show_spinner=False)
+def _search_term_channels_cached(term: str, region_code: str, limit: int = 50) -> dict:
+    """Cached wrapper that uses the shared YouTube client.
+    Caches per-term results to reduce API calls across reruns.
+    """
+    youtube = get_youtube()
+    return _search_term_channels(youtube, term, region_code, limit)
+
 def search_channels_boolean(youtube_service, query: str, region_code: str, per_term_limit: int = 80):
     """Boolean channel search: (t1 AND t2) OR (t3) …
     - Splits into AND-clauses and terms
@@ -160,14 +168,14 @@ def search_channels_boolean(youtube_service, query: str, region_code: str, per_t
     dnf = _parse_query_to_dnf(query)
     if not dnf:
         return []
-    union_ids: set[str] = set()
     title_by_id: dict[str, str] = {}
+    score_by_id: dict[str, int] = {}
     for clause in dnf:
         per_term_maps = []
         for raw in clause:
             term = raw.strip()
             # keep quotes for phrase search; YouTube generally supports them
-            ch_map = _search_term_channels(youtube_service, term, region_code, limit=per_term_limit)
+            ch_map = _search_term_channels_cached(term, region_code, limit=per_term_limit)
             if not ch_map:
                 per_term_maps = []
                 break
@@ -177,14 +185,24 @@ def search_channels_boolean(youtube_service, query: str, region_code: str, per_t
         # intersect channel ids across all term maps in the clause
         sets = [set(m.keys()) for m in per_term_maps]
         inter = set.intersection(*sets) if sets else set()
+        # Build rank maps per term to derive a stable ordering for intersections
+        rank_maps = []
+        for m in per_term_maps:
+            ranks = {cid: idx for idx, cid in enumerate(m.keys())}
+            rank_maps.append(ranks)
         for cid in inter:
-            union_ids.add(cid)
+            # sum of ranks across terms; smaller is better
+            clause_score = sum(rm.get(cid, 10_000) for rm in rank_maps)
+            # keep the best (lowest) score across clauses
+            score_by_id[cid] = min(score_by_id.get(cid, clause_score), clause_score)
             # prefer first available title
             for m in per_term_maps:
                 if cid in m:
                     title_by_id.setdefault(cid, m[cid])
                     break
-    return [{"channel_id": cid, "channel_title": title_by_id.get(cid, "Unknown")} for cid in union_ids]
+    # Order channels by score ascending for stability
+    ordered = sorted(score_by_id.items(), key=lambda x: x[1])
+    return [{"channel_id": cid, "channel_title": title_by_id.get(cid, "Unknown")} for cid, _ in ordered]
 
 def search_channels(youtube_service, query, region_code, total_results_to_fetch):
     """Channel search with proper parts so channelId is present."""
@@ -427,15 +445,15 @@ def run_search(
             else:
                 with st.spinner("Generating AI Summary..."):
                     summary_df = top_channels.copy()
-                    summary_df['relevance_score'] = summary_df['relevance_score'].map('{:.0%}'.format)
-                    summary_df['engagement_rate'] = summary_df['engagement_rate'].map('{:.2%}'.format)
+                    summary_df['relevance_score'] = summary_df['relevance_score'].fillna(0).map('{:.0%}'.format)
+                    summary_df['engagement_rate'] = summary_df['engagement_rate'].fillna(0).map('{:.2%}'.format)
                     summary_text = generate_summary(summary_df, final_query)
                     st.subheader("AI Generated Summary")
                     st.markdown(summary_text)
 
         # Format for display
-        top_channels['relevance_score'] = top_channels['relevance_score'].map('{:.0%}'.format)
-        top_channels['engagement_rate'] = top_channels['engagement_rate'].map('{:.2%}'.format)
+        top_channels['relevance_score'] = top_channels['relevance_score'].fillna(0).map('{:.0%}'.format)
+        top_channels['engagement_rate'] = top_channels['engagement_rate'].fillna(0).map('{:.2%}'.format)
 
         # Persist minimal data for outreach across reruns
         st.session_state['top_channels_for_outreach'] = top_channels[['channel_title']].reset_index(drop=True)
@@ -619,7 +637,15 @@ search_method = st.radio("Choose your search method:", ("Keywords", "Channel-as-
 with st.form("search_form"):
     # Inputs change depending on the selected method
     if search_method == "Keywords":
-        query_input = st.text_input("Search Keywords", "Manga or Anime")
+        query_input = st.text_input(
+            "Search Keywords",
+            "Manga OR Anime",
+            help=(
+                "Boolean supported: use AND / OR and quote multi‑word phrases. "
+                "Examples: manga AND review; \"anime analysis\" OR manga. "
+                "Parentheses aren’t supported; AND has higher precedence."
+            ),
+        )
         seed_url_input = ""  # keep defined
     else:
         st.info("💡 Enter the full URL of a YouTube channel to find similar creators.")

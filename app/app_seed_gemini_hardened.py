@@ -613,14 +613,35 @@ st.markdown("""
 
 
 def inject_css(path: str):
+    """Inject a CSS file, resolving relative to this script first.
+
+    Tries these locations in order:
+    - As given (absolute or relative to CWD)
+    - Next to this file
+    - In an "assets/" subfolder next to this file
+    - In CWD "assets/" (fallback)
+    """
+    here = Path(__file__).parent
     p = Path(path)
-    if not p.exists():
+
+    candidates = [
+        p,
+        here / path,
+        here / "assets" / path,
+        Path.cwd() / path,
+        Path.cwd() / "assets" / path,
+    ]
+
+    target = next((c for c in candidates if c.is_file()), None)
+    if target is None:
         st.warning(f"CSS not found: {path}")
+        st.caption("Tried: " + " | ".join(str(c) for c in candidates))
         return
+
     try:
-        css = p.read_text(encoding="utf-8-sig")  # handles UTF-8 + BOM too
+        css = target.read_text(encoding="utf-8-sig")  # handles UTF-8 + BOM too
     except UnicodeDecodeError:
-        css = p.read_text(encoding="latin-1", errors="replace")
+        css = target.read_text(encoding="latin-1", errors="replace")
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
 inject_css("theme_ccseeker_dark.css")

@@ -235,23 +235,57 @@ def search_channels(youtube_service, query, region_code, total_results_to_fetch)
     return channels
 
 def get_channel_stats(youtube_service, channel_ids):
+    """
+    Phase 1 enhancement: Add 3 high-value metrics with minimal breaking changes
+    """
     stats_data = []
     for i in range(0, len(channel_ids), 50):
         chunk = channel_ids[i:i + 50]
-        request = youtube_service.channels().list(part="snippet,statistics,contentDetails", id=",".join(chunk))
+        request = youtube_service.channels().list(
+            part="snippet,statistics,contentDetails", 
+            id=",".join(chunk)
+        )
         response = request.execute()
+        
         for item in response.get("items", []):
             content_details = item.get('contentDetails', {})
             related_playlists = content_details.get('relatedPlaylists', {})
             uploads_id = related_playlists.get('uploads')
+            snippet = item.get("snippet", {})
+            statistics = item.get("statistics", {})
+            
             if uploads_id:
+                # Calculate channel age in days (for internal ranking, not displayed yet)
+                published_at = snippet.get("publishedAt")
+                channel_age_days = None
+                if published_at:
+                    try:
+                        from datetime import datetime
+                        import dateutil.parser
+                        created_date = dateutil.parser.parse(published_at)
+                        channel_age_days = (datetime.now(created_date.tzinfo) - created_date).days
+                    except Exception:
+                        channel_age_days = None  # Graceful fallback
+                
+                # Calculate derived metrics
+                videos_count = int(statistics.get("videoCount", 0))
+                total_views = int(statistics.get("viewCount", 0))
+                avg_views_per_video = round(total_views / videos_count, 0) if videos_count > 0 else 0
+                
                 stats_data.append({
-                    "channel_id": item["id"], "country": item["snippet"].get("country", "N/A"),
-                    "subscribers": int(item["statistics"].get("subscriberCount", 0)),
-                    "views": int(item["statistics"].get("viewCount", 0)),
-                    "videos": int(item["statistics"].get("videoCount", 0)),
-                    "uploads_playlist_id": uploads_id
+                    # Existing fields (unchanged)
+                    "channel_id": item["id"],
+                    "country": snippet.get("country", "N/A"),
+                    "subscribers": int(statistics.get("subscriberCount", 0)),
+                    "views": total_views,
+                    "videos": videos_count,
+                    "uploads_playlist_id": uploads_id,
+                    
+                    # NEW: Phase 1 additions (safe additions only)
+                    "avg_views_per_video": avg_views_per_video,        # Main display metric
+                    "channel_age_days": channel_age_days,              # For future ranking logic
                 })
+                    
     return stats_data
 
 def get_video_details(youtube_service, channel_data, max_videos_per_channel):
@@ -454,13 +488,14 @@ def run_search(
         # Format for display
         top_channels['relevance_score'] = top_channels['relevance_score'].fillna(0).map('{:.0%}'.format)
         top_channels['engagement_rate'] = top_channels['engagement_rate'].fillna(0).map('{:.2%}'.format)
+        top_channels['avg_views_per_video'] = top_channels['avg_views_per_video'].fillna(0).map('{:,.0f}'.format)
 
         # Persist minimal data for outreach across reruns
         st.session_state['top_channels_for_outreach'] = top_channels[['channel_title']].reset_index(drop=True)
         st.session_state['final_query'] = final_query
 
         # (optional) also persist the displayed table so it stays visible after reruns
-        st.session_state['display_df'] = top_channels[['channel_title', 'relevance_score', 'subscribers', 'country', 'engagement_rate']].copy()
+        st.session_state['display_df'] = top_channels[['channel_title', 'relevance_score', 'subscribers', 'avg_views_per_video', 'country', 'engagement_rate']].copy()
 
 # --- Function to resolve a channel handle (@username) to an ID ---
 def get_channel_id_from_handle(youtube_service, handle):
@@ -613,35 +648,14 @@ st.markdown("""
 
 
 def inject_css(path: str):
-    """Inject a CSS file, resolving relative to this script first.
-
-    Tries these locations in order:
-    - As given (absolute or relative to CWD)
-    - Next to this file
-    - In an "assets/" subfolder next to this file
-    - In CWD "assets/" (fallback)
-    """
-    here = Path(__file__).parent
     p = Path(path)
-
-    candidates = [
-        p,
-        here / path,
-        here / "assets" / path,
-        Path.cwd() / path,
-        Path.cwd() / "assets" / path,
-    ]
-
-    target = next((c for c in candidates if c.is_file()), None)
-    if target is None:
+    if not p.exists():
         st.warning(f"CSS not found: {path}")
-        st.caption("Tried: " + " | ".join(str(c) for c in candidates))
         return
-
     try:
-        css = target.read_text(encoding="utf-8-sig")  # handles UTF-8 + BOM too
+        css = p.read_text(encoding="utf-8-sig")  # handles UTF-8 + BOM too
     except UnicodeDecodeError:
-        css = target.read_text(encoding="latin-1", errors="replace")
+        css = p.read_text(encoding="latin-1", errors="replace")
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
 inject_css("theme_ccseeker_dark.css")

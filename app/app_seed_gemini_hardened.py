@@ -8,7 +8,12 @@ import google.generativeai as genai
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-import seed_topics_hardened as seedmod
+try:
+    # Try relative import (when run as module)
+    from . import seed_topics_hardened as seedmod
+except ImportError:
+    # Fallback for direct execution
+    import seed_topics_hardened as seedmod
 
 try:
     import pycountry
@@ -658,7 +663,7 @@ def inject_css(path: str):
         css = p.read_text(encoding="latin-1", errors="replace")
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
-inject_css("theme_ccseeker_dark.css")
+inject_css("app/theme_ccseeker_dark.css")
 
 
 c1, c2 = st.columns([1, 10], vertical_alignment="center")

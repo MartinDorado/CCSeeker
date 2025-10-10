@@ -101,113 +101,170 @@ def resolve_channel_id(youtube_service, user_input: str):
     except HttpError:
         return None
 
+@st.cache_data(show_spinner=False, ttl=3600)
+def search_channels_hybrid(query: str, region_code: str, max_videos: int = 150, max_channels: int = 50):
+    """
+    Hybrid search: Find channels by their VIDEO content (primary) + channel names (secondary).
+    
+    Returns: List[dict] with keys 'channel_id', 'channel_title', 'match_score'
+    """
+    youtube = get_youtube()
+    all_channels = {}  # {channel_id: {'title': str, 'video_matches': int, 'name_match': bool}}
+    
+    # === PART A: Search by video content (primary source) ===
+    video_search_params = {
+        'q': query,
+        'part': 'snippet',
+        'type': 'video',
+        'maxResults': 50,
+        'order': 'relevance',
+        'relevanceLanguage': region_code if region_code else None,
+        'regionCode': region_code if region_code else None
+    }
+    
+    fetched_videos = 0
+    next_page_token = None
+    
+    while fetched_videos < max_videos:
+        if next_page_token:
+            video_search_params['pageToken'] = next_page_token
+        
+        try:
+            video_response = youtube.search().list(**video_search_params).execute()
+        except HttpError as e:
+            st.warning(f"Video search error for '{query}': {e}")
+            break
+        
+        items = video_response.get('items', [])
+        if not items:
+            break
+        
+        for item in items:
+            channel_id = item['snippet'].get('channelId')
+            channel_title = item['snippet'].get('channelTitle', 'Unknown')
+            
+            if channel_id:
+                if channel_id not in all_channels:
+                    all_channels[channel_id] = {
+                        'title': channel_title,
+                        'video_matches': 0,
+                        'name_match': False
+                    }
+                all_channels[channel_id]['video_matches'] += 1
+        
+        fetched_videos += len(items)
+        next_page_token = video_response.get('nextPageToken')
+        if not next_page_token:
+            break
+    
+    # === PART B: Search by channel name (secondary source) ===
+    channel_search_params = {
+        'q': query,
+        'part': 'id,snippet',
+        'type': 'channel',
+        'maxResults': min(50, max_channels)
+    }
+    if region_code:
+        channel_search_params['regionCode'] = region_code
+    
+    try:
+        channel_response = youtube.search().list(**channel_search_params).execute()
+        
+        for item in channel_response.get('items', []):
+            channel_id = item.get('id', {}).get('channelId')
+            channel_title = item.get('snippet', {}).get('title', 'Unknown')
+            
+            if channel_id:
+                if channel_id not in all_channels:
+                    all_channels[channel_id] = {
+                        'title': channel_title,
+                        'video_matches': 0,
+                        'name_match': True
+                    }
+                else:
+                    # Already found via videos, mark as also having name match
+                    all_channels[channel_id]['name_match'] = True
+    
+    except HttpError as e:
+        # Partial failure: return video results with warning
+        st.warning(f"⚠️ Channel name search failed for '{query}': {e}. Showing video-based results only.")
+    
+    # === PART C: Calculate match scores and sort ===
+    # Scoring: video_matches (primary) + name_match bonus (secondary)
+    ranked_channels = []
+    for channel_id, data in all_channels.items():
+        match_score = data['video_matches'] * 10  # Video matches are worth 10 points each
+        if data['name_match']:
+            match_score += 5  # Name match bonus
+        
+        ranked_channels.append({
+            'channel_id': channel_id,
+            'channel_title': data['title'],
+            'match_score': match_score
+        })
+    
+    # Sort by match_score descending
+    ranked_channels.sort(key=lambda x: x['match_score'], reverse=True)
+    
+    return ranked_channels
+
+def search_channels_multi_term(query: str, region_code: str, max_videos_per_term: int = 150):
+    """
+    Handle comma-separated queries as OR logic.
+    Example: "manga, anime" → search both terms, merge results
+    
+    Returns: List[dict] with deduplicated channels sorted by relevance
+    """
+    # Split by comma and clean
+    terms = [t.strip() for t in query.split(',') if t.strip()]
+    
+    if len(terms) == 0:
+        return []
+    
+    if len(terms) == 1:
+        # Single term: use hybrid search directly
+        return search_channels_hybrid(terms[0], region_code, max_videos_per_term)
+    
+    # Multiple terms: search each, then merge
+    st.info(f"🔍 Searching {len(terms)} topics: {', '.join(terms)}")
+    
+    all_channels = {}  # {channel_id: {'title': str, 'total_score': int}}
+    
+    for term in terms:
+        with st.spinner(f"Searching for '{term}'..."):
+            results = search_channels_hybrid(term, region_code, max_videos_per_term)
+        
+        for channel in results:
+            channel_id = channel['channel_id']
+            if channel_id not in all_channels:
+                all_channels[channel_id] = {
+                    'title': channel['channel_title'],
+                    'total_score': 0
+                }
+            # Accumulate scores across all terms
+            all_channels[channel_id]['total_score'] += channel['match_score']
+    
+    # Convert back to list format and sort
+    merged = [
+        {
+            'channel_id': ch_id,
+            'channel_title': data['title']
+        }
+        for ch_id, data in sorted(
+            all_channels.items(),
+            key=lambda x: x[1]['total_score'],
+            reverse=True
+        )
+    ]
+    
+    return merged
+
 # --- Boolean query helpers (minimal) ---
 def _strip_outer_quotes(s: str) -> str:
     s = (s or "").strip()
     if len(s) >= 2 and ((s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'"))):
         return s[1:-1].strip()
     return s
-
-def _parse_query_to_dnf(q: str) -> list[list[str]]:
-    """Very simple DNF parser: split on OR, then within each split on AND.
-    Assumes OR/AND not inside quoted phrases. Returns list of AND-clauses.
-    """
-    if not q:
-        return []
-    clauses = re.split(r"\bOR\b", q, flags=re.IGNORECASE)
-    dnf: list[list[str]] = []
-    for clause in clauses:
-        parts = [p.strip() for p in re.split(r"\bAND\b", clause, flags=re.IGNORECASE)]
-        terms = [p for p in parts if p]
-        if terms:
-            dnf.append(terms)
-    return dnf
-
-def _search_term_channels(youtube_service, term: str, region_code: str, limit: int = 50) -> dict:
-    """Search channels for a single term/phrase with paging. Returns {channel_id: title}."""
-    term = term.strip()
-    params = {'q': term, 'part': 'id,snippet', 'type': 'channel'}
-    if region_code:
-        params['regionCode'] = region_code
-    out: dict[str, str] = {}
-    next_page_token = None
-    fetched = 0
-    while fetched < limit:
-        page_size = min(50, limit - fetched)
-        if next_page_token:
-            params['pageToken'] = next_page_token
-        params['maxResults'] = page_size
-        try:
-            resp = youtube_service.search().list(**params).execute()
-        except HttpError as e:
-            st.warning(f"YouTube search error for term '{term}': {e}")
-            break
-        items = resp.get('items', [])
-        for item in items:
-            cid = (item.get('id', {}) or {}).get('channelId')
-            if not cid:
-                continue
-            if cid not in out:
-                out[cid] = (item.get('snippet', {}) or {}).get('title', 'Unknown')
-        fetched += len(items)
-        next_page_token = resp.get('nextPageToken')
-        if not next_page_token or not items:
-            break
-    return out
-
-@st.cache_data(show_spinner=False)
-def _search_term_channels_cached(term: str, region_code: str, limit: int = 50) -> dict:
-    """Cached wrapper that uses the shared YouTube client.
-    Caches per-term results to reduce API calls across reruns.
-    """
-    youtube = get_youtube()
-    return _search_term_channels(youtube, term, region_code, limit)
-
-def search_channels_boolean(youtube_service, query: str, region_code: str, per_term_limit: int = 80):
-    """Boolean channel search: (t1 AND t2) OR (t3) …
-    - Splits into AND-clauses and terms
-    - Intersects per-term channel sets for AND
-    - Unions across clauses for OR
-    Returns list[{channel_id, channel_title}]
-    """
-    dnf = _parse_query_to_dnf(query)
-    if not dnf:
-        return []
-    title_by_id: dict[str, str] = {}
-    score_by_id: dict[str, int] = {}
-    for clause in dnf:
-        per_term_maps = []
-        for raw in clause:
-            term = raw.strip()
-            # keep quotes for phrase search; YouTube generally supports them
-            ch_map = _search_term_channels_cached(term, region_code, limit=per_term_limit)
-            if not ch_map:
-                per_term_maps = []
-                break
-            per_term_maps.append(ch_map)
-        if not per_term_maps:
-            continue
-        # intersect channel ids across all term maps in the clause
-        sets = [set(m.keys()) for m in per_term_maps]
-        inter = set.intersection(*sets) if sets else set()
-        # Build rank maps per term to derive a stable ordering for intersections
-        rank_maps = []
-        for m in per_term_maps:
-            ranks = {cid: idx for idx, cid in enumerate(m.keys())}
-            rank_maps.append(ranks)
-        for cid in inter:
-            # sum of ranks across terms; smaller is better
-            clause_score = sum(rm.get(cid, 10_000) for rm in rank_maps)
-            # keep the best (lowest) score across clauses
-            score_by_id[cid] = min(score_by_id.get(cid, clause_score), clause_score)
-            # prefer first available title
-            for m in per_term_maps:
-                if cid in m:
-                    title_by_id.setdefault(cid, m[cid])
-                    break
-    # Order channels by score ascending for stability
-    ordered = sorted(score_by_id.items(), key=lambda x: x[1])
-    return [{"channel_id": cid, "channel_title": title_by_id.get(cid, "Unknown")} for cid, _ in ordered]
 
 def search_channels(youtube_service, query, region_code, total_results_to_fetch):
     """Channel search with proper parts so channelId is present."""
@@ -417,10 +474,7 @@ def run_search(
 ):
     """Run the 4-step search + analysis pipeline and render results."""
     with st.spinner("Step 1/4: Searching for channels..."):
-        if boolean_fetch:
-            initial_channels = search_channels_boolean(youtube, final_query, region_input, per_term_limit=80)
-        else:
-            initial_channels = search_channels(youtube, final_query, region_input, total_results_to_fetch=50)
+        initial_channels = search_channels_multi_term(final_query, region_input, max_videos_per_term=150)
 
     if not initial_channels:
         st.error("Search did not return any channels.")
@@ -475,7 +529,7 @@ def run_search(
         top_channels = final_channels.sort_values(by=['relevance_score', 'subscribers'], ascending=False)
 
         st.success(f"Analysis Complete! Found {len(top_channels)} channels matching your criteria.")
-        st.info("Results are sorted by Keyword Relevance score, then by subscriber count.")
+        st.info("💡 Results include channels whose content matches your search topics, not just their names.")
 
         # --- AI Summary BEFORE formatting numbers for the table ---
         if generate_summary_checkbox:
@@ -679,11 +733,11 @@ with st.form("search_form"):
     if search_method == "Keywords":
         query_input = st.text_input(
             "Search Keywords",
-            "Manga OR Anime",
+            "manga, anime",
             help=(
-                "Boolean supported: use AND / OR and quote multi‑word phrases. "
-                "Examples: manga AND review; \"anime analysis\" OR manga. "
-                "Parentheses aren’t supported; AND has higher precedence."
+                "Enter topics separated by commas to find channels discussing any of them. "
+                "Examples: 'manga, anime' or 'cooking, recipes, food'. "
+                "Matches channel content (videos, descriptions) not just channel names."
             ),
         )
         seed_url_input = ""  # keep defined

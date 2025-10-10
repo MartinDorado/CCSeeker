@@ -395,24 +395,24 @@ def get_video_details(youtube_service, channel_data, max_videos_per_channel):
 
 def calculate_keyword_relevance(df, query):
     """Compute per-channel relevance by matching query terms against title and tags.
-
-    - Strips outer quotes from multi-word phrases.
-    - Escapes regex metacharacters in terms.
-    - Matches in video title OR video tags.
     """
     if df.empty or not isinstance(query, str) or not query.strip():
         return pd.DataFrame(columns=['channel_id', 'relevance_score'])
 
-    # Split on OR/AND tokens, then normalize terms
-    raw_terms = [word.strip() for word in re.split(r"OR|AND", query, flags=re.IGNORECASE)]
+    if ',' in query:
+        # Comma-separated format: "manga, anime, review"
+        raw_terms = [t.strip() for t in query.split(',') if t.strip()]
+    else:
+        # Legacy format: "manga OR anime" or "manga AND review"
+        # Split on OR/AND tokens, then normalize terms
+        raw_terms = [word.strip() for word in re.split(r"OR|AND", query, flags=re.IGNORECASE)]
+    
     cleaned = []
     for t in raw_terms:
         if not t:
             continue
-        # remove outer quotes if present and escape for regex
-        if (len(t) >= 2) and ((t.startswith('"') and t.endswith('"')) or (t.startswith("'") and t.endswith("'"))):
-            t = t[1:-1]
-        t = t.strip()
+        # Remove outer quotes if present
+        t = _strip_outer_quotes(t)  # Use your existing helper
         if not t:
             continue
         cleaned.append(re.escape(t))
@@ -420,7 +420,7 @@ def calculate_keyword_relevance(df, query):
     if not cleaned:
         return pd.DataFrame(columns=['channel_id', 'relevance_score'])
 
-    # Use non-capturing group to avoid pandas warning about match groups
+    # Match ANY term (OR logic)
     pattern = '(?:' + '|'.join(cleaned) + ')'
 
     # Build a combined text field: title + joined tags

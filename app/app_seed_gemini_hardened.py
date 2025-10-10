@@ -57,7 +57,7 @@ def get_gemini_model(temperature: float | None = None):
     cfg = {}
     if temperature is not None:
         cfg["generation_config"] = {"temperature": float(temperature)}
-    return genai.GenerativeModel('gemini-1.5-pro-latest', **cfg)
+    return genai.GenerativeModel('gemini-2.0-flash-lite', **cfg)
 
 def extract_identifier_from_url(url):
     """Extract a channel identifier from common YouTube URL formats.
@@ -469,7 +469,6 @@ def run_search(
     min_subs_input: int,
     months_ago_input: int,
     country_filter_input: str,
-    generate_summary_checkbox: bool,
     boolean_fetch: bool = False,
 ):
     """Run the 4-step search + analysis pipeline and render results."""
@@ -531,18 +530,20 @@ def run_search(
         st.success(f"Analysis Complete! Found {len(top_channels)} channels matching your criteria.")
         st.info("💡 Results include channels whose content matches your search topics, not just their names.")
 
-        # --- AI Summary BEFORE formatting numbers for the table ---
-        if generate_summary_checkbox:
-            if not GEMINI_API_KEY:
-                st.error("Please ensure your GEMINI_API_KEY is set in your .env file to generate a summary.")
-            else:
-                with st.spinner("Generating AI Summary..."):
+        # --- AI Summary - Now automatic ---
+        if not GEMINI_API_KEY:
+            st.warning("⚠️ GEMINI_API_KEY not configured. Skipping AI summary.")
+        else:
+            with st.spinner("✨ Generating AI Summary..."):
+                try:
                     summary_df = top_channels.copy()
                     summary_df['relevance_score'] = summary_df['relevance_score'].fillna(0).map('{:.0%}'.format)
                     summary_df['engagement_rate'] = summary_df['engagement_rate'].fillna(0).map('{:.2%}'.format)
                     summary_text = generate_summary(summary_df, final_query)
-                    st.subheader("AI Generated Summary")
+                    st.subheader("🤖 AI Generated Summary")
                     st.markdown(summary_text)
+                except Exception as e:
+                    st.error(f"Could not generate AI summary: {e}")
 
         # Format for display
         top_channels['relevance_score'] = top_channels['relevance_score'].fillna(0).map('{:.0%}'.format)
@@ -815,12 +816,6 @@ with st.form("search_form"):
         )
 
     submitted = st.form_submit_button("Find Creators")
-
-
-
-    # --- NEW: Checkbox for AI Summary (inside the form) ---
-    generate_summary_checkbox = st.checkbox("Generate AI Summary of Top Results")
-
     
 
 # --- Main Execution Logic ---
@@ -883,7 +878,6 @@ if submitted:
                 min_subs_input=min_subs_input,
                 months_ago_input=months_ago_input,
                 country_filter_input=country_filter_input,
-                generate_summary_checkbox=generate_summary_checkbox,
                 boolean_fetch=bool(re.search(r"\b(AND|OR)\b", final_query, re.IGNORECASE)),
             )
 
@@ -966,7 +960,6 @@ if st.session_state.get('seed_candidates'):
                         min_subs_input=min_subs_input,
                         months_ago_input=months_ago_input,
                         country_filter_input=country_filter_input,
-                        generate_summary_checkbox=generate_summary_checkbox,
                         boolean_fetch=False,
                     )
 

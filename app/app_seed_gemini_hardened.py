@@ -803,10 +803,16 @@ with st.form("search_form"):
         )
 
     with c2:
-        country_filter_input = st.text_input(
-            "Channel Country (strict filter)", "",
-            help="Leave blank to ignore."
+        # Create country dropdown options (same as Search Region)
+        country_filter_options = country_options.copy()  # Uses same list as region selector
+        selected_country_filter = st.selectbox(
+            "Channel Country (strict filter)",
+            country_filter_options,
+            index=0,  # Default to "Global"
+            help="Strict filter: only show channels from this country. Set to 'Global' to ignore.",
+            key="country_filter_select"
         )
+        country_filter_input = "" if selected_country_filter == "Global" else selected_country_filter.split("(")[-1][:2]
 
     with c3:
         months_ago_input = st.number_input(

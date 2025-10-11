@@ -785,11 +785,11 @@ with st.form("search_form"):
     country_options.sort()
     country_options.insert(0, "Global")
     selected_country = st.selectbox(
-        "Search Region (Bias)",
-        country_options,
-        index=0,  # Default to Global (no regional bias)
-        help="This tells YouTube to prioritize results popular in this country. It is not a strict filter.",
-    )
+    "Prioritize Region",
+    country_options,
+    index=0,  # Default to Global (no regional bias)
+    help="YouTube will show channels popular in this region first, but results aren't limited to it.",
+)
     region_input = "" if selected_country == "Global" else selected_country.split("(")[-1][:2]
 
     st.header("2. Filtering Criteria")
@@ -809,7 +809,7 @@ with st.form("search_form"):
             "Channel Country (strict filter)",
             country_filter_options,
             index=0,  # Default to "Global"
-            help="Strict filter: only show channels from this country. Set to 'Global' to ignore.",
+            help="Only show channels registered in this country. Leave as 'Global' to see all countries.",
             key="country_filter_select"
         )
         country_filter_input = "" if selected_country_filter == "Global" else selected_country_filter.split("(")[-1][:2]
@@ -818,7 +818,7 @@ with st.form("search_form"):
         months_ago_input = st.number_input(
             "Published within last (months)",
             value=18, min_value=0, step=1,
-            help="Set to 0 to ignore this filter."
+            help="Only show channels with uploads in the last X months. Set to 0 to ignore upload recency."
         )
 
     submitted = st.form_submit_button("Find Creators")

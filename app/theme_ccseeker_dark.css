@@ -183,3 +183,337 @@ div[data-testid="stDataFrame"] {
     border-radius: 6px;
     padding: 1rem;
 }
+
+/* ========================================
+   PHASE 1: VISIBILITY FIXES (AGGRESSIVE)
+   ======================================== */
+
+/* === FIX: Radio button labels - ALL possible selectors === */
+[data-testid="stRadio"] label,
+[data-testid="stRadio"] div label,
+[data-testid="stRadio"] span,
+.stRadio label,
+.stRadio > div > label {
+    color: #f3f4f6 !important;
+    font-weight: 500 !important;
+    font-size: 1rem !important;
+}
+
+/* Radio group options */
+[role="radiogroup"] label,
+[role="radiogroup"] > label {
+    color: #f3f4f6 !important;
+    font-weight: 500 !important;
+    background-color: transparent !important;
+}
+
+/* Selected state */
+[role="radiogroup"] label[data-baseweb="radio"] {
+    color: #ffffff !important;
+}
+
+/* The actual text inside radio options */
+[data-testid="stMarkdownContainer"] p {
+    color: #f3f4f6 !important;
+}
+
+/* === FIX: Button visibility === */
+/* Primary buttons (Find Creators, Generate Outreach, etc.) */
+button[kind="primary"],
+.stButton > button,
+[data-testid="baseButton-primary"],
+.stButton button {
+    background: linear-gradient(to right, #3b82f6, #10b981) !important;
+    color: #ffffff !important;  /* Force white text */
+    font-weight: 600 !important;
+    border: none !important;
+    border-radius: 6px !important;
+    padding: 0.5rem 1rem !important;
+    cursor: pointer !important;
+}
+
+/* Button hover state */
+button[kind="primary"]:hover,
+.stButton > button:hover,
+.stButton button:hover {
+    background: linear-gradient(to right, #60a5fa, #34d399) !important;
+    color: #ffffff !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4) !important;
+}
+
+/* Button text specifically */
+.stButton button span,
+button[kind="primary"] span {
+    color: #ffffff !important;
+    font-weight: 600 !important;
+}
+
+/* Form submit buttons */
+.stForm button[type="submit"],
+form button {
+    background: linear-gradient(to right, #3b82f6, #10b981) !important;
+    color: #ffffff !important;
+    font-weight: 600 !important;
+}
+
+/* === FIX: Info icons (help text) visibility === */
+/* Help icon buttons */
+button[data-testid="stTooltipIcon"],
+.stTooltipIcon,
+[data-testid="stTooltipIcon"] svg {
+    color: #60a5fa !important;  /* Bright blue */
+    fill: #60a5fa !important;
+    opacity: 0.9 !important;
+}
+
+button[data-testid="stTooltipIcon"]:hover {
+    color: #93c5fd !important;
+    fill: #93c5fd !important;
+    opacity: 1 !important;
+}
+
+/* === FIX: Selectbox (dropdown) visibility === */
+/* Dropdown selected value text */
+[data-baseweb="select"] > div,
+.stSelectbox > div > div,
+[data-testid="stSelectbox"] div {
+    color: #f3f4f6 !important;
+}
+
+/* Dropdown placeholder and selected text */
+[data-baseweb="select"] [role="button"] {
+    color: #f3f4f6 !important;
+    background-color: #1e293b !important;
+    border: 1px solid #374151 !important;
+}
+
+/* Dropdown when opened */
+[data-baseweb="select"] [role="listbox"] {
+    background-color: #1e293b !important;
+}
+
+[data-baseweb="select"] [role="option"] {
+    color: #f3f4f6 !important;
+    background-color: #1e293b !important;
+}
+
+[data-baseweb="select"] [role="option"]:hover {
+    background-color: #334155 !important;
+    color: #ffffff !important;
+}
+
+/* === FIX: Text input labels === */
+/* Labels for text inputs */
+label[data-testid="stTextInputLabel"],
+label[data-testid="stNumberInputLabel"],
+.stTextInput label,
+.stNumberInput label {
+    color: #f3f4f6 !important;
+    font-weight: 500 !important;
+    font-size: 0.95rem !important;
+}
+
+/* === FIX: Section headers === */
+/* Headers (1. Search Method, 2. Filtering Criteria) */
+h1, h2, h3, h4 {
+    color: #ffffff !important;
+    font-weight: 600 !important;
+}
+
+/* Subheaders */
+.stMarkdown h3 {
+    color: #f3f4f6 !important;
+    margin-top: 1.5rem !important;
+}
+
+/* ========================================
+   PHASE 1.2: BUTTON & DROPDOWN FIXES
+   ======================================== */
+
+/* === FIX: Form submit button - SUPER AGGRESSIVE === */
+form button[type="submit"],
+.stForm button,
+button[kind="primary"],
+div[data-testid="stFormSubmitButton"] button,
+div[data-testid="stFormSubmitButton"] button > div,
+div[data-testid="stFormSubmitButton"] button p {
+    background: linear-gradient(to right, #3b82f6, #10b981) !important;
+    color: #ffffff !important;
+    font-weight: 600 !important;
+    border: none !important;
+}
+
+form button *,
+.stForm button *,
+div[data-testid="stFormSubmitButton"] button * {
+    color: #ffffff !important;
+}
+
+div[data-testid="stFormSubmitButton"] {
+    color: #ffffff !important;
+}
+
+form button[type="submit"]:hover,
+.stForm button:hover,
+div[data-testid="stFormSubmitButton"] button:hover {
+    background: linear-gradient(to right, #60a5fa, #34d399) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5) !important;
+}
+
+/* === FIX: Dropdown selected value visibility === */
+[data-baseweb="select"] span,
+[data-baseweb="select"] > div > div,
+div[data-testid="stSelectbox"] span,
+.stSelectbox div[role="button"] span {
+    color: #f3f4f6 !important;
+    font-weight: 500 !important;
+}
+
+[data-baseweb="select"] [data-baseweb="select-value-label"] {
+    color: #f3f4f6 !important;
+}
+
+[data-baseweb="select"] svg {
+    fill: #60a5fa !important;
+}
+
+/* ========================================
+   PHASE 1.3: DROPDOWN TEXT VISIBILITY FIX
+   ======================================== */
+
+/* === Target the exact container holding "Global" text === */
+/* Main dropdown value container */
+div[data-baseweb="select"] > div[data-baseweb="select-control-container"] {
+    color: #f3f4f6 !important;
+}
+
+/* The value container itself */
+div[data-baseweb="select"] div[id$="-value-container"] {
+    color: #f3f4f6 !important;
+}
+
+/* All text spans inside select dropdowns */
+div[data-baseweb="select"] span,
+div[data-baseweb="select"] div span {
+    color: #f3f4f6 !important;
+    font-size: 1rem !important;
+}
+
+/* Input element inside dropdown (where text appears) */
+div[data-baseweb="select"] input {
+    color: #f3f4f6 !important;
+}
+
+/* Placeholder text */
+div[data-baseweb="select"] [data-baseweb="input"] {
+    color: #f3f4f6 !important;
+}
+
+/* Selected value specifically */
+[data-baseweb="select"] [class*="singleValue"],
+[data-baseweb="select"] [class*="placeholder"] {
+    color: #f3f4f6 !important;
+}
+
+/* Force all child elements to inherit white color */
+.stSelectbox * {
+    color: #f3f4f6 !important;
+}
+
+/* ========================================
+   PHASE 1.4: NUCLEAR DROPDOWN FIX
+   ======================================== */
+
+/* FORCE all select elements to show white text */
+[data-testid="stSelectbox"],
+[data-testid="stSelectbox"] *,
+div.stSelectbox,
+div.stSelectbox * {
+    color: #ffffff !important;
+}
+
+/* Target EVERY possible span inside selects */
+[data-baseweb="select"] span,
+[data-baseweb="select"] div span,
+[data-baseweb="select"] > div span,
+[data-baseweb="select"] > div > div span {
+    color: #ffffff !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+/* The select control container */
+[data-baseweb="select"] > div {
+    color: #ffffff !important;
+}
+
+/* All divs inside select */
+[data-baseweb="select"] div {
+    color: #ffffff !important;
+}
+
+/* Input placeholder and value */
+[data-baseweb="select"] input,
+[data-baseweb="select"] [role="button"] {
+    color: #ffffff !important;
+}
+
+/* BaseWeb specific classes */
+[class*="StyledSingleValue"],
+[class*="StyledPlaceholder"],
+[class*="ValueContainer"] {
+    color: #ffffff !important;
+}
+
+/* Last resort: force inline styles */
+.stSelectbox div[role="button"]::before {
+    color: #ffffff !important;
+}
+
+/* ========================================
+   PHASE 1.5: SELECTBOX VALUE TEXT FIX
+   ======================================== */
+
+/* Target the div that contains the selected value text */
+[data-baseweb="select"] div[value],
+div[class*="st-dq"],
+div[class*="st-cj"],
+div[class*="st-b6"] {
+    color: #f3f4f6 !important;
+    background-color: transparent !important;
+}
+
+/* Target ALL Streamlit selectbox value classes */
+div[class*="st-d"] {
+    color: #f3f4f6 !important;
+}
+
+/* The container with the value attribute */
+[data-baseweb="select"] div[value="Global"],
+[data-baseweb="select"] > div > div > div[value] {
+    color: #f3f4f6 !important;
+    font-weight: 500 !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+/* Make sure all text nodes inside select are visible */
+[data-baseweb="select"] div:not(:empty) {
+    color: #f3f4f6 !important;
+}
+
+/* Input field inside the select */
+[data-baseweb="select"] input[role="combobox"] {
+    color: #f3f4f6 !important;
+    -webkit-text-fill-color: #f3f4f6 !important;
+}
+
+/* The aria-label element that shows the value */
+input[aria-label*="Global"],
+input[aria-label*="Search Region"],
+input[value*="Global"] {
+    color: #f3f4f6 !important;
+    -webkit-text-fill-color: #f3f4f6 !important;
+}

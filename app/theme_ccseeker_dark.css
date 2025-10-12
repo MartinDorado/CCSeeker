@@ -1113,3 +1113,103 @@ input[aria-label*="Search Keywords"] {
     }
 }
 
+/* ========================================
+   PHASE 3.5: LOGO & TITLE POLISH
+   ======================================== */
+
+/* === Make logo bigger and more prominent === */
+img[data-testid="stLogo"],
+.css-1v0mbdj img,
+img[src*="app-icon"] {
+    width: 100px !important;  /* Increased from ~64px */
+    height: 100px !important;
+    margin-right: 1.5rem !important;
+}
+
+/* Ensure logo container doesn't restrict size */
+[data-testid="stLogo"],
+.css-1v0mbdj {
+    width: auto !important;
+    height: auto !important;
+}
+
+/* === Title styling - make it a header/tagline combo === */
+/* Main title (YouTube Creator Search Agent / CCSeeker) */
+h1 {
+    font-size: 2.5rem !important;
+    font-weight: 800 !important;
+    margin-bottom: 0.25rem !important;
+    line-height: 1.2 !important;
+}
+
+/* If you want the slogan as a subtitle below the title */
+.stApp > header + div h1 + p,
+h1 + .stMarkdown p {
+    font-size: 1.15rem !important;
+    color: #94a3b8 !important;  /* Subtle gray */
+    font-weight: 400 !important;
+    font-style: italic !important;
+    margin-top: 0 !important;
+    margin-bottom: 2rem !important;
+}
+
+/* ========================================
+   PHASE 3.5: FINAL POLISH
+   ======================================== */
+
+/* === Logo size === */
+img[src*="app-icon"] {
+    width: 100px !important;
+    height: 100px !important;
+    margin-right: 1.5rem !important;
+}
+
+/* === Smooth transitions everywhere === */
+button, input, select, [role="button"], [data-baseweb="select"] {
+    transition: all 0.25s ease !important;
+}
+
+/* === Consistent border radius === */
+button, input, select, textarea,
+.stButton button,
+[data-baseweb="select"],
+[data-testid="stTextInput"] input,
+[data-testid="stNumberInput"] input {
+    border-radius: 10px !important;
+}
+
+/* === Subtle depth with shadows === */
+form,
+[data-testid="stRadio"] {
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* === Polish +/- buttons with gradient === */
+button[data-testid="baseButton-secondary"] {
+    background: linear-gradient(135deg, #3b82f6 0%, #10b981 100%) !important;
+    border: none !important;
+    color: #ffffff !important;
+    font-weight: 600 !important;
+}
+
+button[data-testid="baseButton-secondary"]:hover {
+    background: linear-gradient(135deg, #60a5fa 0%, #34d399 100%) !important;
+    transform: scale(1.05) !important;
+}
+
+/* === Slogan/tagline styling === */
+.stApp h1 + div p,
+h1 + p {
+    font-size: 1.15rem !important;
+    color: #94a3b8 !important;
+    font-weight: 400 !important;
+    font-style: italic !important;
+    margin-top: 0.25rem !important;
+}
+
+/* === Ensure logo and title align nicely === */
+[data-testid="column"]:first-child {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}

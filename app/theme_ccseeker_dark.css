@@ -566,3 +566,550 @@ div[data-baseweb="tooltip"]::before {
     background-color: #1e293b !important;
     color: #f3f4f6 !important;
 }
+
+/* ========================================
+   PHASE 3.1: BOLD HEADER IMPROVEMENTS
+   ======================================== */
+
+/* === MAIN TITLE - YouTube Creator Search Agent === */
+h1 {
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    font-size: 2.75rem !important;
+    margin-bottom: 2rem !important;
+    letter-spacing: -1px !important;
+    text-shadow: 0 2px 8px rgba(59, 130, 246, 0.3) !important;
+}
+
+/* === SECTION HEADERS (1. Search Method, 2. Filtering Criteria) === */
+h2 {
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    font-size: 1.85rem !important;
+    margin-top: 2.5rem !important;
+    margin-bottom: 1.5rem !important;
+    padding: 1rem 1.5rem !important;
+    background: linear-gradient(135deg, #3b82f6 0%, #10b981 100%) !important;
+    border-radius: 10px !important;
+    border-left: 6px solid #60a5fa !important;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25) !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1.5px !important;
+}
+
+/* === SUBSECTION HEADERS (if any) === */
+h3 {
+    color: #60a5fa !important;
+    font-weight: 700 !important;
+    font-size: 1.35rem !important;
+    margin-top: 2rem !important;
+    margin-bottom: 1rem !important;
+    padding-bottom: 0.5rem !important;
+    border-bottom: 2px solid #3b82f6 !important;
+}
+
+/* === Field Labels - Make them more prominent === */
+label[data-testid="stTextInputLabel"],
+label[data-testid="stNumberInputLabel"],
+.stTextInput label,
+.stNumberInput label,
+.stSelectbox label {
+    color: #f3f4f6 !important;
+    font-weight: 600 !important;
+    font-size: 1.05rem !important;
+    margin-bottom: 0.5rem !important;
+}
+
+/* === "Choose your search method:" text === */
+[data-testid="stRadio"] > label:first-child {
+    color: #f3f4f6 !important;
+    font-weight: 600 !important;
+    font-size: 1.1rem !important;
+    margin-bottom: 1rem !important;
+}
+
+/* ========================================
+   PHASE 3.2: RESULTS TABLE FIX (CORRECTED)
+   ======================================== */
+
+/* === Target the actual DataFrame wrapper === */
+[data-testid="stDataFrame"],
+[data-testid="stDataFrame"] > div,
+.stDataFrame {
+    background-color: #1e293b !important;
+    border-radius: 12px !important;
+    padding: 1.5rem !important;
+    border: 2px solid #374151 !important;
+    margin-top: 2rem !important;
+    margin-bottom: 2rem !important;
+}
+
+/* === Force dark background on the white table === */
+[data-testid="stDataFrame"] table,
+[data-testid="stDataFrame"] tbody,
+[data-testid="stDataFrame"] thead {
+    background-color: #0f172a !important;
+}
+
+/* === Header cells === */
+[data-testid="stDataFrame"] th {
+    background: linear-gradient(135deg, #3b82f6 0%, #10b981 100%) !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    font-size: 1.05rem !important;
+    text-transform: uppercase !important;
+    padding: 1rem 1.25rem !important;
+    border: none !important;
+}
+
+/* === All data cells - override white background === */
+[data-testid="stDataFrame"] td {
+    background-color: transparent !important;
+    color: #f3f4f6 !important;
+    font-size: 0.95rem !important;
+    padding: 0.85rem 1.25rem !important;
+    border-bottom: 1px solid #374151 !important;
+}
+
+/* === Zebra striping - target rows directly === */
+[data-testid="stDataFrame"] tbody tr:nth-child(even) {
+    background-color: #1e293b !important;
+}
+
+[data-testid="stDataFrame"] tbody tr:nth-child(odd) {
+    background-color: #0f172a !important;
+}
+
+/* === Make ALL cells in even rows darker === */
+[data-testid="stDataFrame"] tbody tr:nth-child(even) td {
+    background-color: #1e293b !important;
+}
+
+[data-testid="stDataFrame"] tbody tr:nth-child(odd) td {
+    background-color: #0f172a !important;
+}
+
+/* === Hover effect === */
+[data-testid="stDataFrame"] tbody tr:hover td {
+    background-color: #334155 !important;
+}
+
+/* === First column (channel names) - make blue === */
+[data-testid="stDataFrame"] tbody tr td:nth-child(2) {
+    color: #60a5fa !important;
+    font-weight: 600 !important;
+}
+
+/* ========================================
+   PHASE 3.2: TABLE HEADER ENHANCEMENT
+   ======================================== */
+
+/* Target dataframe header cells */
+[data-testid="stDataFrame"] [data-testid="stDataFrameResizableContainer"] thead th,
+[data-testid="stDataFrame"] thead th,
+div[data-testid="stDataFrame"] table thead th {
+    background: linear-gradient(135deg, #3b82f6 0%, #10b981 100%) !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    font-size: 0.95rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    padding: 0.75rem 1rem !important;
+}
+
+/* Make the header row stick when scrolling */
+[data-testid="stDataFrame"] thead {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 10 !important;
+}
+
+/* ========================================
+   PHASE 3.3: SEARCH METHOD PROMINENCE (NUCLEAR FIX)
+   ======================================== */
+
+/* === Force radio container to full width === */
+[data-testid="stRadio"],
+.stRadio,
+div.row-widget.stRadio,
+[data-testid="stRadio"] > div,
+[data-testid="stRadio"] > div > div {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* The actual radio group wrapper */
+[data-testid="stRadio"] [role="radiogroup"] {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 1.5rem !important;
+    width: 100% !important;
+    flex-wrap: nowrap !important;
+}
+
+/* === Style each radio option as a prominent card === */
+/* Target the label that wraps each radio option */
+[role="radiogroup"] > label {
+    flex: 1 !important;
+    min-width: 200px !important;
+    max-width: 300px !important;
+    padding: 1.25rem 2rem !important;
+    margin: 0 !important;
+    
+    /* Card appearance */
+    background-color: #1e293b !important;
+    border: 2px solid #475569 !important;
+    border-radius: 12px !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+    
+    cursor: pointer !important;
+    transition: all 0.3s ease !important;
+    
+    /* Text styling */
+    font-size: 1.15rem !important;
+    font-weight: 600 !important;
+    color: #e5e7eb !important;
+    
+    /* Center content */
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+/* Hover effect on ALL radio options */
+[role="radiogroup"] > label:hover {
+    background-color: #334155 !important;
+    border-color: #60a5fa !important;
+    transform: translateY(-3px) !important;
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4) !important;
+}
+
+/* === SELECTED option - make it REALLY stand out === */
+/* Streamlit adds this attribute to selected radio */
+[role="radiogroup"] > label:has(input[type="radio"]:checked),
+[role="radiogroup"] > label:has(input:checked) {
+    background: linear-gradient(135deg, #3b82f6 0%, #10b981 100%) !important;
+    border-color: #60a5fa !important;
+    border-width: 3px !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    transform: scale(1.05) !important;
+    box-shadow: 0 6px 24px rgba(59, 130, 246, 0.6) !important;
+}
+
+/* Text inside selected option */
+[role="radiogroup"] > label:has(input:checked) span {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+
+/* Radio circle itself */
+[role="radiogroup"] input[type="radio"] {
+    width: 24px !important;
+    height: 24px !important;
+    margin-right: 0.75rem !important;
+    flex-shrink: 0 !important;
+}
+
+/* === Make the radio button container itself prominent === */
+[data-testid="stRadio"] {
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.6) 100%) !important;
+    padding: 2rem !important;
+    border-radius: 16px !important;
+    border: 2px solid #374151 !important;
+    margin-bottom: 2rem !important;
+    backdrop-filter: blur(10px) !important;
+}
+
+/* "Choose your search method:" label */
+[data-testid="stRadio"] > label:first-child {
+    font-size: 1.15rem !important;
+    font-weight: 600 !important;
+    color: #f3f4f6 !important;
+    margin-bottom: 1.25rem !important;
+    display: block !important;
+}
+
+/* === Search Keywords Input Enhancements === */
+[data-testid="stTextInput"]:first-of-type input,
+input[aria-label*="Search Keywords"] {
+    font-size: 1.15rem !important;
+    padding: 1rem 1.25rem !important;
+    background-color: #1e293b !important;
+    border: 2px solid #60a5fa !important;
+    border-radius: 10px !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+    transition: all 0.3s ease !important;
+}
+
+[data-testid="stTextInput"]:first-of-type input:focus {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 5px rgba(59, 130, 246, 0.3) !important;
+    outline: none !important;
+}
+
+[data-testid="stTextInput"]:first-of-type label {
+    font-size: 1.1rem !important;
+    font-weight: 600 !important;
+    color: #f3f4f6 !important;
+    margin-bottom: 0.75rem !important;
+}
+
+/* Pulse animation */
+@keyframes pulse-border {
+    0%, 100% { border-color: #60a5fa; }
+    50% { border-color: #3b82f6; }
+}
+
+[data-testid="stTextInput"]:first-of-type input:not(:focus):placeholder-shown {
+    animation: pulse-border 3s ease-in-out infinite !important;
+}
+
+/* === Add more space between radio options === */
+[role="radiogroup"] > label {
+    margin-right: 3rem !important;  /* Increased from 1.5rem */
+}
+
+/* Make each option wider */
+[role="radiogroup"] > label {
+    min-width: 250px !important;  /* Increased from 200px */
+    padding-left: 2.5rem !important;
+    padding-right: 2.5rem !important;
+}
+
+/* ========================================
+   PHASE 3.4: MOBILE RESPONSIVENESS
+   ======================================== */
+
+/* === Tablets and smaller (max-width: 768px) === */
+@media screen and (max-width: 768px) {
+    
+    /* Main title - smaller on mobile */
+    h1 {
+        font-size: 1.85rem !important;
+        margin-bottom: 1.5rem !important;
+    }
+    
+    /* Section headers - smaller on mobile */
+    h2 {
+        font-size: 1.35rem !important;
+        padding: 0.75rem 1rem !important;
+        margin-top: 1.5rem !important;
+        margin-bottom: 1rem !important;
+    }
+    
+    /* Search method buttons - stack vertically on mobile */
+    .stButton {
+        width: 100% !important;
+        margin-bottom: 0.75rem !important;
+    }
+    
+    /* Make buttons taller for easier tapping */
+    .stButton button {
+        padding: 1rem 1.5rem !important;
+        font-size: 1.1rem !important;
+        min-height: 56px !important;  /* Minimum touch target size */
+    }
+    
+    /* Form inputs - larger for mobile */
+    input[type="text"],
+    input[type="number"],
+    textarea {
+        font-size: 1rem !important;
+        padding: 0.85rem 1rem !important;
+        min-height: 48px !important;  /* Good touch target */
+    }
+    
+    /* Selectbox dropdowns - larger touch targets */
+    [data-baseweb="select"] {
+        min-height: 48px !important;
+    }
+    
+    [data-baseweb="select"] [role="button"] {
+        padding: 0.85rem 1rem !important;
+        font-size: 1rem !important;
+    }
+    
+    /* Number input +/- buttons - bigger */
+    button[kind="secondary"] {
+        min-width: 48px !important;
+        min-height: 48px !important;
+        font-size: 1.25rem !important;
+    }
+    
+    /* Reduce padding on containers to save space */
+    [data-testid="stRadio"],
+    form {
+        padding: 1rem !important;
+    }
+    
+    /* Info icons - slightly larger for easier tapping */
+    button[data-testid="stTooltipIcon"] {
+        width: 28px !important;
+        height: 28px !important;
+    }
+    
+    /* Table - ensure it scrolls horizontally on mobile */
+    div[data-testid="stDataFrame"] {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;  /* Smooth scrolling on iOS */
+    }
+    
+    /* Filter columns - stack on mobile */
+    .row-widget.stHorizontal {
+        flex-direction: column !important;
+        gap: 1rem !important;
+    }
+    
+    /* Each filter takes full width on mobile */
+    .row-widget.stHorizontal > div {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+}
+
+/* === Small phones (max-width: 480px) === */
+@media screen and (max-width: 480px) {
+    
+    /* Even smaller title on very small screens */
+    h1 {
+        font-size: 1.5rem !important;
+        letter-spacing: -0.3px !important;
+    }
+    
+    h2 {
+        font-size: 1.15rem !important;
+        padding: 0.65rem 0.85rem !important;
+        letter-spacing: 0.5px !important;
+    }
+    
+    /* Button text - slightly smaller on tiny screens */
+    .stButton button {
+        font-size: 1rem !important;
+        padding: 0.9rem 1.25rem !important;
+    }
+    
+    /* Reduce form padding even more */
+    form,
+    [data-testid="stRadio"] {
+        padding: 0.75rem !important;
+        margin-bottom: 1rem !important;
+    }
+    
+    /* Table text - slightly smaller but still readable */
+    div[data-testid="stDataFrame"] td {
+        font-size: 0.85rem !important;
+        padding: 0.65rem 0.85rem !important;
+    }
+    
+    div[data-testid="stDataFrame"] th {
+        font-size: 0.9rem !important;
+        padding: 0.75rem 0.85rem !important;
+    }
+}
+
+/* === Landscape mode on phones (max-height: 500px) === */
+@media screen and (max-height: 500px) and (orientation: landscape) {
+    
+    /* Reduce vertical spacing in landscape */
+    h1 {
+        margin-bottom: 1rem !important;
+    }
+    
+    h2 {
+        margin-top: 1rem !important;
+        margin-bottom: 0.75rem !important;
+    }
+    
+    form {
+        padding: 0.75rem !important;
+        margin-bottom: 1rem !important;
+    }
+    
+    /* Compact button height in landscape */
+    .stButton button {
+        padding: 0.65rem 1.25rem !important;
+        min-height: 44px !important;
+    }
+}
+
+/* === Ensure touch-friendly spacing everywhere === */
+@media (hover: none) and (pointer: coarse) {
+    /* This targets touch devices specifically */
+    
+    /* All interactive elements get minimum touch target */
+    button,
+    input,
+    select,
+    [role="button"],
+    [role="option"] {
+        min-height: 44px !important;  /* Apple's minimum recommendation */
+    }
+    
+    /* Add more spacing between tappable elements */
+    .stButton,
+    .stTextInput,
+    .stNumberInput,
+    .stSelectbox {
+        margin-bottom: 1rem !important;
+    }
+}
+
+/* ========================================
+   PHASE 3.4.1: FIX INPUT BORDER CLIPPING ON MOBILE
+   ======================================== */
+
+/* Ensure text inputs have enough space and don't get clipped */
+@media screen and (max-width: 768px) {
+    
+    /* Add padding to containers to prevent border clipping */
+    [data-testid="stTextInput"],
+    .stTextInput {
+        padding: 0.25rem 0 !important;
+        margin-bottom: 1.25rem !important;
+    }
+    
+    /* Ensure the input wrapper has proper spacing */
+    [data-testid="stTextInput"] > div {
+        padding: 0 !important;
+        overflow: visible !important;
+    }
+    
+    /* The actual input - ensure border + shadow are fully visible */
+    [data-testid="stTextInput"] input {
+        margin: 0.25rem 0 !important;
+        box-sizing: border-box !important;
+    }
+    
+    /* Search Keywords input specifically */
+    input[aria-label*="Search Keywords"] {
+        margin: 0.35rem 0 !important;
+    }
+    
+    /* Ensure parent containers don't clip content */
+    .stForm,
+    form,
+    [data-testid="stForm"] {
+        overflow: visible !important;
+    }
+    
+    /* Form section - add padding to prevent clipping */
+    form > div {
+        padding: 0.5rem !important;
+        overflow: visible !important;
+    }
+}
+
+/* Also fix for small phones */
+@media screen and (max-width: 480px) {
+    
+    [data-testid="stTextInput"] {
+        padding: 0.35rem 0 !important;
+        margin-bottom: 1.5rem !important;
+    }
+    
+    [data-testid="stTextInput"] input {
+        margin: 0.4rem 0 !important;
+    }
+}
+

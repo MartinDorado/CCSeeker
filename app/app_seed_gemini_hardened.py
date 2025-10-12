@@ -727,8 +727,38 @@ c2.title("YouTube Creator Search Agent")
 
 # The search method selector is outside the form to allow instant UI updates.
 st.header("1. Search Method")
-search_method = st.radio("Choose your search method:", ("Keywords", "Channel-as-Seed"), horizontal=True)
+# Custom button-based selector for better layout control
+st.markdown("#### Choose your search method:")
 
+# Create columns for the method buttons
+col1, col2, col3 = st.columns([2, 2, 3])
+
+# Initialize session state if not exists
+if 'search_method' not in st.session_state:
+    st.session_state.search_method = "Keywords"
+
+with col1:
+    if st.button(
+        "🔑 Keywords",
+        key="btn_keywords",
+        use_container_width=True,
+        type="primary" if st.session_state.search_method == "Keywords" else "secondary"
+    ):
+        st.session_state.search_method = "Keywords"
+        st.rerun()
+
+with col2:
+    if st.button(
+        "📺 Channel-as-Seed",
+        key="btn_seed",
+        use_container_width=True,
+        type="primary" if st.session_state.search_method == "Channel-as-Seed" else "secondary"
+    ):
+        st.session_state.search_method = "Channel-as-Seed"
+        st.rerun()
+
+# Use the session state value
+search_method = st.session_state.search_method
 with st.form("search_form"):
     # Inputs change depending on the selected method
     if search_method == "Keywords":

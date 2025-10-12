@@ -721,9 +721,15 @@ def inject_css(path: str):
 inject_css("app/theme_ccseeker_dark.css")
 
 
-c1, c2 = st.columns([1, 10], vertical_alignment="center")
-c1.image("appicons/app-icon-192x192.png", width=64)
-c2.title("YouTube Creator Search Agent")
+# Header with logo and title
+col_logo, col_title = st.columns([1, 10], vertical_alignment="center")
+
+with col_logo:
+    st.image("appicons/app-icon-192x192.png", width=100)  # Bigger logo
+
+with col_title:
+    st.title("CCSeeker")
+    st.markdown("*Discover Niche YouTube Creators*")  # Slogan in italic
 
 # The search method selector is outside the form to allow instant UI updates.
 st.header("1. Search Method")

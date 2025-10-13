@@ -562,7 +562,7 @@ def get_channel_id_from_handle(youtube_service, handle):
     """Deprecated: use resolve_channel_id() instead."""
     return resolve_channel_id(youtube_service, handle)
 
-# --- Channel-as-Seed Function ---
+# --- Gemini AI Integration ---
 def generate_summary(df_results, query):
     """Formats the data and calls the Gemini API to generate a summary."""
     try:

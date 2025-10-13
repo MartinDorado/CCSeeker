@@ -59,7 +59,7 @@ def translate_terms_with_gemini(terms: list[str], target_language: str, gemini_a
         return terms
     try:
         genai.configure(api_key=gemini_api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash-lite")
         prompt = f"""
 Traduce estas frases de TÓPICOS al idioma objetivo ({target_language}).
 Mantén el significado y la concisión. Devuelve una lista simple (una por línea),
@@ -154,7 +154,7 @@ def refine_topics_with_gemini(candidates, language="es", max_terms=6, ban_terms=
 
     try:
         genai.configure(api_key=gemini_api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash-lite")
         prompt = f"""
 Eres un asistente que recibe una lista de términos ruidosos extraídos de títulos/etiquetas de un canal de YouTube.
 Devuelve entre 4 y {max_terms} temas concisos (en {language}) que representen las ÁREAS DE CONTENIDO del canal.
@@ -195,7 +195,7 @@ def topics_from_titles_with_gemini(titles, language="es", max_terms=6, ban_terms
         return []
     try:
         genai.configure(api_key=gemini_api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash-lite")
         prompt = f"""
 A partir de estos títulos de videos de un canal, devuelve entre 4 y {max_terms} TEMAS de contenido (no personas, marcas, lugares ni eventos). 
 Evita palabras de logística (jornada, conferencia, universidad, tour), países/ciudades, años/fechas y términos promocionales.

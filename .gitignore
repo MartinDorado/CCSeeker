@@ -11,3 +11,5 @@ __pycache__/
 
 # OS/editor noise
 .DS_Store
+
+.quota_cache.json

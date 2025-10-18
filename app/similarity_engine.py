@@ -301,6 +301,15 @@ def gemini_similarity_analysis(
         return {'gemini_score': 0, 'gemini_reason': 'Gemini not configured'}
     
     try:
+        # Track Gemini usage
+        import streamlit as st
+        if st.session_state.get('debug_mode', False):
+            # Import here to avoid circular dependency
+            try:
+                from . import debug_tracker
+            except ImportError:
+                import debug_tracker
+            debug_tracker.track_api_call('gemini_similarity')
         genai.configure(api_key=gemini_api_key)
         model = genai.GenerativeModel('gemini-2.0-flash-lite')
         

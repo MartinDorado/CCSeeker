@@ -32,6 +32,13 @@ except Exception:
         "United Kingdom (GB)",
         "United States (US)",
     ]
+try:
+    from . import debug_tracker
+except ImportError:
+    import debug_tracker
+
+import math
+import time
 
 # ============================================================================
 # CACHING LAYER - Reduces API calls by 80%
@@ -400,6 +407,26 @@ def get_channel_stats(youtube_service, channel_ids):
                     
     return stats_data
 
+
+def get_channel_stats_cached_with_tracking(channel_ids_tuple):
+    """Wrapper that tracks cache hits"""
+    
+    # Check if this exact call is cached (simplified check)
+    cache_key = f"channel_stats_{hash(channel_ids_tuple)}"
+    
+    if st.session_state.get('debug_mode', False):
+        # Simple heuristic: if function runs very fast, likely cache hit
+        start = time.time()
+        result = get_channel_stats_cached(channel_ids_tuple)
+        elapsed = time.time() - start
+        
+        if elapsed < 0.01:  # Less than 10ms = probably cached
+            debug_tracker.track_cache_hit()
+        
+        return result
+    else:
+        return get_channel_stats_cached(channel_ids_tuple)
+
 def get_video_details(youtube_service, channel_data, max_videos_per_channel):
     # ... (This function is now also used by the seed analysis)
     all_video_details = []
@@ -522,230 +549,249 @@ def run_search(
     boolean_fetch: bool = False,
 ):
     """Run the 4-step search + analysis pipeline and render results."""
-    with st.spinner("Step 1/4: Searching for channels..."):
-        # Use cached search
-        initial_channels = search_channels_multi_term_cached(final_query, region_input, max_videos=150)
+    
+    # Reset debug tracking for new search
+    search_start_time = None
+    if st.session_state.get('debug_mode', False):
+        debug_tracker.reset_debug_tracking()
+        search_start_time = time.time()
+    
+    try:
+        
+        # === STEP 1: Search for channels ===
+        with st.spinner("Step 1/4: Searching for channels..."):
+            step_start = time.time() if st.session_state.get('debug_mode', False) else None
+            
+            # ✅ TRACK BEFORE calling cached function
+            if st.session_state.get('debug_mode', False):
+                debug_tracker.track_api_call('youtube_search')
+            
+            initial_channels = search_channels_multi_term_cached(final_query, region_input, max_videos=150)
+            
+            if st.session_state.get('debug_mode', False) and step_start:
+                st.session_state.debug_data['timings']['search'] = time.time() - step_start
+        
 
-    if not initial_channels:
-        st.error("Search did not return any channels.")
-        return
-
-    df_initial = pd.DataFrame(initial_channels)
-    with st.expander("See raw channels found"):
-        st.dataframe(df_initial)
-
-    with st.spinner("Step 2/4: Fetching channel statistics..."):
-    # Use cached version (convert list to tuple for caching)
-        channel_ids_tuple = tuple(df_initial['channel_id'].tolist())
-        channel_statistics = get_channel_stats_cached(channel_ids_tuple)
-
-    if not channel_statistics:
-        st.warning("Could not retrieve detailed stats for the found channels.")
-        return
-
-    df_stats = pd.DataFrame(channel_statistics)
-    enriched_channel_data = pd.merge(df_initial, df_stats, on='channel_id')
-
-    with st.spinner("Step 3/4: Fetching recent video details..."):
-    # Use cached version
-        channel_ids_tuple = tuple(enriched_channel_data['channel_id'].tolist())
-        video_data = get_video_details_cached(channel_ids_tuple, max_videos=10)
-
-    if not video_data:
-        st.warning("Could not retrieve any video details from the channels.")
-        st.dataframe(enriched_channel_data.sort_values(by="subscribers", ascending=False))
-        return
-
-    with st.spinner("Step 4/4: Analyzing and filtering results..."):
-        df_videos = pd.DataFrame(video_data)
-        relevance_scores = calculate_keyword_relevance(df_videos.copy(), final_query)
-        df_videos['published_at'] = pd.to_datetime(df_videos['published_at'])
-        df_videos['engagement_rate'] = (df_videos['video_likes'] + df_videos['video_comments']) / (df_videos['video_views'] + 1)
-        df_full = pd.merge(df_videos, enriched_channel_data, on='channel_id')
-
-        filtered_df = df_full[df_full['subscribers'] >= min_subs_input]
-
-        # Conditionally apply the date filter
-        if months_ago_input > 0:
-            date_cutoff = pd.Timestamp.now(tz='UTC') - pd.DateOffset(months=months_ago_input)
-            filtered_df = filtered_df[filtered_df['published_at'] >= date_cutoff]
-        if country_filter_input:
-            filtered_df = filtered_df[filtered_df['country'] == country_filter_input.upper()]
-
-        if filtered_df.empty:
-            st.error("No channels matched all your filtering criteria after full analysis.")
+        if not initial_channels:
+            st.error("Search did not return any channels.")
             return
 
-        avg_engagement = filtered_df.groupby('channel_id')['engagement_rate'].mean().reset_index()
-        final_channels = pd.merge(enriched_channel_data, avg_engagement, on='channel_id')
-        final_channels = pd.merge(final_channels, relevance_scores, on='channel_id', how='left')
+        df_initial = pd.DataFrame(initial_channels)
+        with st.expander("See raw channels found"):
+            st.dataframe(df_initial)
 
-        top_channels = final_channels.sort_values(by=['relevance_score', 'subscribers'], ascending=False)
+        # === STEP 2: Fetch channel statistics ===
+        with st.spinner("Step 2/4: Fetching channel statistics..."):
+            step_start = time.time() if st.session_state.get('debug_mode', False) else None
+            
+            channel_ids_tuple = tuple(df_initial['channel_id'].tolist())
+            
+            # ✅ TRACK BEFORE calling cached function
+            if st.session_state.get('debug_mode', False):
+                # We make 1 call per 50 channels (batching)
+                num_calls = math.ceil(len(channel_ids_tuple) / 50)
+                for _ in range(num_calls):
+                    debug_tracker.track_api_call('youtube_channel')
+            
+            channel_statistics = get_channel_stats_cached(channel_ids_tuple)
+            
+            if st.session_state.get('debug_mode', False) and step_start:
+                st.session_state.debug_data['timings']['channel_stats'] = time.time() - step_start
+
+        if not channel_statistics:
+            st.warning("Could not retrieve detailed stats for the found channels.")
+            return
+
+        df_stats = pd.DataFrame(channel_statistics)
+        enriched_channel_data = pd.merge(df_initial, df_stats, on='channel_id')
+
+        # === STEP 3: Fetch video details ===
+        with st.spinner("Step 3/4: Fetching recent video details..."):
+            step_start = time.time() if st.session_state.get('debug_mode', False) else None
+            
+            channel_ids_tuple = tuple(enriched_channel_data['channel_id'].tolist())
+            
+            # ✅ TRACK BEFORE calling cached function
+            if st.session_state.get('debug_mode', False):
+                # Track each channel's video fetch
+                for _ in enriched_channel_data.itertuples():
+                    debug_tracker.track_api_call('youtube_video')
+            
+            video_data = get_video_details_cached(channel_ids_tuple, max_videos=10)
+            
+            if st.session_state.get('debug_mode', False) and step_start:
+                st.session_state.debug_data['timings']['video_details'] = time.time() - step_start
+        
+        # Debug checkpoint
+        if st.session_state.get('debug_mode', False):
+            st.write(f"✓ Step 3: Retrieved {len(video_data)} videos")
+
+        if not video_data:
+            st.warning("Could not retrieve any video details from the channels.")
+            st.dataframe(enriched_channel_data.sort_values(by="subscribers", ascending=False))
+            return
+
+        # === STEP 4: Analysis and filtering ===
+        with st.spinner("Step 4/4: Analyzing and filtering results..."):
+            step_start = time.time() if st.session_state.get('debug_mode', False) else None
+            
+            df_videos = pd.DataFrame(video_data)
+            relevance_scores = calculate_keyword_relevance(df_videos.copy(), final_query)
+            df_videos['published_at'] = pd.to_datetime(df_videos['published_at'])
+            df_videos['engagement_rate'] = (df_videos['video_likes'] + df_videos['video_comments']) / (df_videos['video_views'] + 1)
+            df_full = pd.merge(df_videos, enriched_channel_data, on='channel_id')
+
+            filtered_df = df_full[df_full['subscribers'] >= min_subs_input]
+
+            if months_ago_input > 0:
+                date_cutoff = pd.Timestamp.now(tz='UTC') - pd.DateOffset(months=months_ago_input)
+                filtered_df = filtered_df[filtered_df['published_at'] >= date_cutoff]
+            if country_filter_input:
+                filtered_df = filtered_df[filtered_df['country'] == country_filter_input.upper()]
+
+            if filtered_df.empty:
+                st.error("No channels matched all your filtering criteria after full analysis.")
+                return
+
+            avg_engagement = filtered_df.groupby('channel_id')['engagement_rate'].mean().reset_index()
+            final_channels = pd.merge(enriched_channel_data, avg_engagement, on='channel_id')
+            final_channels = pd.merge(final_channels, relevance_scores, on='channel_id', how='left')
+
+            top_channels = final_channels.sort_values(by=['relevance_score', 'subscribers'], ascending=False)
+            
+            if st.session_state.get('debug_mode', False) and step_start:
+                st.session_state.debug_data['timings']['similarity_ranking'] = time.time() - step_start
 
         st.success(f"Analysis Complete! Found {len(top_channels)} channels matching your criteria.")
-        # ========================================================================
-# === SIMILARITY RANKING (if using seed) ===
-# ========================================================================
+        
+        # Debug checkpoint
+        if st.session_state.get('debug_mode', False):
+            st.write(f"✓ Step 4: Filtered to {len(top_channels)} matching channels")
 
-    if 'seed_profile' in st.session_state:
-        with st.spinner("🧠 Calculating similarity scores..."):
-                # === EXCLUDE SEED CHANNEL FROM RESULTS ===
-            seed_channel_id = st.session_state['seed_profile']['channel_id']
-            before_exclusion = len(top_channels)
-            
-            top_channels = top_channels[top_channels['channel_id'] != seed_channel_id]
-            
-            excluded_count = before_exclusion - len(top_channels)
-            if excluded_count > 0:
-                st.info(f"🚫 Excluded seed channel from results ({excluded_count} removed)")
-            # Apply subscriber filter if enabled
-            if st.session_state.get('filter_by_size', False):
-                seed_subs = st.session_state['seed_profile']['subscriber_count']
-                lower = int(seed_subs * 0.5)
-                upper = int(seed_subs * 1.5)
+        # === SIMILARITY RANKING (if using seed) ===
+        if 'seed_profile' in st.session_state:
+            with st.spinner("🧠 Calculating similarity scores..."):
+                seed_channel_id = st.session_state['seed_profile']['channel_id']
+                before_exclusion = len(top_channels)
                 
-                before_count = len(top_channels)
-                top_channels = top_channels[
-                    (top_channels['subscribers'] >= lower) & 
-                    (top_channels['subscribers'] <= upper)
-                ]
-                after_count = len(top_channels)
+                top_channels = top_channels[top_channels['channel_id'] != seed_channel_id]
                 
-                st.info(f"🎯 Filtered by size: {before_count} → {after_count} channels ({lower:,}-{upper:,} subs)")
-            
-            if top_channels.empty:
-                st.error("No channels in the similar size range. Try disabling the size filter.")
-            else:
-                # Prepare data for similarity engine
-                # We need to fetch tags for each channel first
-                st.info("📥 Fetching additional data for similarity analysis...")
+                excluded_count = before_exclusion - len(top_channels)
+                if excluded_count > 0:
+                    st.info(f"🚫 Excluded seed channel from results ({excluded_count} removed)")
                 
-                # Get video details for top channels (we need tags!)
-                enriched_data = get_video_details(
-                    youtube,
-                    top_channels.to_dict('records'),
-                    max_videos_per_channel=10
-                )
-                
-                if enriched_data:
-                    df_enriched = pd.DataFrame(enriched_data)
+                if st.session_state.get('filter_by_size', False):
+                    seed_subs = st.session_state['seed_profile']['subscriber_count']
+                    lower = int(seed_subs * 0.5)
+                    upper = int(seed_subs * 1.5)
                     
-                    # Extract tags per channel (improved - handles nested lists better)
-                    def flatten_tags(tag_series):
-                        """Flatten all tags from multiple videos into a single list"""
-                        all_tags = []
-                        for tags in tag_series:
-                            if isinstance(tags, list):
-                                all_tags.extend(tags)
-                            elif isinstance(tags, str):
-                                all_tags.append(tags)
-                        # Remove duplicates and empty strings, convert to lowercase
-                        unique_tags = list(set(t.lower().strip() for t in all_tags if t))
-                        return unique_tags
+                    before_count = len(top_channels)
+                    top_channels = top_channels[
+                        (top_channels['subscribers'] >= lower) & 
+                        (top_channels['subscribers'] <= upper)
+                    ]
+                    after_count = len(top_channels)
+                    
+                    st.info(f"🎯 Filtered by size: {before_count} → {after_count} channels ({lower:,}-{upper:,} subs)")
+                
+                if top_channels.empty:
+                    st.error("No channels in the similar size range. Try disabling the size filter.")
+                    return
+                else:
+                    st.info("📥 Fetching additional data for similarity analysis...")
+                    
+                    enriched_data = get_video_details(
+                        youtube,
+                        top_channels.to_dict('records'),
+                        max_videos_per_channel=10
+                    )
+                    
+                    if enriched_data:
+                        df_enriched = pd.DataFrame(enriched_data)
+                        
+                        def flatten_tags(tag_series):
+                            all_tags = []
+                            for tags in tag_series:
+                                if isinstance(tags, list):
+                                    all_tags.extend(tags)
+                                elif isinstance(tags, str):
+                                    all_tags.append(tags)
+                            unique_tags = list(set(t.lower().strip() for t in all_tags if t))
+                            return unique_tags
 
-                    channel_tags = (
-                        df_enriched.groupby('channel_id')['video_tags']
-                        .apply(flatten_tags)
-                        .reset_index()
-                        .rename(columns={'video_tags': 'tags'})
-                    )
+                        channel_tags = (
+                            df_enriched.groupby('channel_id')['video_tags']
+                            .apply(flatten_tags)
+                            .reset_index()
+                            .rename(columns={'video_tags': 'tags'})
+                        )
 
-                    # DEBUG: Show tag counts
-                    st.write(f"📊 Extracted tags for {len(channel_tags)} channels")
-                    st.write(f"Average tags per channel: {channel_tags['tags'].apply(len).mean():.1f}")
-                    
-                    # Extract keywords per channel (from titles)
-                    channel_keywords = (
-                        df_enriched.groupby('channel_id')['video_title']
-                        .apply(lambda x: list(x))
-                        .reset_index()
-                        .rename(columns={'video_title': 'recent_titles'})
-                    )
-                    
-                    # Merge back into top_channels
-                    top_channels = top_channels.merge(channel_tags, on='channel_id', how='left')
-                    top_channels = top_channels.merge(channel_keywords, on='channel_id', how='left')
-                    
-                    # Fill missing tags/titles with empty lists
-                    top_channels['tags'] = top_channels['tags'].apply(lambda x: x if isinstance(x, list) else [])
-                    top_channels['recent_titles'] = top_channels['recent_titles'].apply(lambda x: x if isinstance(x, list) else [])
-                    
-                    # Extract keywords from titles (improved version)
-                    def extract_keywords_from_titles(titles):
-                        if not titles or not isinstance(titles, list):
-                            return []
+                        channel_keywords = (
+                            df_enriched.groupby('channel_id')['video_title']
+                            .apply(lambda x: list(x))
+                            .reset_index()
+                            .rename(columns={'video_title': 'recent_titles'})
+                        )
                         
-                        # Combine all titles
-                        text = " ".join(str(t) for t in titles if t)
+                        top_channels = top_channels.merge(channel_tags, on='channel_id', how='left')
+                        top_channels = top_channels.merge(channel_keywords, on='channel_id', how='left')
                         
-                        # Extract words (3+ letters, alphabetic with accents)
-                        words = re.findall(r'\b[a-záéíóúñü]{3,}\b', text.lower())
+                        top_channels['tags'] = top_channels['tags'].apply(lambda x: x if isinstance(x, list) else [])
+                        top_channels['recent_titles'] = top_channels['recent_titles'].apply(lambda x: x if isinstance(x, list) else [])
                         
-                        # Count frequency and return top words
-                        from collections import Counter
-                        word_counts = Counter(words)
+                        def extract_keywords_from_titles(titles):
+                            if not titles or not isinstance(titles, list):
+                                return []
+                            
+                            text = " ".join(str(t) for t in titles if t)
+                            words = re.findall(r'\b[a-záéíóúñü]{3,}\b', text.lower())
+                            
+                            from collections import Counter
+                            word_counts = Counter(words)
+                            
+                            common_words = {'the', 'and', 'for', 'with', 'que', 'con', 'para', 'por', 'como'}
+                            filtered_words = [w for w, _ in word_counts.most_common(30) if w not in common_words]
+                            
+                            return filtered_words[:20]
                         
-                        # Filter out common words
-                        common_words = {'the', 'and', 'for', 'with', 'que', 'con', 'para', 'por', 'como'}
-                        filtered_words = [w for w, _ in word_counts.most_common(30) if w not in common_words]
+                        top_channels['keywords'] = top_channels['recent_titles'].apply(extract_keywords_from_titles)
                         
-                        return filtered_words[:20]  # Top 20 keywords
-                    
-                    top_channels['keywords'] = top_channels['recent_titles'].apply(extract_keywords_from_titles)
-                    
-                    # Now calculate similarity scores!
-                    st.info("🎯 Ranking channels by similarity...")
-                    
-                    candidates = top_channels.to_dict('records')
-                    # Ensure all candidates have 'channel_name' field (similarity_engine expects this)
-                    for candidate in candidates:
-                        if 'channel_title' in candidate and 'channel_name' not in candidate:
-                            candidate['channel_name'] = candidate['channel_title']                 
-                    
-                    # DEBUG: Check what data we have
-                    st.write("🔍 DEBUG: Checking candidate data...")
-                    first_candidate = candidates[0]
-                    st.write({
-                        'channel_id': first_candidate.get('channel_id'),
-                        'channel_title': first_candidate.get('channel_title'),
-                        'has_tags': 'tags' in first_candidate,
-                        'num_tags': len(first_candidate.get('tags', [])),
-                        'has_keywords': 'keywords' in first_candidate,
-                        'num_keywords': len(first_candidate.get('keywords', [])),
-                        'has_engagement': 'engagement_rate' in first_candidate,
-                    })
-
-                    ranked = similarity_engine.rank_channels_by_similarity(
-                        candidates,
-                        st.session_state['seed_profile'],
-                        use_gemini=st.session_state.get('use_gemini_ranking', False),
-                        gemini_api_key=GEMINI_API_KEY,
-                        gemini_limit=10
-                    )
-                    
-                    # Convert back to dataframe
-                    top_channels = pd.DataFrame(ranked)
-                    
-                    # Extract similarity scores
-                    top_channels['similarity_score'] = top_channels['similarity'].apply(
-                        lambda x: x.get('total_score', 0) if isinstance(x, dict) else 0
-                    )
-                    
-                    top_channels['match_reasons'] = top_channels['similarity'].apply(
-                        lambda x: ' • '.join(x.get('match_reasons', [])[:2]) if isinstance(x, dict) else ''
-                    )
-                    
-                    # Sort by similarity score
-                    top_channels = top_channels.sort_values('similarity_score', ascending=False)
-                    
-                    st.success(f"✅ Similarity ranking complete! Top match: {top_channels.iloc[0]['channel_title']} ({top_channels.iloc[0]['similarity_score']:.1f}/100)")
+                        st.info("🎯 Ranking channels by similarity...")
+                        
+                        candidates = top_channels.to_dict('records')
+                        for candidate in candidates:
+                            if 'channel_title' in candidate and 'channel_name' not in candidate:
+                                candidate['channel_name'] = candidate['channel_title']
+                        
+                        ranked = similarity_engine.rank_channels_by_similarity(
+                            candidates,
+                            st.session_state['seed_profile'],
+                            use_gemini=st.session_state.get('use_gemini_ranking', False),
+                            gemini_api_key=GEMINI_API_KEY,
+                            gemini_limit=10
+                        )
+                        
+                        top_channels = pd.DataFrame(ranked)
+                        
+                        top_channels['similarity_score'] = top_channels['similarity'].apply(
+                            lambda x: x.get('total_score', 0) if isinstance(x, dict) else 0
+                        )
+                        
+                        top_channels['match_reasons'] = top_channels['similarity'].apply(
+                            lambda x: ' • '.join(x.get('match_reasons', [])[:2]) if isinstance(x, dict) else ''
+                        )
+                        
+                        top_channels = top_channels.sort_values('similarity_score', ascending=False)
+                        
+                        st.success(f"✅ Similarity ranking complete! Top match: {top_channels.iloc[0]['channel_title']} ({top_channels.iloc[0]['similarity_score']:.1f}/100)")
+        
         st.info("💡 Results include channels whose content matches your search topics, not just their names.")
 
-        # --- AI Summary - Now automatic ---
-        if not GEMINI_API_KEY:
-            st.warning("⚠️ GEMINI_API_KEY not configured. Skipping AI summary.")
-        else:
+        # === AI SUMMARY ===
+        if GEMINI_API_KEY:
             with st.spinner("✨ Generating AI Summary..."):
+                step_start = time.time() if st.session_state.get('debug_mode', False) else None
+                
                 try:
                     summary_df = top_channels.copy()
                     summary_df['relevance_score'] = summary_df['relevance_score'].fillna(0).map('{:.0%}'.format)
@@ -755,29 +801,67 @@ def run_search(
                     st.markdown(summary_text)
                 except Exception as e:
                     st.error(f"Could not generate AI summary: {e}")
+                
+                if st.session_state.get('debug_mode', False) and step_start:
+                    st.session_state.debug_data['timings']['ai_generation'] = time.time() - step_start
+        else:
+            st.warning("⚠️ GEMINI_API_KEY not configured. Skipping AI summary.")
 
-        # Format for display
+        # === FORMAT AND DISPLAY RESULTS ===
         top_channels['relevance_score'] = top_channels['relevance_score'].fillna(0).map('{:.0%}'.format)
         top_channels['engagement_rate'] = top_channels['engagement_rate'].fillna(0).map('{:.2%}'.format)
         top_channels['avg_views_per_video'] = top_channels['avg_views_per_video'].fillna(0).map('{:,.0f}'.format)
-        # Format similarity score if present
+        
         if 'similarity_score' in top_channels.columns:
             top_channels['similarity_score'] = top_channels['similarity_score'].fillna(0).map('{:.1f}'.format)
-        # Persist minimal data for outreach across reruns
+        
+        # Store for outreach
         st.session_state['top_channels_for_outreach'] = top_channels[['channel_title']].reset_index(drop=True)
         st.session_state['final_query'] = final_query
-        # Also save full channel data for detailed analysis (if similarity scoring was done)
+        
         if 'similarity_score' in top_channels.columns:
             st.session_state['top_channels_full'] = top_channels.copy()
 
-        # Choose columns based on whether we have similarity scores
+        # Choose display columns
         if 'similarity_score' in top_channels.columns:
             display_columns = ['channel_title', 'similarity_score', 'match_reasons', 'subscribers', 'country', 'engagement_rate']
         else:
             display_columns = ['channel_title', 'relevance_score', 'subscribers', 'avg_views_per_video', 'country', 'engagement_rate']
 
-        st.session_state['display_df'] = top_channels[display_columns].copy()
+        # Debug checkpoint
+        if st.session_state.get('debug_mode', False):
+            st.write(f"✓ Preparing to display {len(top_channels)} channels")
+            st.write(f"Display columns: {display_columns}")
 
+        # STORE IN SESSION STATE FOR DISPLAY
+        st.session_state['display_df'] = top_channels[display_columns].copy()
+        
+        # Debug checkpoint
+        if st.session_state.get('debug_mode', False):
+            st.write(f"✓ display_df stored successfully with shape {st.session_state['display_df'].shape}")
+        
+        # === TRACK FINAL METRICS ===
+        if st.session_state.get('debug_mode', False):
+            if search_start_time:
+                st.session_state.debug_data['timings']['total'] = time.time() - search_start_time
+            
+            if 'top_channels_full' in st.session_state:
+                debug_tracker.track_similarity_scores(
+                    st.session_state['top_channels_full'].to_dict('records')
+                )
+    
+    except Exception as e:  # ← ERROR HANDLER
+        st.error(f"❌ Error in run_search: {type(e).__name__}: {e}")
+        import traceback
+        st.code(traceback.format_exc())
+        
+        # Show what step failed
+        if st.session_state.get('debug_mode', False):
+            st.write("### Debug Info at Failure:")
+            st.write(f"- Session state keys: {list(st.session_state.keys())}")
+            st.write(f"- Debug data: {st.session_state.get('debug_data', {})}")
+      
+        
 # --- Function to resolve a channel handle (@username) to an ID ---
 def get_channel_id_from_handle(youtube_service, handle):
     """Deprecated: use resolve_channel_id() instead."""
@@ -787,6 +871,18 @@ def get_channel_id_from_handle(youtube_service, handle):
 def generate_summary(df_results, query):
     """Formats the data and calls the Gemini API to generate a summary."""
     try:
+        # Track Gemini usage
+        if st.session_state.get('debug_mode', False):
+            try:
+                import debug_tracker
+                debug_tracker.track_api_call('gemini_summary')
+                
+                # Verify
+                count = st.session_state.debug_data.get('gemini_summary_calls', 0)
+                print(f"DEBUG: gemini_summary_calls now = {count}")
+            except Exception as e:
+                print(f"ERROR tracking summary call: {e}")               
+
         model = get_gemini_model()
 
         top_5_df = df_results.head(5)
@@ -870,6 +966,10 @@ def generate_outreach_drafts(
     for _, row in df.iterrows():
         channel_name = row['channel_title']
 
+         # Track each Gemini call
+        if st.session_state.get('debug_mode', False):
+            debug_tracker.track_api_call('gemini_outreach')
+
         prompt = f"""
 Act as a marketing professional. Your task is to write a short, friendly, and professional outreach email to a YouTube creator.
 
@@ -918,6 +1018,9 @@ st.set_page_config(
     layout="wide"
 )
 
+# Initialize debug tracking
+debug_tracker.initialize_debug_tracking()
+
 st.markdown("""
 <style>
 /* tighten the small toggle so it sits on the same baseline */
@@ -951,6 +1054,20 @@ with col_logo:
 with col_title:
     st.title("CCSeeker")
     st.markdown("*Discover Niche YouTube Creators*")  # Slogan in italic
+
+# === DEBUG MODE TOGGLE (in sidebar) ===
+with st.sidebar:
+    st.markdown("---")  # Visual separator
+    
+    # Toggle with explanation
+    debug_enabled = st.toggle(
+        "🔍 Debug Mode",
+        value=st.session_state.get('debug_mode', False),
+        help="Show API usage, performance metrics, and detailed similarity scores"
+    )
+    
+    # Update session state
+    st.session_state.debug_mode = debug_enabled
 
 # The search method selector is outside the form to allow instant UI updates.
 st.header("1. Search Method")
@@ -1433,6 +1550,17 @@ if 'top_channels_for_outreach' in st.session_state and not st.session_state['top
                         )
                 except Exception as e:
                     st.error(f"Unexpected error while generating drafts: {type(e).__name__}: {e}")
+
+# ============================================================================
+# === RENDER DEBUG PANEL AT THE END (AFTER ALL TRACKING) ===
+# ============================================================================
+
+# This ensures the debug panel shows updated counters after search completes
+if st.session_state.get('debug_mode', False):
+    with st.sidebar:
+        debug_tracker.render_debug_panel()
+        # Optional: Add manual reset button (for testing)
+        debug_tracker.render_quota_reset_button()
 
                             
 

@@ -605,68 +605,154 @@ def run_search(
         df_stats = pd.DataFrame(channel_statistics)
         enriched_channel_data = pd.merge(df_initial, df_stats, on='channel_id')
 
-        # === STEP 3: Fetch video details ===
-        with st.spinner("Step 3/4: Fetching recent video details..."):
+        # === STEP 3: Filter channels FIRST (before fetching videos!) ===
+        with st.spinner("Step 3/5: Applying filters..."):
             step_start = time.time() if st.session_state.get('debug_mode', False) else None
             
-            channel_ids_tuple = tuple(enriched_channel_data['channel_id'].tolist())
+            # Filter by subscriber count
+            filtered_channels = enriched_channel_data[
+                enriched_channel_data['subscribers'] >= min_subs_input
+            ].copy()
             
-            # ✅ TRACK BEFORE calling cached function
+            # Filter by country (if specified)
+            if country_filter_input:
+                filtered_channels = filtered_channels[
+                    filtered_channels['country'] == country_filter_input.upper()
+                ]
+            
+            if filtered_channels.empty:
+                st.error("No channels match your filtering criteria (subscribers, country).")
+                return
+            
+            st.info(f"✅ {len(filtered_channels)} channels passed filters (min {min_subs_input:,} subs)")
+            
+            if st.session_state.get('debug_mode', False) and step_start:
+                st.session_state.debug_data['timings']['filtering'] = time.time() - step_start
+
+       # === STEP 4: Prepare channels for analysis (cap at 80 max) ===
+        with st.spinner("Step 4/5: Preparing channels for analysis..."):
+            step_start = time.time() if st.session_state.get('debug_mode', False) else None
+            
+            # Sort by subscribers to prioritize established channels
+            filtered_sorted = filtered_channels.sort_values('subscribers', ascending=False)
+            
+            # Cap at 80 channels to control quota usage
+            channels_to_analyze = filtered_sorted.head(80).copy()
+            
+            channels_analyzed_count = len(channels_to_analyze)
+            
+            if channels_analyzed_count < len(filtered_channels):
+                st.info(f"📊 Analyzing top {channels_analyzed_count} channels (from {len(filtered_channels)} total)")
+            else:
+                st.info(f"📊 Analyzing all {channels_analyzed_count} channels")
+            
+            if st.session_state.get('debug_mode', False) and step_start:
+                st.session_state.debug_data['timings']['select_channels'] = time.time() - step_start
+
+        # === STEP 5: Single-pass deep analysis (10 videos per channel) ===
+        with st.spinner(f"Step 5/5: Deep analysis - fetching 10 videos from {channels_analyzed_count} channels..."):
+            step_start = time.time() if st.session_state.get('debug_mode', False) else None
+            
+            channel_ids_tuple = tuple(channels_to_analyze['channel_id'].tolist())
+            
+            # Track API calls for debug
             if st.session_state.get('debug_mode', False):
-                # Track each channel's video fetch
-                for _ in enriched_channel_data.itertuples():
+                for _ in channels_to_analyze.itertuples():
                     debug_tracker.track_api_call('youtube_video')
             
-            video_data = get_video_details_cached(channel_ids_tuple, max_videos=10)
+            # Fetch 10 videos for comprehensive relevance analysis
+            video_data = get_video_details_cached(
+                channel_ids_tuple, 
+                max_videos=10  # 🔥 DEEP ANALYSIS: 10 videos per channel
+            )
             
             if st.session_state.get('debug_mode', False) and step_start:
                 st.session_state.debug_data['timings']['video_details'] = time.time() - step_start
         
         # Debug checkpoint
         if st.session_state.get('debug_mode', False):
-            st.write(f"✓ Step 3: Retrieved {len(video_data)} videos")
+            st.write(f"✓ Step 5: Retrieved {len(video_data)} videos from {channels_analyzed_count} channels")
 
         if not video_data:
             st.warning("Could not retrieve any video details from the channels.")
-            st.dataframe(enriched_channel_data.sort_values(by="subscribers", ascending=False))
+            st.dataframe(channels_to_analyze.sort_values(by="subscribers", ascending=False))
             return
 
-        # === STEP 4: Analysis and filtering ===
-        with st.spinner("Step 4/4: Analyzing and filtering results..."):
+        # === STEP 6: Calculate relevance and filter ===
+        with st.spinner("Calculating relevance and engagement metrics..."):
             step_start = time.time() if st.session_state.get('debug_mode', False) else None
             
+            # Create DataFrame from video data
             df_videos = pd.DataFrame(video_data)
+            
+            # Calculate relevance scores (based on 10 videos per channel)
             relevance_scores = calculate_keyword_relevance(df_videos.copy(), final_query)
+            
+            # Calculate engagement rates
             df_videos['published_at'] = pd.to_datetime(df_videos['published_at'])
-            df_videos['engagement_rate'] = (df_videos['video_likes'] + df_videos['video_comments']) / (df_videos['video_views'] + 1)
-            df_full = pd.merge(df_videos, enriched_channel_data, on='channel_id')
-
-            filtered_df = df_full[df_full['subscribers'] >= min_subs_input]
-
+            df_videos['engagement_rate'] = (
+                (df_videos['video_likes'] + df_videos['video_comments']) / 
+                (df_videos['video_views'] + 1)
+            )
+            
+            # Merge video data with channel data
+            df_full = pd.merge(df_videos, channels_to_analyze, on='channel_id')
+            
+            # Filter by upload recency (if specified)
             if months_ago_input > 0:
                 date_cutoff = pd.Timestamp.now(tz='UTC') - pd.DateOffset(months=months_ago_input)
-                filtered_df = filtered_df[filtered_df['published_at'] >= date_cutoff]
-            if country_filter_input:
-                filtered_df = filtered_df[filtered_df['country'] == country_filter_input.upper()]
-
-            if filtered_df.empty:
-                st.error("No channels matched all your filtering criteria after full analysis.")
+                df_full = df_full[df_full['published_at'] >= date_cutoff]
+            
+            if df_full.empty:
+                st.error("No channels have uploaded videos in the specified time range.")
                 return
-
-            avg_engagement = filtered_df.groupby('channel_id')['engagement_rate'].mean().reset_index()
-            final_channels = pd.merge(enriched_channel_data, avg_engagement, on='channel_id')
+            
+            # Calculate average engagement per channel
+            avg_engagement = df_full.groupby('channel_id')['engagement_rate'].mean().reset_index()
+            
+            # Merge everything together
+            final_channels = pd.merge(channels_to_analyze, avg_engagement, on='channel_id')
             final_channels = pd.merge(final_channels, relevance_scores, on='channel_id', how='left')
-
-            top_channels = final_channels.sort_values(by=['relevance_score', 'subscribers'], ascending=False)
+            
+            # Fill NaN relevance scores with 0
+            final_channels['relevance_score'] = final_channels['relevance_score'].fillna(0)
+            
+            # 🎯 CRITICAL FILTER: Keep only channels with relevance ≥ 5%
+            relevant_channels = final_channels[final_channels['relevance_score'] >= 0.05].copy()
+            
+            if relevant_channels.empty:
+                st.warning(f"⚠️ No channels found with relevance ≥ 5% for '{final_query}'. Try broadening your search terms or lowering minimum subscribers.")
+                
+                # Show top 10 channels by subscriber count as fallback
+                st.info("Showing top 10 channels by size (may not be topic-focused):")
+                fallback_channels = final_channels.nlargest(10, 'subscribers')
+                top_channels = fallback_channels.copy()
+            else:
+                # Sort by relevance (primary) then subscribers (secondary)
+                relevant_channels = relevant_channels.sort_values(
+                    by=['relevance_score', 'subscribers'], 
+                    ascending=False
+                )
+                
+                # Add analysis badge
+                relevant_channels['analysis_depth'] = '✓ 10 videos analyzed'
+                
+                top_channels = relevant_channels.copy()
+                
+                # Success message
+                relevant_count = len(relevant_channels)
+                st.success(f"✅ Found {relevant_count} relevant channel{'s' if relevant_count != 1 else ''} (relevance ≥ 5%)")
             
             if st.session_state.get('debug_mode', False) and step_start:
-                st.session_state.debug_data['timings']['similarity_ranking'] = time.time() - step_start
+                st.session_state.debug_data['timings']['relevance_filtering'] = time.time() - step_start
 
-        st.success(f"Analysis Complete! Found {len(top_channels)} channels matching your criteria.")
-        
         # Debug checkpoint
         if st.session_state.get('debug_mode', False):
-            st.write(f"✓ Step 4: Filtered to {len(top_channels)} matching channels")
+            if not relevant_channels.empty:
+                avg_relevance = relevant_channels['relevance_score'].mean()
+                st.write(f"✓ Filtered to {len(relevant_channels)} channels (avg relevance: {avg_relevance:.1%})")
+            else:
+                st.write(f"✓ No channels passed 5% threshold (showing fallback)")
 
         # === SIMILARITY RANKING (if using seed) ===
         if 'seed_profile' in st.session_state:

@@ -111,7 +111,7 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
     breakdown = {}
     
     # ========================================================================
-    # FACTOR 1: Tag Overlap (35 points) - MOST RELIABLE SIGNAL ⭐ INCREASED
+    # FACTOR 1: Tag Overlap (30 points) - MOST RELIABLE SIGNAL ⭐ INCREASED
     # ========================================================================
     
     # Safety check: ensure tags are lists
@@ -135,7 +135,7 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
         tag_overlap = jaccard_similarity(candidate_tags, seed_tags)
         common_tag_count = overlap_count(candidate_tags, seed_tags)
         
-        tag_score = tag_overlap * 35
+        tag_score = tag_overlap * 30
 
     candidate_tags = set(candidate.get('tags', []))
     seed_tags = set(seed_profile['common_tags'])
@@ -143,7 +143,7 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
     tag_overlap = jaccard_similarity(candidate_tags, seed_tags)
     common_tag_count = overlap_count(candidate_tags, seed_tags)
     
-    tag_score = tag_overlap * 35
+    tag_score = tag_overlap * 30
     score += tag_score
     
     if common_tag_count >= 5:
@@ -156,7 +156,7 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
     breakdown['common_tags'] = common_tag_count
     
     # ========================================================================
-    # FACTOR 2: Keyword Overlap (25 points) ⬇️ DECREASED
+    # FACTOR 2: Keyword Overlap (30 points) 
     # ========================================================================
     # Safety check
     candidate_keywords = candidate.get('keywords', [])
@@ -179,7 +179,7 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
         keyword_overlap = jaccard_similarity(candidate_keywords, seed_keywords)
         common_keyword_count = overlap_count(candidate_keywords, seed_keywords)
         
-        keyword_score = keyword_overlap * 25
+        keyword_score = keyword_overlap * 30
     # Combine primary + secondary keywords from candidate
     candidate_keywords = set(candidate.get('keywords', []))
     seed_keywords = set(seed_profile['primary_keywords'] + seed_profile['secondary_keywords'])
@@ -187,7 +187,7 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
     keyword_overlap = jaccard_similarity(candidate_keywords, seed_keywords)
     common_keyword_count = overlap_count(candidate_keywords, seed_keywords)
     
-    keyword_score = keyword_overlap * 25
+    keyword_score = keyword_overlap * 30
     score += keyword_score
     
     if keyword_overlap >= 0.5:
@@ -200,14 +200,14 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
     breakdown['common_keywords'] = common_keyword_count
     
     # ========================================================================
-    # FACTOR 3: Subscriber Similarity (20 points)
+    # FACTOR 3: Subscriber Similarity (15 points)
     # ========================================================================
     
     candidate_subs = candidate.get('subscribers', 0)
     seed_subs = seed_profile['subscriber_count']
     
     sub_similarity = get_subscriber_similarity(candidate_subs, seed_subs)
-    sub_score = sub_similarity * 20
+    sub_score = sub_similarity * 15
     score += sub_score
     
     # Human-readable size comparison
@@ -220,7 +220,7 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
     breakdown['subscriber_similarity'] = round(sub_similarity, 2)
     
     # ========================================================================
-    # FACTOR 4: Engagement Rate Similarity (12 points) ⬇️ DECREASED
+    # FACTOR 4: Engagement Rate Similarity (17 points) 
     # ========================================================================
     
     candidate_engagement = candidate.get('engagement_rate', 0.0)
@@ -230,13 +230,13 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
     engagement_diff = abs(candidate_engagement - seed_engagement)
     
     # Score inversely proportional to difference
-    # diff=0.0 → score=12
-    # diff=0.05 → score=6
+    # diff=0.0 → score=17
+    # diff=0.05 → score=8.5
     # diff=0.10+ → score=0
-    engagement_score = max(0, 12 - (engagement_diff * 120))  # Adjusted formula
+    engagement_score = max(0, 17 - (engagement_diff * 170))  # Adjusted formula
     score += engagement_score
     
-    if engagement_score >= 12:
+    if engagement_score >= 17:
         reasons.append("Similar audience engagement")
     
     breakdown['engagement_score'] = round(engagement_score, 1)

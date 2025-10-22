@@ -764,21 +764,7 @@ def run_search(
                 
                 excluded_count = before_exclusion - len(top_channels)
                 if excluded_count > 0:
-                    st.info(f"🚫 Excluded seed channel from results ({excluded_count} removed)")
-                
-                if st.session_state.get('filter_by_size', False):
-                    seed_subs = st.session_state['seed_profile']['subscriber_count']
-                    lower = int(seed_subs * 0.5)
-                    upper = int(seed_subs * 1.5)
-                    
-                    before_count = len(top_channels)
-                    top_channels = top_channels[
-                        (top_channels['subscribers'] >= lower) & 
-                        (top_channels['subscribers'] <= upper)
-                    ]
-                    after_count = len(top_channels)
-                    
-                    st.info(f"🎯 Filtered by size: {before_count} → {after_count} channels ({lower:,}-{upper:,} subs)")
+                    st.info(f"🚫 Excluded seed channel from results ({excluded_count} removed)")           
                 
                 if top_channels.empty:
                     st.error("No channels in the similar size range. Try disabling the size filter.")
@@ -910,9 +896,13 @@ def run_search(
 
         # Choose display columns
         if 'similarity_score' in top_channels.columns:
-            display_columns = ['channel_title', 'similarity_score', 'match_reasons', 'subscribers', 'country', 'engagement_rate']
+            # Seed mode: show similarity, relevance, and avg views (remove match_reasons to save space)
+            display_columns = ['channel_title', 'similarity_score', 'relevance_score', 
+                            'avg_views_per_video', 'subscribers', 'country', 'engagement_rate']
         else:
-            display_columns = ['channel_title', 'relevance_score', 'subscribers', 'avg_views_per_video', 'country', 'engagement_rate']
+            # Keyword mode: show relevance and avg views
+            display_columns = ['channel_title', 'relevance_score', 'subscribers', 
+                            'avg_views_per_video', 'country', 'engagement_rate']
 
         # Debug checkpoint
         if st.session_state.get('debug_mode', False):
@@ -955,7 +945,10 @@ def get_channel_id_from_handle(youtube_service, handle):
 
 # --- Gemini AI Integration ---
 def generate_summary(df_results, query):
-    """Formats the data and calls the Gemini API to generate a summary."""
+    """Formats the data and calls the Gemini API to generate a summary.
+    
+    Detects search mode (keywords vs channel-as-seed) and provides appropriate context.
+    """
     try:
         # Track Gemini usage
         if st.session_state.get('debug_mode', False):
@@ -972,20 +965,64 @@ def generate_summary(df_results, query):
         model = get_gemini_model()
 
         top_5_df = df_results.head(5)
+        
+        # Detect search mode by checking for similarity_score column
+        is_seed_based = 'similarity_score' in df_results.columns
+        
         data_string = ""
         for _, row in top_5_df.iterrows():
             data_string += f"- Channel: {row['channel_title']}\n"
             data_string += f"  - Subscribers: {row['subscribers']:,}\n"
             data_string += f"  - Country: {row['country']}\n"
-            data_string += f"  - Relevance Score: {row['relevance_score']}\n"
+            
+            if is_seed_based:
+                # Seed-based mode: show BOTH similarity and relevance
+                similarity_score = row.get('similarity_score', 'N/A')
+                relevance_score = row.get('relevance_score', 'N/A')
+                
+                # Extract match reasons from similarity dict if available
+                if 'similarity' in row and isinstance(row['similarity'], dict):
+                    reasons = row['similarity'].get('match_reasons', [])
+                    reasons_text = ', '.join(reasons[:2]) if reasons else 'See detailed analysis'
+                else:
+                    reasons_text = 'N/A'
+                
+                data_string += f"  - Similarity Score: {similarity_score}/100\n"
+                data_string += f"  - Why Similar: {reasons_text}\n"
+                data_string += f"  - Topic Focus (Relevance): {relevance_score}\n"
+            else:
+                # Keyword mode: show relevance score
+                data_string += f"  - Relevance Score: {row['relevance_score']}\n"
+            
             data_string += f"  - Avg. Engagement Rate: {row['engagement_rate']}\n\n"
 
-        prompt = f"""
-        You are an expert marketing analyst. Provide a concise summary of the top YouTube channels for the query "{query}".
-        Base your analysis ONLY on the data below and highlight 2–3 standout channels and why.
-        Data:
-        {data_string}
-        """
+        # Adjust prompt based on search mode
+        if is_seed_based:
+            seed_name = st.session_state.get('seed_profile', {}).get('channel_name', 'the seed channel')
+            prompt = f"""
+You are an expert marketing analyst. Provide a concise summary of the top YouTube channels similar to "{seed_name}".
+
+These channels were found using similarity analysis based on content topics, tags, audience size, and engagement patterns.
+
+For each channel, consider:
+- **Similarity Score (0-100)**: Overall match to the seed channel
+- **Topic Focus (Relevance %)**: How focused they are on the auto-generated keywords from the seed
+- **Engagement Rate**: How interactive their audience is
+
+Base your analysis ONLY on the data below and highlight 2–3 standout matches and why they're good fits for collaboration.
+
+Data:
+{data_string}
+"""
+        else:
+            prompt = f"""
+You are an expert marketing analyst. Provide a concise summary of the top YouTube channels for the query "{query}".
+
+Base your analysis ONLY on the data below and highlight 2–3 standout channels and why.
+
+Data:
+{data_string}
+"""
 
         response = model.generate_content(prompt)
         return response.text
@@ -1468,12 +1505,18 @@ if st.session_state.get('seed_profile'):
         st.rerun()
 
 # Keep the results table visible across reruns
-if 'display_df' in st.session_state:
+if 'display_df' in st.session_state:   
     st.dataframe(
         st.session_state['display_df'],
         column_config={
+            "similarity_score": st.column_config.Column(
+                help="How similar this channel is to your seed channel (0-100). Based on shared topics, tags, audience size, engagement patterns, and upload frequency. Higher = better match."
+            ),
             "relevance_score": st.column_config.Column(
                 help="The percentage of a channel's recent videos that contain your search keywords in the title. A higher score means the channel is more focused on your topic."
+            ),
+            "avg_views_per_video": st.column_config.Column(
+                help="Average views per video across the channel's recent uploads. Indicates reach and virality potential."
             ),
             "engagement_rate": st.column_config.Column(
                 help="Calculated as (Likes + Comments) / Views, averaged across a channel's recent videos. This shows how interactive the audience is."

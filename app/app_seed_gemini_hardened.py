@@ -58,19 +58,13 @@ def get_channel_stats_cached(channel_ids_tuple):
 @st.cache_data(ttl=7200)
 def get_video_details_cached(channel_ids_tuple, max_videos=10):
     """
-    Cached wrapper for get_video_details
-    
-    Fetches video details for a set of channels
+    Cached wrapper for get_video_details with smart per-channel caching
     """
+    from smart_cache import get_video_details_smart
+    
     youtube = get_youtube()
     
-    # Reconstruct channel_data format
-    channel_data = [
-        {'channel_id': ch_id, 'uploads_playlist_id': None}
-        for ch_id in channel_ids_tuple
-    ]
-    
-    # We need to fetch uploads playlists first
+    # Get channel stats to get uploads playlist IDs
     stats = get_channel_stats(youtube, list(channel_ids_tuple))
     channel_data_full = []
     
@@ -80,7 +74,8 @@ def get_video_details_cached(channel_ids_tuple, max_videos=10):
             'uploads_playlist_id': stat['uploads_playlist_id']
         })
     
-    return get_video_details(youtube, channel_data_full, max_videos)
+    # Use smart caching (per-channel instead of per-query)
+    return get_video_details_smart(youtube, channel_data_full, max_videos)
 
 
 @st.cache_data(ttl=3600)
@@ -265,12 +260,17 @@ def search_channels_hybrid(query: str, region_code: str, max_videos: int = 150, 
     
     return ranked_channels
 
-def search_channels_multi_term(query: str, region_code: str, max_videos_per_term: int = 150):
+def search_channels_multi_term(
+    query: str,
+    region_code: str,
+    max_videos_per_term: int = 150,
+    max_channels: int = 2,
+):
     """
     Handle comma-separated queries as OR logic.
     Example: "manga, anime" → search both terms, merge results
     
-    Returns: List[dict] with deduplicated channels sorted by relevance
+    Returns: List[dict] with deduplicated channels sorted by relevance, capped by max_channels
     """
     # Split by comma and clean
     terms = [t.strip() for t in query.split(',') if t.strip()]
@@ -313,6 +313,10 @@ def search_channels_multi_term(query: str, region_code: str, max_videos_per_term
             reverse=True
         )
     ]
+    
+    if max_channels is not None:
+        # Limit number of channels returned to control quota usage
+        merged = merged[:max_channels]
     
     return merged
 
@@ -550,6 +554,9 @@ def run_search(
 ):
     """Run the 4-step search + analysis pipeline and render results."""
     
+    # Initialize search log
+    search_log = []
+
     # Reset debug tracking for new search
     search_start_time = None
     if st.session_state.get('debug_mode', False):
@@ -564,7 +571,14 @@ def run_search(
             
             # ✅ TRACK BEFORE calling cached function
             if st.session_state.get('debug_mode', False):
-                debug_tracker.track_api_call('youtube_search')
+                # Track actual number of searches (split by comma)
+                num_terms = len([t for t in final_query.split(',') if t.strip()])
+                # Each term = 3 video searches + 1 channel search = 4 calls
+                # Each video search = 100 units, channel search = 100 units
+                total_units = num_terms * 400
+
+                for _ in range(total_units):
+                    debug_tracker.track_api_call('youtube_search')
             
             initial_channels = search_channels_multi_term_cached(final_query, region_input, max_videos=150)
             
@@ -624,28 +638,31 @@ def run_search(
                 st.error("No channels match your filtering criteria (subscribers, country).")
                 return
             
-            st.info(f"✅ {len(filtered_channels)} channels passed filters (min {min_subs_input:,} subs)")
+            log_msg = f"✅ {len(filtered_channels)} channels passed filters (min {min_subs_input:,} subs)"
+            search_log.append(log_msg)
             
             if st.session_state.get('debug_mode', False) and step_start:
                 st.session_state.debug_data['timings']['filtering'] = time.time() - step_start
 
-       # === STEP 4: Prepare channels for analysis (cap at 80 max) ===
+       # === STEP 4: Prepare channels for analysis (cap at 40 max) ===
         with st.spinner("Step 4/5: Preparing channels for analysis..."):
             step_start = time.time() if st.session_state.get('debug_mode', False) else None
             
             # Sort by subscribers to prioritize established channels
             filtered_sorted = filtered_channels.sort_values('subscribers', ascending=False)
             
-            # Cap at 80 channels to control quota usage
-            channels_to_analyze = filtered_sorted.head(80).copy()
+            # Cap at 40 channels to control quota usage
+            MAX_CHANNELS_TO_ANALYZE = 40 
+            channels_to_analyze = filtered_sorted.head(MAX_CHANNELS_TO_ANALYZE).copy()
             
             channels_analyzed_count = len(channels_to_analyze)
             
             if channels_analyzed_count < len(filtered_channels):
-                st.info(f"📊 Analyzing top {channels_analyzed_count} channels (from {len(filtered_channels)} total)")
+                log_msg = (f"📊 Analyzing top {channels_analyzed_count} channels (from {len(filtered_channels)} total)")
+                search_log.append(log_msg)
             else:
-                st.info(f"📊 Analyzing all {channels_analyzed_count} channels")
-            
+                log_msg =(f"📊 Analyzing all {channels_analyzed_count} channels")
+                search_log.append(log_msg)
             if st.session_state.get('debug_mode', False) and step_start:
                 st.session_state.debug_data['timings']['select_channels'] = time.time() - step_start
 
@@ -717,42 +734,32 @@ def run_search(
             # Fill NaN relevance scores with 0
             final_channels['relevance_score'] = final_channels['relevance_score'].fillna(0)
             
-            # 🎯 CRITICAL FILTER: Keep only channels with relevance ≥ 5%
-            relevant_channels = final_channels[final_channels['relevance_score'] >= 0.05].copy()
-            
-            if relevant_channels.empty:
-                st.warning(f"⚠️ No channels found with relevance ≥ 5% for '{final_query}'. Try broadening your search terms or lowering minimum subscribers.")
-                
-                # Show top 10 channels by subscriber count as fallback
-                st.info("Showing top 10 channels by size (may not be topic-focused):")
-                fallback_channels = final_channels.nlargest(10, 'subscribers')
-                top_channels = fallback_channels.copy()
-            else:
-                # Sort by relevance (primary) then subscribers (secondary)
-                relevant_channels = relevant_channels.sort_values(
-                    by=['relevance_score', 'subscribers'], 
-                    ascending=False
-                )
-                
-                # Add analysis badge
-                relevant_channels['analysis_depth'] = '✓ 10 videos analyzed'
-                
-                top_channels = relevant_channels.copy()
-                
-                # Success message
-                relevant_count = len(relevant_channels)
-                st.success(f"✅ Found {relevant_count} relevant channel{'s' if relevant_count != 1 else ''} (relevance ≥ 5%)")
+            # Sort by relevance (primary) then subscribers (secondary)
+            # No hard filtering - let users see all results ranked by relevance
+            final_channels_sorted = final_channels.sort_values(
+                by=['relevance_score', 'subscribers'], 
+                ascending=False
+            ).copy()
+
+            # Add analysis badge
+            final_channels_sorted['analysis_depth'] = '✓ 10 videos analyzed'
+
+            top_channels = final_channels_sorted.copy()
+
+            # Success message with relevance stats
+            total_count = len(top_channels)
+            high_relevance_count = len(top_channels[top_channels['relevance_score'] >= 0.15])
+
+            log_msg = f"✅ Found {total_count} channels ({high_relevance_count} with high topic focus ≥15%)"
+            search_log.append(log_msg)
             
             if st.session_state.get('debug_mode', False) and step_start:
                 st.session_state.debug_data['timings']['relevance_filtering'] = time.time() - step_start
 
-        # Debug checkpoint
-        if st.session_state.get('debug_mode', False):
-            if not relevant_channels.empty:
-                avg_relevance = relevant_channels['relevance_score'].mean()
-                st.write(f"✓ Filtered to {len(relevant_channels)} channels (avg relevance: {avg_relevance:.1%})")
-            else:
-                st.write(f"✓ No channels passed 5% threshold (showing fallback)")
+            # Debug checkpoint
+            if st.session_state.get('debug_mode', False):
+                avg_relevance = top_channels['relevance_score'].mean()
+                st.write(f"✓ Showing {len(top_channels)} channels (avg relevance: {avg_relevance:.1%}, {high_relevance_count} with ≥15%)")
 
         # === SIMILARITY RANKING (if using seed) ===
         if 'seed_profile' in st.session_state:
@@ -764,23 +771,20 @@ def run_search(
                 
                 excluded_count = before_exclusion - len(top_channels)
                 if excluded_count > 0:
-                    st.info(f"🚫 Excluded seed channel from results ({excluded_count} removed)")           
+                    log_msg = (f"🚫 Excluded seed channel from results ({excluded_count} removed)") 
+                    search_log.append(log_msg)          
                 
                 if top_channels.empty:
                     st.error("No channels in the similar size range. Try disabling the size filter.")
                     return
                 else:
-                    st.info("📥 Fetching additional data for similarity analysis...")
-                    
-                    enriched_data = get_video_details(
-                        youtube,
-                        top_channels.to_dict('records'),
-                        max_videos_per_channel=10
-                    )
-                    
-                    if enriched_data:
-                        df_enriched = pd.DataFrame(enriched_data)
+                        log_msg = ("🎯 Preparing data for similarity analysis...")
+                        search_log.append(log_msg)
                         
+                        # ✅ REUSE video data we already fetched!
+                        # df_videos already has 10 videos from all channels (line 691)
+                        
+                        # Extract tags from existing df_videos
                         def flatten_tags(tag_series):
                             all_tags = []
                             for tags in tag_series:
@@ -790,16 +794,20 @@ def run_search(
                                     all_tags.append(tags)
                             unique_tags = list(set(t.lower().strip() for t in all_tags if t))
                             return unique_tags
-
+                        
+                        # Filter df_videos to only top_channels
+                        top_channel_ids = set(top_channels['channel_id'])
+                        df_videos_filtered = df_videos[df_videos['channel_id'].isin(top_channel_ids)]
+                        
                         channel_tags = (
-                            df_enriched.groupby('channel_id')['video_tags']
+                            df_videos_filtered.groupby('channel_id')['video_tags']
                             .apply(flatten_tags)
                             .reset_index()
                             .rename(columns={'video_tags': 'tags'})
                         )
-
+                        
                         channel_keywords = (
-                            df_enriched.groupby('channel_id')['video_title']
+                            df_videos_filtered.groupby('channel_id')['video_title']
                             .apply(lambda x: list(x))
                             .reset_index()
                             .rename(columns={'video_title': 'recent_titles'})
@@ -828,7 +836,8 @@ def run_search(
                         
                         top_channels['keywords'] = top_channels['recent_titles'].apply(extract_keywords_from_titles)
                         
-                        st.info("🎯 Ranking channels by similarity...")
+                        log_msg = ("🎯 Ranking channels by similarity...")
+                        search_log.append(log_msg)
                         
                         candidates = top_channels.to_dict('records')
                         for candidate in candidates:
@@ -857,7 +866,8 @@ def run_search(
                         
                         st.success(f"✅ Similarity ranking complete! Top match: {top_channels.iloc[0]['channel_title']} ({top_channels.iloc[0]['similarity_score']:.1f}/100)")
         
-        st.info("💡 Results include channels whose content matches your search topics, not just their names.")
+        log_msg = ("💡 Results include channels whose content matches your search topics, not just their names.")
+        search_log.append(log_msg)
 
         # === AI SUMMARY ===
         if GEMINI_API_KEY:
@@ -911,6 +921,30 @@ def run_search(
 
         # STORE IN SESSION STATE FOR DISPLAY
         st.session_state['display_df'] = top_channels[display_columns].copy()
+
+                # STORE IN SESSION STATE FOR DISPLAY
+        st.session_state['display_df'] = top_channels[display_columns].copy()
+
+        # Store column explanations for later display
+        if 'similarity_score' in display_columns:
+            st.session_state['column_explanations'] = {
+                "channel_title": "Name of the YouTube channel",
+                "similarity_score": "Overall similarity to your seed channel (0-100). Based on shared topics, tags, audience size, engagement patterns, and upload frequency. Higher = better match.",
+                "relevance_score": "Percentage of recent videos containing your search keywords in titles/descriptions. Indicates topic focus.",
+                "avg_views_per_video": "Average views per video across recent uploads. Shows reach and content virality.",
+                "subscribers": "Total subscriber count. Indicates channel size and reach.",
+                "country": "Country where the channel is registered (from YouTube's data).",
+                "engagement_rate": "(Likes + Comments) / Views, averaged across recent videos. Shows audience interactivity."
+            }
+        else:
+            st.session_state['column_explanations'] = {
+                "channel_title": "Name of the YouTube channel",
+                "relevance_score": "Percentage of recent videos containing your search keywords in titles/descriptions. Indicates topic focus.",
+                "subscribers": "Total subscriber count. Indicates channel size and reach.",
+                "avg_views_per_video": "Average views per video across recent uploads. Shows reach and content virality.",
+                "country": "Country where the channel is registered (from YouTube's data).",
+                "engagement_rate": "(Likes + Comments) / Views, averaged across recent videos. Shows audience interactivity."
+            }
         
         # Debug checkpoint
         if st.session_state.get('debug_mode', False):
@@ -926,6 +960,12 @@ def run_search(
                     st.session_state['top_channels_full'].to_dict('records')
                 )
     
+        # Display search log in collapsible section
+        if search_log:
+            with st.expander("📋 Search Process Log", expanded=False):
+                for msg in search_log:
+                    st.markdown(f"- {msg}")
+
     except Exception as e:  # ← ERROR HANDLER
         st.error(f"❌ Error in run_search: {type(e).__name__}: {e}")
         import traceback
@@ -935,9 +975,8 @@ def run_search(
         if st.session_state.get('debug_mode', False):
             st.write("### Debug Info at Failure:")
             st.write(f"- Session state keys: {list(st.session_state.keys())}")
-            st.write(f"- Debug data: {st.session_state.get('debug_data', {})}")
-      
-        
+            st.write(f"- Debug data: {st.session_state.get('debug_data', {})}")   
+
 # --- Function to resolve a channel handle (@username) to an ID ---
 def get_channel_id_from_handle(youtube_service, handle):
     """Deprecated: use resolve_channel_id() instead."""
@@ -1243,6 +1282,11 @@ with st.form("search_form"):
         st.info("💡 Enter the full URL of a YouTube channel to find similar creators.")
         seed_url_input = st.text_input("YouTube Channel URL (the 'seed')", "https://www.youtube.com/@YourFavoriteChannel")
         query_input = ""  # keep defined
+
+        # Set defaults for advanced options (will be shown in Search Options expander later)
+        target_language_code = "auto"
+        ignore_words_input = ""
+        
         with st.expander("How does Channel-as-Seed work?"):
             st.markdown("""
                 This method discovers new channels based on a single example channel you provide.
@@ -1250,33 +1294,11 @@ with st.form("search_form"):
                 2.  **Learn:** It extracts the most common topics and keywords from that channel's video titles and tags.
                 3.  **Discover:** It then uses those learned keywords to launch a new, highly specific search to find other channels with similar content.
             """)
+        
+        # Initialize defaults for seed-specific options (will be shown in Search Options later)
+        target_language_code = "auto"
+        ignore_words_input = ""
 
-        # Output language (post-translation) selector
-        output_lang_label = st.selectbox(
-            "Translate topics into",
-            [
-                "Original (auto)",
-                "English",
-                "Español",
-                "Português",
-                "Français",
-                "Deutsch",
-            ],
-            help="Extraction stays in the seed's original language; this only affects the final topic phrasing.")
-        _lang_map = {
-            "Original (auto)": "auto",
-            "English": "en",
-            "Español": "es",
-            "Português": "pt",
-            "Français": "fr",
-            "Deutsch": "de",
-        }
-        target_language_code = _lang_map.get(output_lang_label, "auto")
-        ignore_words_input = st.text_input(
-            "Ignore words (comma-separated)",
-            value="",
-            help="Words to always ignore in topic extraction (e.g., brand names)."
-        )
 
     country_options = COUNTRY_OPTIONS_BASE.copy()
     country_options.sort()
@@ -1435,25 +1457,30 @@ if st.session_state.get('seed_profile'):
     with col3:
         st.metric("Engagement Rate", f"{profile['avg_engagement_rate']:.2%}")
     
-    # Show extracted topics
-    st.subheader("📌 Primary Topics")
-    if profile['primary_keywords']:
-        st.write("**Multi-word phrases:**")
-        st.write(", ".join(profile['primary_keywords']))
-    else:
-        st.info("No multi-word topics found")
-    
-    if profile['secondary_keywords']:
-        st.write("**Single words:**")
-        st.write(", ".join(profile['secondary_keywords'][:8]))
-    
-    # Show common tags
-    st.subheader("🏷️ Most Common Tags")
-    if profile['common_tags']:
-        tag_display = profile['common_tags'][:12]
-        st.write(", ".join(tag_display))
-    else:
-        st.info("No tags found in recent videos")
+    # Show extracted topics with clear distinction
+    st.subheader("📌 Content Analysis")
+
+    col_topics, col_tags = st.columns(2)
+
+    with col_topics:
+        st.markdown("**💬 Key Phrases** *(from video titles)*")
+        if profile['primary_keywords']:
+            phrases_display = ", ".join(f'"{phrase}"' for phrase in profile['primary_keywords'][:5])
+            st.markdown(f"<div style='padding: 10px; background-color: rgba(59, 130, 246, 0.1); border-radius: 6px; border-left: 3px solid #3b82f6;'>{phrases_display}</div>", unsafe_allow_html=True)
+        else:
+            st.info("No multi-word phrases extracted")
+        
+        # Show single keywords too
+        if profile['secondary_keywords']:
+            st.caption("Single keywords: " + ", ".join(profile['secondary_keywords'][:8]))
+
+    with col_tags:
+        st.markdown("**🏷️ Creator Tags** *(used by the channel)*")
+        if profile['common_tags']:
+            tags_display = ", ".join(f"#{tag}" for tag in profile['common_tags'][:12])
+            st.markdown(f"<div style='padding: 10px; background-color: rgba(16, 185, 129, 0.1); border-radius: 6px; border-left: 3px solid #10b981;'>{tags_display}</div>", unsafe_allow_html=True)
+        else:
+            st.info("No tags found in recent videos")
     
     # Show AI summary if available
     if profile.get('description_summary'):
@@ -1462,25 +1489,51 @@ if st.session_state.get('seed_profile'):
     
     # Search options
     st.subheader("🔍 Search Options")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        use_gemini_ranking = st.checkbox(
-            "Use AI-enhanced ranking",
-            value=True,
-            help="Let Gemini analyze the top 10 matches for better accuracy (slower)"
-        )
-        st.session_state['use_gemini_ranking'] = use_gemini_ranking
-    
-    with col2:
-        filter_by_size = st.checkbox(
-            "Only similar-sized channels",
-            value=True,
-            help="Filter results to channels with ±50% subscriber count"
-        )
-        st.session_state['filter_by_size'] = filter_by_size
-    
+
+    # Main option (AI-enhanced ranking)
+    use_gemini_ranking = st.checkbox(
+        "✨ Use AI-enhanced ranking",
+        value=True,
+        help="Let Gemini analyze the top 10 matches for better accuracy (slower but more precise)"
+    )
+    st.session_state['use_gemini_ranking'] = use_gemini_ranking
+
+    # Advanced options (moved from search method section)
+    with st.expander("⚙️ Advanced Analysis Options"):
+        st.markdown("*Fine-tune how the seed channel is analyzed*")
+        
+        col_adv1, col_adv2 = st.columns(2)
+        
+        with col_adv1:
+            output_lang_label = st.selectbox(
+                "Translate topics into",
+                [
+                    "Original (auto)",
+                    "English",
+                    "Español",
+                    "Português",
+                    "Français",
+                    "Deutsch",
+                ],
+                help="The seed analysis stays in the original language, but final topic keywords can be translated for broader search results."
+            )
+            _lang_map = {
+                "Original (auto)": "auto",
+                "English": "en",
+                "Español": "es",
+                "Português": "pt",
+                "Français": "fr",
+                "Deutsch": "de",
+            }
+            target_language_code = _lang_map.get(output_lang_label, "auto")
+        
+        with col_adv2:
+            ignore_words_input = st.text_input(
+                "Ignore words (comma-separated)",
+                value="",
+                help="Words to exclude from topic extraction (e.g., brand names, common filler words). Useful for cleaning up noisy results."
+            )
+        
     # Build search query from profile
     search_terms = (
         profile['primary_keywords'][:3] +  # Top 3 phrases
@@ -1493,10 +1546,30 @@ if st.session_state.get('seed_profile'):
         for term in search_terms
     ]
     
-    built_query = ", ".join(quoted_terms[:6])  # Max 6 terms
-    
-    st.write("**Generated search query:**")
-    st.code(built_query)
+    default_query = ", ".join(quoted_terms[:6])
+
+    # Initialize session state for editable query
+    if 'editable_seed_query' not in st.session_state:
+        st.session_state['editable_seed_query'] = default_query
+
+    col_query, col_reset = st.columns([4, 1])
+
+    with col_query:
+        built_query = st.text_area(
+            "**Generated search query** (editable)",
+            value=st.session_state['editable_seed_query'],
+            height=80,
+            help="Modify this query to refine your search. Use comma-separated terms. Multi-word phrases are automatically quoted.",
+            key="query_editor"
+        )
+        st.session_state['editable_seed_query'] = built_query
+
+    with col_reset:
+        st.write("")  # Spacer for alignment
+        st.write("")  # Spacer for alignment
+        if st.button("🔄 Reset", help="Reset to AI-generated default", key="reset_query"):
+            st.session_state['editable_seed_query'] = default_query
+            st.rerun()
     
     # Main search button
     if st.button("🚀 Find Similar Channels", type="primary", key="btn_find_similar"):
@@ -1505,7 +1578,9 @@ if st.session_state.get('seed_profile'):
         st.rerun()
 
 # Keep the results table visible across reruns
-if 'display_df' in st.session_state:   
+if 'display_df' in st.session_state:
+    st.subheader("📊 Search Results")
+    
     st.dataframe(
         st.session_state['display_df'],
         column_config={
@@ -1521,8 +1596,25 @@ if 'display_df' in st.session_state:
             "engagement_rate": st.column_config.Column(
                 help="Calculated as (Likes + Comments) / Views, averaged across a channel's recent videos. This shows how interactive the audience is."
             ),
-        }
+        },
+        use_container_width=True
     )
+    
+    # Add explanations below table
+    with st.expander("📖 Column Definitions", expanded=False):
+        if 'column_explanations' in st.session_state:
+            explanations = st.session_state['column_explanations']
+            
+            for col_key, col_name in [
+                ("similarity_score", "**Similarity Score**"),
+                ("relevance_score", "**Relevance Score**"),
+                ("avg_views_per_video", "**Avg Views per Video**"),
+                ("subscribers", "**Subscribers**"),
+                ("country", "**Country**"),
+                ("engagement_rate", "**Engagement Rate**")
+            ]:
+                if col_key in explanations:
+                    st.markdown(f"{col_name}: {explanations[col_key]}")
 # ============================================================================
 # === ENHANCED MATCH EXPLANATIONS ===
 # ============================================================================
@@ -1532,121 +1624,168 @@ if 'similarity_score' in st.session_state.get('display_df', pd.DataFrame()).colu
     if 'top_channels_full' not in st.session_state:
         st.info("Run a seed-based search to see detailed analysis")
     else:
-        # Use a unique container to prevent duplicate keys
-        with st.container():
-            st.subheader("🔍 Detailed Match Analysis")
-            
-            top_channels_data = st.session_state['top_channels_full']
-            channel_names = top_channels_data['channel_title'].tolist()[:10]
-            
-            # Create unique key based on session state
-            analysis_key = f"channel_analysis_{id(st.session_state.get('seed_profile', {}))}"
-            
-            selected_channel = st.selectbox(
-                "Select a channel to see detailed similarity analysis:",
-                options=channel_names,
-                key=analysis_key  # ← Unique key
-            )
+        st.header("🔍 Detailed Match Analysis")
+        st.markdown("*Deep dive into why channels match your seed*")
         
-        if selected_channel:
-            # Find the full row
-            channel_row = top_channels_data[
-                top_channels_data['channel_title'] == selected_channel
-            ].iloc[0]
-            
-            # Generate detailed explanation
-            explanation = similarity_engine.generate_match_explanation(
-                channel_row.to_dict(),
-                st.session_state['seed_profile'],
-                detailed=True
-            )
-            
-            # Display in an attractive format
-            st.markdown(explanation)
-            
-            # Show tags comparison
-            with st.expander("📊 Tag Comparison"):
-                candidate_tags = set(channel_row.get('tags', []))
-                seed_tags = set(st.session_state['seed_profile']['common_tags'])
-                
-                common = candidate_tags & seed_tags
-                candidate_only = candidate_tags - seed_tags
-                seed_only = seed_tags - candidate_tags
-                
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.write("**Common Tags:**")
-                    if common:
-                        st.write(", ".join(list(common)[:15]))
-                    else:
-                        st.write("_(none)_")
-                
-                with col2:
-                    st.write(f"**{selected_channel} Only:**")
-                    if candidate_only:
-                        st.write(", ".join(list(candidate_only)[:10]))
-                    else:
-                        st.write("_(none)_")
-                
-                with col3:
-                    st.write(f"**Seed Only:**")
-                    if seed_only:
-                        st.write(", ".join(list(seed_only)[:10]))
-                    else:
-                        st.write("_(none)_")
-    
-    selected_channel = st.selectbox(
-        "Select a channel to see detailed similarity analysis:",
-        options=channel_names,
-        key="selected_channel_analysis"
-    )
-    
-    if selected_channel:
-        # Find the full row
-        channel_row = top_channels_data[top_channels_data['channel_title'] == selected_channel].iloc[0]
+        top_channels_data = st.session_state['top_channels_full']
+        channel_names = top_channels_data['channel_title'].tolist()[:10]
         
-        # Generate detailed explanation
-        explanation = similarity_engine.generate_match_explanation(
-            channel_row.to_dict(),
-            st.session_state['seed_profile'],
-            detailed=True
+        # Comparison toggle
+        enable_comparison = st.checkbox(
+            "🆚 Compare two candidates side-by-side",
+            value=False,
+            help="Compare match quality between two discovered channels",
+            key="enable_comparison"
         )
         
-        # Display in an attractive format
-        st.markdown(explanation)
+        if not enable_comparison:
+            # SINGLE CHANNEL VIEW
+            with st.container():
+                analysis_key = f"channel_analysis_{id(st.session_state.get('seed_profile', {}))}"
+                
+                selected_channel = st.selectbox(
+                    "Select a channel to analyze:",
+                    options=channel_names,
+                    key=analysis_key
+                )
+                
+                if selected_channel:
+                    channel_row = top_channels_data[
+                        top_channels_data['channel_title'] == selected_channel
+                    ].iloc[0]
+                    
+                    # Generate detailed explanation (includes header and score)
+                    explanation = similarity_engine.generate_match_explanation(
+                        channel_row.to_dict(),
+                        st.session_state['seed_profile'],
+                        detailed=True
+                    )
+                    
+                    st.markdown(explanation)
+                    
+                    # Show tags comparison (moved right after explanation)
+                    with st.expander("📊 Tag Comparison"):
+                        candidate_tags = set(channel_row.get('tags', []))
+                        seed_tags = set(st.session_state['seed_profile']['common_tags'])
+                        
+                        common = candidate_tags & seed_tags
+                        candidate_only = candidate_tags - seed_tags
+                        seed_only = seed_tags - candidate_tags
+                        
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            st.markdown("**✅ Common Tags**")
+                            if common:
+                                st.write(", ".join(f"#{tag}" for tag in list(common)[:15]))
+                            else:
+                                st.caption("_(none)_")
+                        
+                        with col2:
+                            st.markdown(f"**🔵 {selected_channel} Only**")
+                            if candidate_only:
+                                st.write(", ".join(f"#{tag}" for tag in list(candidate_only)[:10]))
+                            else:
+                                st.caption("_(none)_")
+                        
+                        with col3:
+                            st.markdown(f"**🟢 Seed Only**")
+                            if seed_only:
+                                st.write(", ".join(f"#{tag}" for tag in list(seed_only)[:10]))
+                            else:
+                                st.caption("_(none)_")
         
-        # Show tags comparison
-        with st.expander("📊 Tag Comparison"):
-            candidate_tags = set(channel_row.get('tags', []))
-            seed_tags = set(st.session_state['seed_profile']['common_tags'])
+        else:
+            # COMPARISON VIEW
+            st.markdown("---")
+            col_a, col_b = st.columns(2)
             
-            common = candidate_tags & seed_tags
-            candidate_only = candidate_tags - seed_tags
-            seed_only = seed_tags - candidate_tags
+            with col_a:
+                channel_a = st.selectbox(
+                    "Channel A:",
+                    options=channel_names,
+                    key="comparison_channel_a"
+                )
             
-            col1, col2, col3 = st.columns(3)
+            with col_b:
+                channel_b = st.selectbox(
+                    "Channel B:",
+                    options=[ch for ch in channel_names if ch != channel_a],
+                    key="comparison_channel_b"
+                )
             
-            with col1:
-                st.write("**Common Tags:**")
-                if common:
-                    st.write(", ".join(list(common)[:15]))
+            if channel_a and channel_b:
+                row_a = top_channels_data[top_channels_data['channel_title'] == channel_a].iloc[0]
+                row_b = top_channels_data[top_channels_data['channel_title'] == channel_b].iloc[0]
+                
+                sim_a = row_a.get('similarity', {})
+                sim_b = row_b.get('similarity', {})
+                
+                # Side-by-side scores
+                col_score_a, col_score_b = st.columns(2)
+                
+                with col_score_a:
+                    st.markdown(f"### 📊 {channel_a}")
+                    st.metric("Similarity Score", f"{sim_a.get('total_score', 0):.1f}/100")
+                    
+                    st.markdown("**Why it matches:**")
+                    for reason in sim_a.get('match_reasons', [])[:3]:
+                        st.markdown(f"- {reason}")
+                
+                with col_score_b:
+                    st.markdown(f"### 📊 {channel_b}")
+                    st.metric("Similarity Score", f"{sim_b.get('total_score', 0):.1f}/100")
+                    
+                    st.markdown("**Why it matches:**")
+                    for reason in sim_b.get('match_reasons', [])[:3]:
+                        st.markdown(f"- {reason}")
+                
+                # Comparative insights
+                st.markdown("---")
+                st.markdown("### 🆚 Comparison Insights")
+                
+                score_diff = abs(sim_a.get('total_score', 0) - sim_b.get('total_score', 0))
+                
+                if score_diff < 5:
+                    st.info("💡 **Very close match!** Both channels are equally similar to your seed.")
+                elif sim_a.get('total_score', 0) > sim_b.get('total_score', 0):
+                    st.success(f"💡 **{channel_a}** is a stronger match (+{score_diff:.1f} points)")
                 else:
-                    st.write("_(none)_")
-            
-            with col2:
-                st.write(f"**{selected_channel} Only:**")
-                if candidate_only:
-                    st.write(", ".join(list(candidate_only)[:10]))
-                else:
-                    st.write("_(none)_")
-            
-            with col3:
-                st.write(f"**Seed Only:**")
-                if seed_only:
-                    st.write(", ".join(list(seed_only)[:10]))
-                else:
-                    st.write("_(none)_")
+                    st.success(f"💡 **{channel_b}** is a stronger match (+{score_diff:.1f} points)")
+                
+                # Tag overlap comparison
+                with st.expander("🏷️ Tag Overlap Comparison"):
+                    tags_a = set(row_a.get('tags', []))
+                    tags_b = set(row_b.get('tags', []))
+                    seed_tags = set(st.session_state['seed_profile']['common_tags'])
+                    
+                    common_both = tags_a & tags_b & seed_tags
+                    only_a = tags_a & seed_tags - tags_b
+                    only_b = tags_b & seed_tags - tags_a
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.markdown("**✅ Both Share**")
+                        if common_both:
+                            st.write(", ".join(f"#{t}" for t in list(common_both)[:10]))
+                        else:
+                            st.caption("_(none)_")
+                    
+                    with col2:
+                        st.markdown(f"**🔵 Only {channel_a}**")
+                        if only_a:
+                            st.write(", ".join(f"#{t}" for t in list(only_a)[:8]))
+                        else:
+                            st.caption("_(none)_")
+                    
+                    with col3:
+                        st.markdown(f"**🟠 Only {channel_b}**")
+                        if only_b:
+                            st.write(", ".join(f"#{t}" for t in list(only_b)[:8]))
+                        else:
+                            st.caption("_(none)_")
+
 
 # === Global Outreach Section (works across reruns) ===
 if 'top_channels_for_outreach' in st.session_state and not st.session_state['top_channels_for_outreach'].empty:

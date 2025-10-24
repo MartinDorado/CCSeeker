@@ -41,6 +41,82 @@ import math
 import time
 
 # ============================================================================
+# Helper functions
+# ============================================================================
+
+def validate_and_truncate_query(query: str, max_terms: int = 2) -> tuple[str, bool]:
+    """
+    Validate and auto-truncate search query to max_terms.
+    
+    Args:
+        query: Comma-separated search terms
+        max_terms: Maximum number of terms allowed (default: 2)
+    
+    Returns:
+        tuple: (truncated_query, was_truncated)
+    
+    Examples:
+        >>> validate_and_truncate_query("manga, anime", 2)
+        ("manga, anime", False)
+        
+        >>> validate_and_truncate_query("manga, anime, gaming, tech", 2)
+        ("manga, anime", True)
+    """
+    if not query or not query.strip():
+        return "", False
+    
+    # Split by comma and clean whitespace
+    terms = [t.strip() for t in query.split(',') if t.strip()]
+    
+    # Check if within limit
+    if len(terms) <= max_terms:
+        return query, False
+    
+    # Truncate to first max_terms
+    truncated = terms[:max_terms]
+    truncated_query = ", ".join(truncated)
+    
+    return truncated_query, True
+
+
+def render_term_counter(current_query: str, max_terms: int = 2) -> None:
+    """
+    Render a visual term counter showing X/2 terms used.
+    
+    Args:
+        current_query: Current search query string
+        max_terms: Maximum allowed terms
+    """
+    if not current_query:
+        return
+    
+    terms = [t.strip() for t in current_query.split(',') if t.strip()]
+    term_count = len(terms)
+    
+    # Color coding: green if OK, red if exceeding
+    if term_count <= max_terms:
+        color = "#10b981"  # Green
+        icon = "✓"
+        status = "OK"
+    else:
+        color = "#ef4444"  # Red
+        icon = "⚠"
+        status = "EXCEEDS LIMIT"
+    
+    st.markdown(
+        f"""
+        <div style='padding: 6px 12px; background-color: rgba(0,0,0,0.05); 
+                    border-radius: 4px; border-left: 3px solid {color}; 
+                    display: inline-block; margin-bottom: 8px;'>
+            <span style='color: {color}; font-weight: 600;'>{icon} {term_count}/{max_terms} terms</span>
+            <span style='color: #666; font-size: 0.85em; margin-left: 8px;'>({status})</span>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+# ============================================================================
 # CACHING LAYER - Reduces API calls by 80%
 # ============================================================================
 
@@ -278,6 +354,14 @@ def search_channels_multi_term(
     if len(terms) == 0:
         return []
     
+    # ✅ SAFETY NET: Enforce 2-term maximum
+    if len(terms) > 2:
+        st.warning(
+            f"⚠ Search limited to 2 terms (received {len(terms)}). "
+            f"Using: **{', '.join(terms[:2])}**"
+        )
+        terms = terms[:2]
+
     if len(terms) == 1:
         # Single term: use hybrid search directly
         return search_channels_hybrid(terms[0], region_code, max_videos_per_term)
@@ -564,7 +648,27 @@ def run_search(
         search_start_time = time.time()
     
     try:
-        
+        # === STEP 1: Validate Query & Search for channels ===
+        # Apply 2-term limit with auto-truncation
+        final_query_validated, was_truncated = validate_and_truncate_query(final_query, max_terms=2)
+
+        # Show user-friendly warning if query was truncated
+        if was_truncated:
+            original_terms = [t.strip() for t in final_query.split(',') if t.strip()]
+            kept_terms = original_terms[:2]
+            removed_terms = original_terms[2:]
+            
+            st.warning(
+                f"⚠ **Query automatically adjusted for optimal results**\n\n"
+                f"You entered **{len(original_terms)} terms**, but searches are limited to **2 terms** "
+                f"to optimize API usage and result quality.\n\n"
+                f"✅ **Searching with**: {', '.join(kept_terms)}\n\n"
+                f"❌ **Removed**: {', '.join(removed_terms)}\n\n"
+                f"💡 *Tip: Use the most specific 2 terms for best results*"
+            )
+            
+            # Update final_query for the rest of the function
+            final_query = final_query_validated
         # === STEP 1: Search for channels ===
         with st.spinner("Step 1/4: Searching for channels..."):
             step_start = time.time() if st.session_state.get('debug_mode', False) else None
@@ -1272,11 +1376,17 @@ with st.form("search_form"):
             "Search Keywords",
             "manga, anime",
             help=(
-                "Enter topics separated by commas to find channels discussing any of them. "
-                "Examples: 'manga, anime' or 'cooking, recipes, food'. "
+                "⚠ Enter up to 2 topics separated by commas. "
+                "Examples: 'manga, anime' or 'cooking, recipes'. "
+                "If you enter more than 2 terms, only the first 2 will be used. "
                 "Matches channel content (videos, descriptions) not just channel names."
             ),
+            key="keywords_input"
         )
+        
+        # Visual term counter
+        if query_input:
+            render_term_counter(query_input, max_terms=2)
         seed_url_input = ""  # keep defined
     else:
         st.info("💡 Enter the full URL of a YouTube channel to find similar creators.")
@@ -1535,18 +1645,20 @@ if st.session_state.get('seed_profile'):
             )
         
     # Build search query from profile
-    search_terms = (
-        profile['primary_keywords'][:3] +  # Top 3 phrases
-        profile['common_tags'][:5]         # Top 5 tags
-    )
-    
+    search_terms = profile['primary_keywords'][:2]  # Top 2 phrases
+        
+    # Fallback: If channel has fewer than 2 primary keywords, pad with common tags
+    if len(search_terms) < 2:
+        remaining_slots = 2 - len(search_terms)
+        search_terms += profile['common_tags'][:remaining_slots]
+
     # Quote multi-word terms
     quoted_terms = [
         f'"{term}"' if ' ' in term else term 
         for term in search_terms
     ]
     
-    default_query = ", ".join(quoted_terms[:6])
+    default_query = ", ".join(quoted_terms[:2])
 
     # Initialize session state for editable query
     if 'editable_seed_query' not in st.session_state:
@@ -1559,10 +1671,18 @@ if st.session_state.get('seed_profile'):
             "**Generated search query** (editable)",
             value=st.session_state['editable_seed_query'],
             height=80,
-            help="Modify this query to refine your search. Use comma-separated terms. Multi-word phrases are automatically quoted.",
+            help=(
+                "Modify this query to refine your search. "
+                "⚠ Maximum 2 terms allowed - if you add more, only the first 2 will be used. "
+                "Separate terms with commas. Multi-word phrases are automatically quoted."
+            ),
             key="query_editor"
         )
         st.session_state['editable_seed_query'] = built_query
+    
+    # Visual term counter below the text area
+    if built_query:
+        render_term_counter(built_query, max_terms=2)
 
     with col_reset:
         st.write("")  # Spacer for alignment

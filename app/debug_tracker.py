@@ -436,16 +436,31 @@ def render_debug_panel():
     # API USAGE SECTION
     with st.sidebar.expander("📊 API Call Summary", expanded=True):
         st.markdown("**This Search:**")
-        
-        st.caption("YouTube API")
-        st.text(f"  🔎 Search: {data.get('youtube_search_calls', 0)}")
-        st.text(f"  📺 Channels: {data.get('youtube_channel_calls', 0)}")
-        st.text(f"  🎬 Videos: {data.get('youtube_video_calls', 0)}")
-        
-        st.caption("Gemini API")
-        st.text(f"  📝 Summary: {data.get('gemini_summary_calls', 0)}")
-        st.text(f"  ✉️  Outreach: {data.get('gemini_outreach_calls', 0)}")
-        st.text(f"  🎯 Similarity: {data.get('gemini_similarity_calls', 0)}")
+
+        # Calculate totals
+        youtube_total = (
+            data.get('youtube_search_calls', 0) +
+            data.get('youtube_channel_calls', 0) +
+            data.get('youtube_video_calls', 0)
+        )
+
+        gemini_total = (
+            data.get('gemini_summary_calls', 0) +
+            data.get('gemini_outreach_calls', 0) +
+            data.get('gemini_similarity_calls', 0)
+        )
+
+        st.caption("YouTube API Calls")
+        st.text(f"  Total: {youtube_total}")
+        st.text(f"  ├─ 🔎 Search: {data.get('youtube_search_calls', 0)}")
+        st.text(f"  ├─ 📺 Channels: {data.get('youtube_channel_calls', 0)}")
+        st.text(f"  └─ 🎬 Videos: {data.get('youtube_video_calls', 0)}")
+
+        st.caption("Gemini API Calls")
+        st.text(f"  Total: {gemini_total}")
+        st.text(f"  ├─ 📝 Summary: {data.get('gemini_summary_calls', 0)}")
+        st.text(f"  ├─ ✉️  Outreach: {data.get('gemini_outreach_calls', 0)}")
+        st.text(f"  └─ 🎯 Similarity: {data.get('gemini_similarity_calls', 0)}")
         
         this_search_youtube = calculate_youtube_quota_used()
         this_search_gemini = calculate_gemini_cost_estimate()

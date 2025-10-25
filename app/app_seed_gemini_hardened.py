@@ -532,6 +532,7 @@ def get_video_details(youtube_service, channel_data, max_videos_per_channel):
                     pageToken=next_page_token
                 )
                 response = request.execute()
+                debug_tracker.track_api_call('youtube_playlist')
                 items = response.get("items", [])
                 for it in items:
                     vid = (it.get("snippet", {}).get("resourceId", {}) or {}).get("videoId")
@@ -677,9 +678,9 @@ def run_search(
             if st.session_state.get('debug_mode', False):
                 # Track actual number of searches (split by comma)
                 num_terms = len([t for t in final_query.split(',') if t.strip()])
-                # Each term = 3 video searches + 1 channel search = 4 calls
+                # Each term = 2 video searches + 1 channel search = 3 calls
                 # Each video search = 100 units, channel search = 100 units
-                total_units = num_terms * 400
+                total_units = num_terms * 300
 
                 for _ in range(total_units):
                     debug_tracker.track_api_call('youtube_search')
@@ -753,7 +754,7 @@ def run_search(
             step_start = time.time() if st.session_state.get('debug_mode', False) else None
             
             # Define minimum match score threshold (configurable)
-            MIN_MATCH_SCORE = 15  # Filters out barely-relevant channels
+            MIN_MATCH_SCORE = 10  # Filters out barely-relevant channels
             
             # Filter channels by minimum relevance threshold
             quality_channels = filtered_channels[
@@ -783,8 +784,8 @@ def run_search(
                 ascending=[False, False]  # Both descending
             )
             
-            # Cap at 40 channels to control API quota usage
-            MAX_CHANNELS_TO_ANALYZE = 40
+            # Cap at 50 channels to control API quota usage
+            MAX_CHANNELS_TO_ANALYZE = 50
             channels_to_analyze = filtered_sorted.head(MAX_CHANNELS_TO_ANALYZE).copy()
             
             channels_analyzed_count = len(channels_to_analyze)

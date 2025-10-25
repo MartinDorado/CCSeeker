@@ -155,7 +155,7 @@ def get_video_details_cached(channel_ids_tuple, max_videos=10):
 
 
 @st.cache_data(ttl=3600)
-def search_channels_multi_term_cached(query, region_code, max_videos=150):
+def search_channels_multi_term_cached(query, region_code, max_videos=100):
     """Cached wrapper for search_channels_multi_term"""
     return search_channels_multi_term(query, region_code, max_videos)
 
@@ -230,7 +230,7 @@ def resolve_channel_id(youtube_service, user_input: str):
         return None
 
 @st.cache_data(show_spinner=False, ttl=3600)
-def search_channels_hybrid(query: str, region_code: str, max_videos: int = 150, max_channels: int = 50):
+def search_channels_hybrid(query: str, region_code: str, max_videos: int = 100, max_channels: int = 50):
     """
     Hybrid search: Find channels by their VIDEO content (primary) + channel names (secondary).
     
@@ -339,7 +339,7 @@ def search_channels_hybrid(query: str, region_code: str, max_videos: int = 150, 
 def search_channels_multi_term(
     query: str,
     region_code: str,
-    max_videos_per_term: int = 150,
+    max_videos_per_term: int = 100,
     max_channels: int = 2,
 ):
     """
@@ -684,7 +684,7 @@ def run_search(
                 for _ in range(total_units):
                     debug_tracker.track_api_call('youtube_search')
             
-            initial_channels = search_channels_multi_term_cached(final_query, region_input, max_videos=150)
+            initial_channels = search_channels_multi_term_cached(final_query, region_input, max_videos=100)
             
             if st.session_state.get('debug_mode', False) and step_start:
                 st.session_state.debug_data['timings']['search'] = time.time() - step_start
@@ -753,7 +753,7 @@ def run_search(
             step_start = time.time() if st.session_state.get('debug_mode', False) else None
             
             # Define minimum match score threshold (configurable)
-            MIN_MATCH_SCORE = 30  # Filters out barely-relevant channels
+            MIN_MATCH_SCORE = 15  # Filters out barely-relevant channels
             
             # Filter channels by minimum relevance threshold
             quality_channels = filtered_channels[

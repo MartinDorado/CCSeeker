@@ -4,6 +4,10 @@ smart_cache.py - Per-channel video caching for better hit rates
 import streamlit as st
 from typing import List, Dict, Any
 from googleapiclient.errors import HttpError
+try:
+    from . import debug_tracker
+except ImportError:
+    import debug_tracker
 
 
 class ChannelVideoCache:
@@ -38,6 +42,9 @@ class ChannelVideoCache:
                 playlistId=uploads_playlist_id,
                 maxResults=max_videos
             ).execute()
+
+            # Track API call
+            debug_tracker.track_api_call('youtube_playlist')
             
             video_ids = [
                 item['snippet']['resourceId']['videoId']

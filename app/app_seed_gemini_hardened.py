@@ -752,23 +752,62 @@ def run_search(
         with st.spinner("Step 4/5: Preparing channels for analysis..."):
             step_start = time.time() if st.session_state.get('debug_mode', False) else None
             
-            # Sort by subscribers to prioritize established channels
-            filtered_sorted = filtered_channels.sort_values('subscribers', ascending=False)
+            # Define minimum match score threshold (configurable)
+            MIN_MATCH_SCORE = 30  # Filters out barely-relevant channels
             
-            # Cap at 40 channels to control quota usage
-            MAX_CHANNELS_TO_ANALYZE = 40 
+            # Filter channels by minimum relevance threshold
+            quality_channels = filtered_channels[
+                filtered_channels['match_score'] >= MIN_MATCH_SCORE
+            ].copy()
+            
+            # Fallback: If no channels meet threshold, show all results with warning
+            if quality_channels.empty:
+                st.info(
+                    f"⚠️ No channels found with match_score ≥ {MIN_MATCH_SCORE}. "
+                    f"Showing all {len(filtered_channels)} channels found."
+                )
+                quality_channels = filtered_channels.copy()
+            else:
+                # Show how many channels were filtered out
+                filtered_out_count = len(filtered_channels) - len(quality_channels)
+                if filtered_out_count > 0:
+                    st.info(
+                        f"✨ Quality filter applied: {filtered_out_count} low-relevance channels "
+                        f"(match_score < {MIN_MATCH_SCORE}) excluded from deep analysis"
+                    )
+            
+            # Sort by relevance FIRST (primary), then subscribers (secondary)
+            # This ensures the most relevant channels are prioritized for deep analysis
+            filtered_sorted = quality_channels.sort_values(
+                by=['match_score', 'subscribers'],
+                ascending=[False, False]  # Both descending
+            )
+            
+            # Cap at 40 channels to control API quota usage
+            MAX_CHANNELS_TO_ANALYZE = 40
             channels_to_analyze = filtered_sorted.head(MAX_CHANNELS_TO_ANALYZE).copy()
             
             channels_analyzed_count = len(channels_to_analyze)
             
-            if channels_analyzed_count < len(filtered_channels):
-                log_msg = (f"📊 Analyzing top {channels_analyzed_count} channels (from {len(filtered_channels)} total)")
+            # Enhanced logging with relevance statistics
+            if channels_analyzed_count < len(quality_channels):
+                avg_match = channels_to_analyze['match_score'].mean()
+                min_match = channels_to_analyze['match_score'].min()
+                max_match = channels_to_analyze['match_score'].max()
+                
+                log_msg = (
+                    f"📊 Analyzing top {channels_analyzed_count} channels "
+                    f"(match scores: {min_match:.0f}-{max_match:.0f}, avg: {avg_match:.0f}) "
+                    f"from {len(quality_channels)} quality matches"
+                )
                 search_log.append(log_msg)
             else:
-                log_msg =(f"📊 Analyzing all {channels_analyzed_count} channels")
+                log_msg = (f"📊 Analyzing all {channels_analyzed_count} channels")
                 search_log.append(log_msg)
+            
             if st.session_state.get('debug_mode', False) and step_start:
                 st.session_state.debug_data['timings']['select_channels'] = time.time() - step_start
+                
 
         # === STEP 5: Single-pass deep analysis (10 videos per channel) ===
         with st.spinner(f"Step 5/5: Deep analysis - fetching 10 videos from {channels_analyzed_count} channels..."):

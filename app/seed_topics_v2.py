@@ -15,6 +15,11 @@ try:
 except ImportError:
     genai = None
 
+try:
+    from . import debug_tracker
+except ImportError:
+    import debug_tracker
+
 # ============================================================================
 # LANGUAGE DETECTION & STOPWORDS
 # ============================================================================
@@ -208,7 +213,9 @@ def analyze_seed_channel_v2(
             part="snippet,statistics,contentDetails",
             id=channel_id
         ).execute()
-        
+
+        debug_tracker.track_api_call('youtube_channel')
+
         if not channel_response.get('items'):
             st.error("Channel not found")
             return None
@@ -249,6 +256,8 @@ def analyze_seed_channel_v2(
             maxResults=min(50, max_videos)
         ).execute()
         
+        debug_tracker.track_api_call('youtube_playlist')
+
         video_ids = [
             item['snippet']['resourceId']['videoId']
             for item in playlist_response.get('items', [])
@@ -268,6 +277,8 @@ def analyze_seed_channel_v2(
             part="snippet,statistics",
             id=",".join(video_ids)
         ).execute()
+
+        debug_tracker.track_api_call('youtube_video')
         
         videos = videos_response.get('items', [])
         

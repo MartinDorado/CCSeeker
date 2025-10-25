@@ -161,6 +161,7 @@ def initialize_debug_tracking():
             'youtube_search_calls': 0,
             'youtube_channel_calls': 0,
             'youtube_video_calls': 0,
+            'youtube_playlist_calls': 0,
             'gemini_summary_calls': 0,
             'gemini_outreach_calls': 0,
             'gemini_similarity_calls': 0,
@@ -205,6 +206,7 @@ def reset_debug_tracking():
         'youtube_search_calls': 0,
         'youtube_channel_calls': 0,
         'youtube_video_calls': 0,
+        'youtube_playlist_calls': 0,
         'gemini_summary_calls': 0,
         'gemini_outreach_calls': 0,
         'gemini_similarity_calls': 0,
@@ -241,7 +243,8 @@ def _accumulate_to_daily_quota():
     total_youtube_calls = (
         data.get('youtube_search_calls', 0) +
         data.get('youtube_channel_calls', 0) +
-        data.get('youtube_video_calls', 0)
+        data.get('youtube_video_calls', 0) +
+        data.get('youtube_playlist_calls', 0)
     )
     
     total_gemini_calls = (
@@ -266,7 +269,7 @@ def track_api_call(api_name: str):
     Increment counter for specific API.
     
     Args:
-        api_name: One of 'youtube_search', 'youtube_channel', 'youtube_video',
+        api_name: One of 'youtube_search', 'youtube_channel', 'youtube_video', 'youtube_playlist',
                   'gemini_summary', 'gemini_outreach', 'gemini_similarity'
     
     Example usage:
@@ -387,6 +390,8 @@ def calculate_youtube_quota_used():
     total += data.get('youtube_search_calls', 0) * YOUTUBE_QUOTA_COSTS['search']
     total += data.get('youtube_channel_calls', 0) * YOUTUBE_QUOTA_COSTS['channels']
     total += data.get('youtube_video_calls', 0) * YOUTUBE_QUOTA_COSTS['videos']
+    total += data.get('youtube_playlist_calls', 0) * YOUTUBE_QUOTA_COSTS['playlistItems']
+
     
     return total
 
@@ -441,7 +446,8 @@ def render_debug_panel():
         youtube_total = (
             data.get('youtube_search_calls', 0) +
             data.get('youtube_channel_calls', 0) +
-            data.get('youtube_video_calls', 0)
+            data.get('youtube_video_calls', 0) +
+            data.get('youtube_playlist_calls', 0)
         )
 
         gemini_total = (
@@ -454,6 +460,7 @@ def render_debug_panel():
         st.text(f"  Total: {youtube_total}")
         st.text(f"  ├─ 🔎 Search: {data.get('youtube_search_calls', 0)}")
         st.text(f"  ├─ 📺 Channels: {data.get('youtube_channel_calls', 0)}")
+        st.text(f"  ├─ 📃 Playlists: {data.get('youtube_playlist_calls', 0)}")
         st.text(f"  └─ 🎬 Videos: {data.get('youtube_video_calls', 0)}")
 
         st.caption("Gemini API Calls")
@@ -478,7 +485,8 @@ def render_debug_panel():
         total_youtube_calls = daily.get('youtube_calls', 0) + (
             data.get('youtube_search_calls', 0) +
             data.get('youtube_channel_calls', 0) +
-            data.get('youtube_video_calls', 0)
+            data.get('youtube_video_calls', 0) +
+            data.get('youtube_playlist_calls', 0)
         )
         
         total_gemini_calls = daily.get('gemini_calls', 0) + (

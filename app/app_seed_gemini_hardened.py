@@ -384,7 +384,8 @@ def search_channels_multi_term(
     merged = [
         {
             'channel_id': ch_id,
-            'channel_title': data['title']
+            'channel_title': data['title'],
+            'match_score': data['total_score']  # ✅ Include the match score!
         }
         for ch_id, data in sorted(
             all_channels.items(),
@@ -624,7 +625,7 @@ def run_search(
         search_start_time = time.time()
     
     try:
-        # === STEP 1: Validate Query & Search for channels ===
+        # === STEP 0.5: Validate Query & Search for channels ===
         # Apply 2-term limit with auto-truncation
         final_query_validated, was_truncated = validate_and_truncate_query(final_query, max_terms=2)
 
@@ -671,6 +672,9 @@ def run_search(
         df_initial = pd.DataFrame(initial_channels)
         with st.expander("See raw channels found"):
             st.dataframe(df_initial)
+        
+        log_msg = f"🔍 Found {len(initial_channels)} initial channels from search"
+        search_log.append(log_msg)
 
         # === STEP 2: Fetch channel statistics ===
         with st.spinner("Step 2/4: Fetching channel statistics..."):
@@ -745,11 +749,12 @@ def run_search(
                 # Show how many channels were filtered out
                 filtered_out_count = len(filtered_channels) - len(quality_channels)
                 if filtered_out_count > 0:
-                    st.info(
+                    log_msg = (
                         f"✨ Quality filter applied: {filtered_out_count} low-relevance channels "
                         f"(match_score < {MIN_MATCH_SCORE}) excluded from deep analysis"
                     )
-            
+                    search_log.append(log_msg)
+
             # Sort by relevance FIRST (primary), then subscribers (secondary)
             # This ensures the most relevant channels are prioritized for deep analysis
             filtered_sorted = quality_channels.sort_values(
@@ -837,10 +842,7 @@ def run_search(
                 date_cutoff = pd.Timestamp.now(tz='UTC') - pd.DateOffset(months=months_ago_input)
                 df_full = df_full[df_full['published_at'] >= date_cutoff]
             
-            if df_full.empty:
-                st.error("No channels have uploaded videos in the specified time range.")
-                return
-            
+
             # Calculate average engagement per channel
             avg_engagement = df_full.groupby('channel_id')['engagement_rate'].mean().reset_index()
             
@@ -991,7 +993,7 @@ def run_search(
         st.session_state['last_search_params'] = search_params
         debug_tracker.track_quota_efficiency(search_params)
 
-        # === AI SUMMARY ===
+        # === AI SUMMARY (Generate but don't display yet - will show after results table) ===
         if GEMINI_API_KEY:
             with st.spinner("✨ Generating AI Summary..."):
                 step_start = time.time() if st.session_state.get('debug_mode', False) else None
@@ -1001,15 +1003,17 @@ def run_search(
                     summary_df['relevance_score'] = summary_df['relevance_score'].fillna(0).map('{:.0%}'.format)
                     summary_df['engagement_rate'] = summary_df['engagement_rate'].fillna(0).map('{:.2%}'.format)
                     summary_text = generate_summary(summary_df, final_query)
-                    st.subheader("🤖 AI Generated Summary")
-                    st.markdown(summary_text)
+                    # Store in session state for display after results table
+                    st.session_state['ai_summary'] = summary_text
                 except Exception as e:
-                    st.error(f"Could not generate AI summary: {e}")
+                    st.session_state['ai_summary'] = None
+                    st.session_state['ai_summary_error'] = str(e)
                 
                 if st.session_state.get('debug_mode', False) and step_start:
                     st.session_state.debug_data['timings']['ai_generation'] = time.time() - step_start
         else:
-            st.warning("⚠️ GEMINI_API_KEY not configured. Skipping AI summary.")
+            st.session_state['ai_summary'] = None
+            st.session_state['ai_summary_error'] = "GEMINI_API_KEY not configured"
 
         # === FORMAT AND DISPLAY RESULTS ===
         top_channels['relevance_score'] = top_channels['relevance_score'].fillna(0).map('{:.0%}'.format)
@@ -1044,8 +1048,6 @@ def run_search(
         # STORE IN SESSION STATE FOR DISPLAY
         st.session_state['display_df'] = top_channels[display_columns].copy()
 
-                # STORE IN SESSION STATE FOR DISPLAY
-        st.session_state['display_df'] = top_channels[display_columns].copy()
 
         # Store column explanations for later display
         if 'similarity_score' in display_columns:
@@ -1432,48 +1434,57 @@ with st.form("search_form"):
         target_language_code = "auto"
         ignore_words_input = ""
 
+    # For Keywords mode: show all filters in the form
+    if search_method == "Keywords":
+        country_options = COUNTRY_OPTIONS_BASE.copy()
+        country_options.sort()
+        country_options.insert(0, "Global")
+        selected_country = st.selectbox(
+        "Prioritize Region",
+        country_options,
+        index=0,  # Default to Global (no regional bias)
+        help="YouTube will show channels popular in this region first, but results aren't limited to it.",
+    )
+        region_input = "" if selected_country == "Global" else selected_country.split("(")[-1][:2]
 
-    country_options = COUNTRY_OPTIONS_BASE.copy()
-    country_options.sort()
-    country_options.insert(0, "Global")
-    selected_country = st.selectbox(
-    "Prioritize Region",
-    country_options,
-    index=0,  # Default to Global (no regional bias)
-    help="YouTube will show channels popular in this region first, but results aren't limited to it.",
-)
-    region_input = "" if selected_country == "Global" else selected_country.split("(")[-1][:2]
+        st.header("2. Filtering Criteria")
+        c1, c2, c3 = st.columns(3)
 
-    st.header("2. Filtering Criteria")
-    c1, c2, c3 = st.columns(3)
+        with c1:
+            min_subs_input = st.number_input(
+                "Minimum Subscribers",
+                min_value=0, value=10000, step=1000, format="%d",
+                help="Set to 0 to ignore."
+            )
 
-    with c1:
-        min_subs_input = st.number_input(
-            "Minimum Subscribers",
-            min_value=0, value=10000, step=1000, format="%d",
-            help="Set to 0 to ignore."
-        )
+        with c2:
+            # Create country dropdown options (same as Search Region)
+            country_filter_options = country_options.copy()  # Uses same list as region selector
+            selected_country_filter = st.selectbox(
+                "Channel Country (strict filter)",
+                country_filter_options,
+                index=0,  # Default to "Global"
+                help="Only show channels registered in this country. Leave as 'Global' to see all countries.",
+                key="country_filter_select"
+            )
+            country_filter_input = "" if selected_country_filter == "Global" else selected_country_filter.split("(")[-1][:2]
 
-    with c2:
-        # Create country dropdown options (same as Search Region)
-        country_filter_options = country_options.copy()  # Uses same list as region selector
-        selected_country_filter = st.selectbox(
-            "Channel Country (strict filter)",
-            country_filter_options,
-            index=0,  # Default to "Global"
-            help="Only show channels registered in this country. Leave as 'Global' to see all countries.",
-            key="country_filter_select"
-        )
-        country_filter_input = "" if selected_country_filter == "Global" else selected_country_filter.split("(")[-1][:2]
+        with c3:
+            months_ago_input = st.number_input(
+                "Published within last (months)",
+                value=18, min_value=0, step=1,
+                help="Only show channels with uploads in the last X months. Set to 0 to ignore upload recency."
+            )
+    else:
+        # For Channel-as-Seed: initialize default values (filters will be shown after analysis)
+        region_input = ""
+        min_subs_input = 10000
+        country_filter_input = ""
+        months_ago_input = 18
 
-    with c3:
-        months_ago_input = st.number_input(
-            "Published within last (months)",
-            value=18, min_value=0, step=1,
-            help="Only show channels with uploads in the last X months. Set to 0 to ignore upload recency."
-        )
-
-    submitted = st.form_submit_button("Find Creators")
+    # Button label changes based on search method
+    button_label = "Analyse Seed" if search_method == "Channel-as-Seed" else "Find Creators"
+    submitted = st.form_submit_button(button_label)
     
 # ============================================================================
 # === HANDLE SEED-BASED SEARCH ===
@@ -1620,6 +1631,77 @@ if st.session_state.get('seed_profile'):
         with st.expander("🤖 AI Channel Summary"):
             st.write(profile['description_summary'])
     
+    # Filtering Criteria (for Channel-as-Seed mode)
+    st.header("2. Filtering Criteria")
+    
+    # Initialize country_options
+    country_options = COUNTRY_OPTIONS_BASE.copy()
+    country_options.sort()
+    country_options.insert(0, "Global")
+    
+    # Prioritize Region
+    selected_country = st.selectbox(
+        "Prioritize Region",
+        country_options,
+        index=0,  # Default to Global
+        help="YouTube will show channels popular in this region first, but results aren't limited to it.",
+        key="seed_region_select"
+    )
+    region_input = "" if selected_country == "Global" else selected_country.split("(")[-1][:2]
+    
+    # Three-column layout for filters
+    c1, c2, c3 = st.columns(3)
+    
+    with c1:
+        min_subs_input = st.number_input(
+            "Minimum Subscribers",
+            min_value=0, value=10000, step=1000, format="%d",
+            help="Set to 0 to ignore.",
+            key="seed_min_subs"
+        )
+    
+    with c2:
+        country_filter_options = country_options.copy()
+        selected_country_filter = st.selectbox(
+            "Channel Country (strict filter)",
+            country_filter_options,
+            index=0,  # Default to "Global"
+            help="Only show channels registered in this country. Leave as 'Global' to see all countries.",
+            key="seed_country_filter"
+        )
+        country_filter_input = "" if selected_country_filter == "Global" else selected_country_filter.split("(")[-1][:2]
+    
+    with c3:
+        months_ago_input = st.number_input(
+            "Published within last (months)",
+            value=18, min_value=0, step=1,
+            help="Only show channels with uploads in the last X months. Set to 0 to ignore upload recency.",
+            key="seed_months_ago"
+        )
+    
+    # Build search query from profile (needed for the button)
+    search_terms = profile['primary_keywords'][:2]  # Top 2 phrases
+        
+    # Fallback: If channel has fewer than 2 primary keywords, pad with common tags
+    if len(search_terms) < 2:
+        remaining_slots = 2 - len(search_terms)
+        search_terms += profile['common_tags'][:remaining_slots]
+
+    # Quote multi-word terms
+    quoted_terms = [
+        f'"{term}"' if ' ' in term else term 
+        for term in search_terms
+    ]
+    
+    default_query = ", ".join(quoted_terms[:2])
+
+    # Initialize session state for editable query
+    if 'editable_seed_query' not in st.session_state:
+        st.session_state['editable_seed_query'] = default_query
+    
+    # Use the editable query (or default if not yet edited)
+    built_query = st.session_state.get('editable_seed_query', default_query)
+    
     # Search options
     st.subheader("🔍 Search Options")
 
@@ -1666,27 +1748,8 @@ if st.session_state.get('seed_profile'):
                 value="",
                 help="Words to exclude from topic extraction (e.g., brand names, common filler words). Useful for cleaning up noisy results."
             )
-        
-    # Build search query from profile
-    search_terms = profile['primary_keywords'][:2]  # Top 2 phrases
-        
-    # Fallback: If channel has fewer than 2 primary keywords, pad with common tags
-    if len(search_terms) < 2:
-        remaining_slots = 2 - len(search_terms)
-        search_terms += profile['common_tags'][:remaining_slots]
-
-    # Quote multi-word terms
-    quoted_terms = [
-        f'"{term}"' if ' ' in term else term 
-        for term in search_terms
-    ]
     
-    default_query = ", ".join(quoted_terms[:2])
-
-    # Initialize session state for editable query
-    if 'editable_seed_query' not in st.session_state:
-        st.session_state['editable_seed_query'] = default_query
-
+    # Query editor section
     col_query, col_reset = st.columns([4, 1])
 
     with col_query:
@@ -1710,15 +1773,24 @@ if st.session_state.get('seed_profile'):
     with col_reset:
         st.write("")  # Spacer for alignment
         st.write("")  # Spacer for alignment
+        # Re-calculate default_query for reset button
+        search_terms = profile['primary_keywords'][:2]
+        if len(search_terms) < 2:
+            remaining_slots = 2 - len(search_terms)
+            search_terms += profile['common_tags'][:remaining_slots]
+        quoted_terms = [f'"{term}"' if ' ' in term else term for term in search_terms]
+        default_query = ", ".join(quoted_terms[:2])
+        
         if st.button("🔄 Reset", help="Reset to AI-generated default", key="reset_query"):
             st.session_state['editable_seed_query'] = default_query
             st.rerun()
     
-    # Main search button
-    if st.button("🚀 Find Similar Channels", type="primary", key="btn_find_similar"):
+    # Main search button - placed after all search options
+    if st.button("🚀 Find Similar Channels", type="primary", key="btn_find_similar", use_container_width=True):
         st.session_state['built_query'] = built_query
         st.session_state['run_similarity_search'] = True
         st.rerun()
+
 
 # Keep the results table visible across reruns
 if 'display_df' in st.session_state:
@@ -1758,6 +1830,15 @@ if 'display_df' in st.session_state:
             ]:
                 if col_key in explanations:
                     st.markdown(f"{col_name}: {explanations[col_key]}")
+    
+    # === AI SUMMARY (Display after results table) ===
+    if 'ai_summary' in st.session_state:
+        if st.session_state['ai_summary']:
+            st.subheader("🤖 AI Generated Summary")
+            st.markdown(st.session_state['ai_summary'])
+        elif 'ai_summary_error' in st.session_state:
+            st.warning(f"⚠️ {st.session_state['ai_summary_error']}")
+
 # ============================================================================
 # === ENHANCED MATCH EXPLANATIONS ===
 # ============================================================================
@@ -1970,8 +2051,3 @@ if 'top_channels_for_outreach' in st.session_state and not st.session_state['top
 if st.session_state.get('debug_mode', False):
     with st.sidebar:
         debug_tracker.display_debug_panel()
-        
-
-                            
-
-

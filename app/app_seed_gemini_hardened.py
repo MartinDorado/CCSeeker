@@ -117,24 +117,19 @@ def render_term_counter(current_query: str, max_terms: int = 2) -> None:
 
 
 # ============================================================================
-# CACHING LAYER - Reduces API calls by 80%
+# CACHING LAYER - with accurate tracking
 # ============================================================================
 
-@st.cache_data(ttl=7200)  # Cache for 2 hours
+@st.cache_data(ttl=7200)
 def get_channel_stats_cached(channel_ids_tuple):
-    """
-    Cached wrapper for get_channel_stats
-    
-    Note: Uses tuple because lists aren't hashable for caching
-    """
     youtube = get_youtube()
     return get_channel_stats(youtube, list(channel_ids_tuple))
-
 
 @st.cache_data(ttl=7200)
 def get_video_details_cached(channel_ids_tuple, max_videos=10):
     """
-    Cached wrapper for get_video_details with smart per-channel caching
+    Cached wrapper using smart per-channel caching
+    Tracking happens inside smart_cache.py
     """
     from smart_cache import get_video_details_smart
     
@@ -150,14 +145,14 @@ def get_video_details_cached(channel_ids_tuple, max_videos=10):
             'uploads_playlist_id': stat['uploads_playlist_id']
         })
     
-    # Use smart caching (per-channel instead of per-query)
+    # Smart caching handles tracking internally
     return get_video_details_smart(youtube, channel_data_full, max_videos)
 
 
 @st.cache_data(ttl=3600)
 def search_channels_multi_term_cached(query, region_code, max_videos=100):
-    """Cached wrapper for search_channels_multi_term"""
     return search_channels_multi_term(query, region_code, max_videos)
+
 
 # --- Securely Load API Keys ---
 load_dotenv()
@@ -495,26 +490,6 @@ def get_channel_stats(youtube_service, channel_ids):
                     
     return stats_data
 
-
-def get_channel_stats_cached_with_tracking(channel_ids_tuple):
-    """Wrapper that tracks cache hits"""
-    
-    # Check if this exact call is cached (simplified check)
-    cache_key = f"channel_stats_{hash(channel_ids_tuple)}"
-    
-    if st.session_state.get('debug_mode', False):
-        # Simple heuristic: if function runs very fast, likely cache hit
-        start = time.time()
-        result = get_channel_stats_cached(channel_ids_tuple)
-        elapsed = time.time() - start
-        
-        if elapsed < 0.01:  # Less than 10ms = probably cached
-            debug_tracker.track_cache_hit()
-        
-        return result
-    else:
-        return get_channel_stats_cached(channel_ids_tuple)
-
 def get_video_details(youtube_service, channel_data, max_videos_per_channel):
     # ... (This function is now also used by the seed analysis)
     all_video_details = []
@@ -674,15 +649,13 @@ def run_search(
         with st.spinner("Step 1/4: Searching for channels..."):
             step_start = time.time() if st.session_state.get('debug_mode', False) else None
             
-            # ✅ TRACK BEFORE calling cached function
+            # ✅ TRACK API CALLS (not units!)
             if st.session_state.get('debug_mode', False):
                 # Track actual number of searches (split by comma)
                 num_terms = len([t for t in final_query.split(',') if t.strip()])
-                # Each term = 2 video searches + 1 channel search = 3 calls
-                # Each video search = 100 units, channel search = 100 units
-                total_units = num_terms * 300
-
-                for _ in range(total_units):
+                # Each term makes ~3 search API calls
+                # (video search + channel search + pagination)
+                for _ in range(num_terms * 3):
                     debug_tracker.track_api_call('youtube_search')
             
             initial_channels = search_channels_multi_term_cached(final_query, region_input, max_videos=100)
@@ -1013,6 +986,11 @@ def run_search(
         log_msg = ("💡 Results include channels whose content matches your search topics, not just their names.")
         search_log.append(log_msg)
 
+        # Track quota efficiency (for cache savings comparison)
+        search_params = f"{final_query}|{region_input}|{min_subs_input}"
+        st.session_state['last_search_params'] = search_params
+        debug_tracker.track_quota_efficiency(search_params)
+
         # === AI SUMMARY ===
         if GEMINI_API_KEY:
             with st.spinner("✨ Generating AI Summary..."):
@@ -1094,7 +1072,7 @@ def run_search(
         if st.session_state.get('debug_mode', False):
             st.write(f"✓ display_df stored successfully with shape {st.session_state['display_df'].shape}")
         
-        # === TRACK FINAL METRICS ===
+       # === TRACK FINAL METRICS ===
         if st.session_state.get('debug_mode', False):
             if search_start_time:
                 st.session_state.debug_data['timings']['total'] = time.time() - search_start_time
@@ -1103,7 +1081,12 @@ def run_search(
                 debug_tracker.track_similarity_scores(
                     st.session_state['top_channels_full'].to_dict('records')
                 )
-    
+            
+            # Track quota efficiency (for cache savings comparison)
+            search_params = f"{final_query}|{region_input}|{min_subs_input}"
+            st.session_state['last_search_params'] = search_params
+            debug_tracker.track_quota_efficiency(search_params)
+
         # Display search log in collapsible section
         if search_log:
             with st.expander("📋 Search Process Log", expanded=False):
@@ -1986,9 +1969,8 @@ if 'top_channels_for_outreach' in st.session_state and not st.session_state['top
 # This ensures the debug panel shows updated counters after search completes
 if st.session_state.get('debug_mode', False):
     with st.sidebar:
-        debug_tracker.render_debug_panel()
-        # Optional: Add manual reset button (for testing)
-        debug_tracker.render_quota_reset_button()
+        debug_tracker.display_debug_panel()
+        
 
                             
 

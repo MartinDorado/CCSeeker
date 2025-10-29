@@ -40,6 +40,14 @@ except ImportError:
 import math
 import time
 
+# === SESSION STATE KEYS ===
+# This app uses the following st.session_state keys:
+# - debug_mode: bool - Toggle for debug panel
+# - search_method: str - "Keywords" or "Channel-as-Seed"
+# - seed_profile: dict - Analyzed seed channel data
+# - debug_data: dict - API call tracking and performance metrics
+# - daily_quota: dict - Persistent quota tracking across sessions
+
 # ============================================================================
 # Helper functions
 # ============================================================================
@@ -120,12 +128,12 @@ def render_term_counter(current_query: str, max_terms: int = 2) -> None:
 # CACHING LAYER - with accurate tracking
 # ============================================================================
 
-@st.cache_data(ttl=7200)
+@st.cache_data(ttl=604800) # 7 days
 def get_channel_stats_cached(channel_ids_tuple):
     youtube = get_youtube()
     return get_channel_stats(youtube, list(channel_ids_tuple))
 
-@st.cache_data(ttl=7200)
+@st.cache_data(ttl=259200) # 3 days
 def get_video_details_cached(channel_ids_tuple, max_videos=10):
     """
     Cached wrapper using smart per-channel caching
@@ -149,7 +157,7 @@ def get_video_details_cached(channel_ids_tuple, max_videos=10):
     return get_video_details_smart(youtube, channel_data_full, max_videos)
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=259200) # 3 days
 def search_channels_multi_term_cached(query, region_code, max_videos=100):
     return search_channels_multi_term(query, region_code, max_videos)
 
@@ -224,7 +232,7 @@ def resolve_channel_id(youtube_service, user_input: str):
     except HttpError:
         return None
 
-@st.cache_data(show_spinner=False, ttl=3600)
+@st.cache_data(show_spinner=False, ttl=259200) # 3 days
 def search_channels_hybrid(query: str, region_code: str, max_videos: int = 100, max_channels: int = 50):
     """
     Hybrid search: Find channels by their VIDEO content (primary) + channel names (secondary).
@@ -335,7 +343,7 @@ def search_channels_multi_term(
     query: str,
     region_code: str,
     max_videos_per_term: int = 100,
-    max_channels: int = 2,
+    max_channels: int = 50,
 ):
     """
     Handle comma-separated queries as OR logic.
@@ -407,35 +415,6 @@ def _strip_outer_quotes(s: str) -> str:
         return s[1:-1].strip()
     return s
 
-def search_channels(youtube_service, query, region_code, total_results_to_fetch):
-    """Channel search with proper parts so channelId is present."""
-    channels = []
-    next_page_token = None
-    # IMPORTANT: include id so item["id"]["channelId"] exists
-    search_params = {'q': query, 'part': 'id,snippet', 'type': 'channel'}
-    if region_code:
-        search_params['regionCode'] = region_code
-    while len(channels) < total_results_to_fetch:
-        search_params['maxResults'] = min(50, total_results_to_fetch - len(channels))
-        if next_page_token:
-            search_params['pageToken'] = next_page_token
-        try:
-            response = youtube_service.search().list(**search_params).execute()
-        except HttpError as e:
-            st.error(f"YouTube search API error: {e}")
-            break
-        for item in response.get("items", []):
-            channel_id = item.get("id", {}).get("channelId")
-            if not channel_id:
-                continue
-            channels.append({
-                "channel_id": channel_id,
-                "channel_title": item.get("snippet", {}).get("title", "Unknown")
-            })
-        next_page_token = response.get('nextPageToken')
-        if not next_page_token:
-            break
-    return channels
 
 def get_channel_stats(youtube_service, channel_ids):
     """
@@ -580,29 +559,6 @@ def calculate_keyword_relevance(df, query):
     relevance = relevance.rename(columns={'is_relevant': 'relevance_score'})
     return relevance
 
-# --- Helpers for seed topic iteration ---
-def _parse_topics_from_query(q: str) -> list[str]:
-    """Split an OR-joined query into topic phrases, removing outer quotes."""
-    if not q:
-        return []
-    parts = [p.strip() for p in q.split(" OR ") if p.strip()]
-    out: list[str] = []
-    for p in parts:
-        if len(p) >= 2 and p.startswith('"') and p.endswith('"'):
-            out.append(p[1:-1])
-        else:
-            out.append(p)
-    return out
-
-def _build_query_from_topics(topics: list[str]) -> str:
-    """Join topic phrases into an OR query, quoting multi-word phrases."""
-    bits = []
-    for t in topics:
-        t = (t or "").strip()
-        if not t:
-            continue
-        bits.append(t if " " not in t else f'"{t}"')
-    return " OR ".join(bits)
 
 def run_search(
     youtube,
@@ -1105,11 +1061,6 @@ def run_search(
             st.write("### Debug Info at Failure:")
             st.write(f"- Session state keys: {list(st.session_state.keys())}")
             st.write(f"- Debug data: {st.session_state.get('debug_data', {})}")   
-
-# --- Function to resolve a channel handle (@username) to an ID ---
-def get_channel_id_from_handle(youtube_service, handle):
-    """Deprecated: use resolve_channel_id() instead."""
-    return resolve_channel_id(youtube_service, handle)
 
 # --- Gemini AI Integration ---
 def generate_summary(df_results, query):

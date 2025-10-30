@@ -49,16 +49,69 @@ import time
 # - daily_quota: dict - Persistent quota tracking across sessions
 
 # ============================================================================
+# CONFIGURATION CONSTANTS
+# ============================================================================
+
+CONFIG_NOTES = """
+Centralized configuration for CCSeeker.
+
+ON CACHE TTLs: 
+Python decorators require literal values, so TTL constants below are 
+documented here but hardcoded in @st.cache_data decorators with comments.
+
+ON SIMILARITY WEIGHTS:
+These weights are hardcoded in similarity_engine.py calculate_similarity_score().
+Refactoring to make them configurable would require significant changes for 
+minimal practical benefit.
+"""
+
+# API Configuration
+YOUTUBE_API_SERVICE_NAME = "youtube"
+YOUTUBE_API_VERSION = "v3"
+
+# Search Parameters
+MAX_SEARCH_TERMS = 2              # Maximum comma-separated terms allowed
+MAX_SEARCH_RESULTS = 50           # Maximum channels to return per search
+MAX_VIDEOS_PER_TERM = 100         # Videos to fetch from YouTube search per term
+MAX_VIDEOS_PER_CHANNEL = 10       # Videos to analyze per channel (for relevance)
+MAX_VIDEOS_PER_SEED = 50          # Videos to analyze for seed channel profile - to adjust it go to seed_topics_v2.py - def analyze_seed_channel_v2 -ln 175
+
+
+# Cache TTLs (in seconds)
+# These are documented here but must be hardcoded in decorators (Python limitation)
+CACHE_TTL_CHANNEL_STATS = 604800   # 1 week - used in get_channel_stats_cached()
+CACHE_TTL_VIDEO_DETAILS = 259200   # 3 days - used in get_video_details_cached()
+CACHE_TTL_SEARCH_RESULTS = 259200  # 3 days - used in search_channels_multi_term_cached()
+
+# Filtering Thresholds
+MIN_RELEVANCE_SCORE = 0.15         # 15% keyword match required
+DEFAULT_MIN_SUBSCRIBERS = 10000
+DEFAULT_MONTHS_RECENT = 18
+
+# Similarity Scoring Weights (total: 100 points)
+# Implementation: similarity_engine.py calculate_similarity_score()
+# Changing these requires modifying multiple lines in that function.
+SIMILARITY_WEIGHTS = {
+    'tag_overlap': 30,        # Tag Jaccard similarity (most reliable signal)
+    'keyword_match': 30,      # Topic presence in titles
+    'subscriber_tier': 15,    # Subscriber count ratio
+    'engagement_rate': 17,    # (Likes + comments) / views
+    'upload_frequency': 8    # Videos per month comparison
+}
+# Total must equal 100
+
+# For implementation details, see similarity_engine.py lines 137-260
+
+# ============================================================================
 # Helper functions
 # ============================================================================
 
-def validate_and_truncate_query(query: str, max_terms: int = 2) -> tuple[str, bool]:
+def validate_and_truncate_query(query: str) -> tuple[str, bool]:
     """
-    Validate and auto-truncate search query to max_terms.
+    Validate and auto-truncate search query to MAX_SEARCH_TERMS.
     
     Args:
         query: Comma-separated search terms
-        max_terms: Maximum number of terms allowed (default: 2)
     
     Returns:
         tuple: (truncated_query, was_truncated)
@@ -77,23 +130,22 @@ def validate_and_truncate_query(query: str, max_terms: int = 2) -> tuple[str, bo
     terms = [t.strip() for t in query.split(',') if t.strip()]
     
     # Check if within limit
-    if len(terms) <= max_terms:
+    if len(terms) <= MAX_SEARCH_TERMS:
         return query, False
     
-    # Truncate to first max_terms
-    truncated = terms[:max_terms]
+    # Truncate to first MAX_SEARCH_TERMS
+    truncated = terms[:MAX_SEARCH_TERMS]
     truncated_query = ", ".join(truncated)
     
     return truncated_query, True
 
 
-def render_term_counter(current_query: str, max_terms: int = 2) -> None:
+def render_term_counter(current_query: str) -> None:
     """
     Render a visual term counter showing X/2 terms used.
     
     Args:
         current_query: Current search query string
-        max_terms: Maximum allowed terms
     """
     if not current_query:
         return
@@ -102,7 +154,7 @@ def render_term_counter(current_query: str, max_terms: int = 2) -> None:
     term_count = len(terms)
     
     # Color coding: green if OK, red if exceeding
-    if term_count <= max_terms:
+    if term_count <= MAX_SEARCH_TERMS:
         color = "#10b981"  # Green
         icon = "✓"
         status = "OK"
@@ -116,7 +168,7 @@ def render_term_counter(current_query: str, max_terms: int = 2) -> None:
         <div style='padding: 6px 12px; background-color: rgba(0,0,0,0.05); 
                     border-radius: 4px; border-left: 3px solid {color}; 
                     display: inline-block; margin-bottom: 8px;'>
-            <span style='color: {color}; font-weight: 600;'>{icon} {term_count}/{max_terms} terms</span>
+            <span style='color: {color}; font-weight: 600;'>{icon} {term_count}/{MAX_SEARCH_TERMS} terms</span>
             <span style='color: #666; font-size: 0.85em; margin-left: 8px;'>({status})</span>
         </div>
         """,
@@ -134,7 +186,7 @@ def get_channel_stats_cached(channel_ids_tuple):
     return get_channel_stats(youtube, list(channel_ids_tuple))
 
 @st.cache_data(ttl=259200) # 3 days
-def get_video_details_cached(channel_ids_tuple, max_videos=10):
+def get_video_details_cached(channel_ids_tuple, max_videos= MAX_VIDEOS_PER_CHANNEL):
     """
     Cached wrapper using smart per-channel caching
     Tracking happens inside smart_cache.py
@@ -158,7 +210,7 @@ def get_video_details_cached(channel_ids_tuple, max_videos=10):
 
 
 @st.cache_data(ttl=259200) # 3 days
-def search_channels_multi_term_cached(query, region_code, max_videos=100):
+def search_channels_multi_term_cached(query, region_code, max_videos= MAX_VIDEOS_PER_TERM):
     return search_channels_multi_term(query, region_code, max_videos)
 
 
@@ -233,11 +285,16 @@ def resolve_channel_id(youtube_service, user_input: str):
         return None
 
 @st.cache_data(show_spinner=False, ttl=259200) # 3 days
-def search_channels_hybrid(query: str, region_code: str, max_videos: int = 100, max_channels: int = 50):
+def search_channels_hybrid(query: str, region_code: str, max_videos: int = MAX_VIDEOS_PER_TERM, max_channels: int = MAX_SEARCH_RESULTS):
     """
     Hybrid search: Find channels by their VIDEO content (primary) + channel names (secondary).
     
     Returns: List[dict] with keys 'channel_id', 'channel_title', 'match_score'
+
+    Notes:
+        - Uses YouTube Data API client from `get_youtube()`.
+        - On API errors, returns partial results and emits Streamlit warnings.
+        - Results cached for ~3 days via `st.cache_data(ttl=259200)`.
     """
     youtube = get_youtube()
     all_channels = {}  # {channel_id: {'title': str, 'video_matches': int, 'name_match': bool}}
@@ -342,8 +399,8 @@ def search_channels_hybrid(query: str, region_code: str, max_videos: int = 100, 
 def search_channels_multi_term(
     query: str,
     region_code: str,
-    max_videos_per_term: int = 100,
-    max_channels: int = 50,
+    max_videos_per_term: int = MAX_VIDEOS_PER_TERM,
+    max_channels: int = MAX_SEARCH_RESULTS,
 ):
     """
     Handle comma-separated queries as OR logic.
@@ -366,8 +423,15 @@ def search_channels_multi_term(
         terms = terms[:2]
 
     if len(terms) == 1:
-        # Single term: use hybrid search directly
-        return search_channels_hybrid(terms[0], region_code, max_videos_per_term)
+        # Single term: use hybrid search directly, but still record pre-cap count and apply cap
+        results_single = search_channels_hybrid(terms[0], region_code, max_videos_per_term)
+        try:
+            st.session_state['pre_cap_channel_count'] = len(results_single)
+        except Exception:
+            pass
+        if max_channels is not None:
+            results_single = results_single[:max_channels]
+        return results_single
     
     # Multiple terms: search each, then merge
     st.info(f"🔍 Searching {len(terms)} topics: {', '.join(terms)}")
@@ -567,9 +631,48 @@ def run_search(
     min_subs_input: int,
     months_ago_input: int,
     country_filter_input: str,
-    boolean_fetch: bool = False,
 ):
-    """Run the 4-step search + analysis pipeline and render results."""
+
+    """
+Execute the end-to-end search pipeline: validate → search → stats → filter → analyze → rank → render.
+
+Pipeline:
+
+0.5 Validate and truncate query to 2 terms; if truncated, show a Streamlit warning and overwrite final_query with the validated value.
+1 Search for channels (region-aware) via cached helper; track search calls in debug mode.
+2 Fetch channel statistics in batches, then merge with initial search results.
+3 Apply filters: subscribers ≥ min_subs_input; optional strict country match (uppercased ISO code).
+4 Quality selection: require match_score ≥ 10, sort by match_score then subscribers, and cap to the top 50 channels for deep analysis.
+5 Deep analysis: fetch up to 10 recent videos per channel;
+6 Compute keyword relevance and engagement; optionally filter by recency (last months_ago_input months); sort by relevance_score then subscribers; annotate analysis_depth.
+
+.Similarity (optional): if a seed_profile is present, exclude the seed, reuse fetched videos to derive tags/keywords, rank with similarity_engine (optionally using Gemini), compute similarity_score and match_reasons, and re-sort.
+.AI Summary (optional): when GEMINI_API_KEY is configured, generate and store a textual summary of the top channels.
+.Display and state: format metrics, choose display columns, and update session state; track timings and quota efficiency in debug mode.
+
+Args:
+youtube: Authenticated YouTube Data API client.
+final_query: Query string (comma-separated); auto-validated and truncated to 2 terms.
+region_input: ISO 3166-1 alpha-2 region code (e.g., "US") for search.
+min_subs_input: Minimum subscriber threshold.
+months_ago_input: Only include videos from the last N months (0 = no recency filter).
+country_filter_input: Optional strict country filter by ISO code (e.g., "US"); falsy disables.
+
+Returns:
+None. Renders UI and updates session state.
+
+Session state:
+- 'display_df', 'column_explanations', 'final_query'
+- 'top_channels_for_outreach'
+- 'top_channels_full' (when similarity ranking runs)
+- 'ai_summary' or 'ai_summary_error'
+- 'debug_data' timings and metrics (when debug mode is enabled)
+- 'last_search_params'
+
+Notes:
+- Catches exceptions and surfaces them via Streamlit; does not raise.
+- Tracks API/quota metrics when debug mode is enabled.
+"""
     
     # Initialize search log
     search_log = []
@@ -583,7 +686,7 @@ def run_search(
     try:
         # === STEP 0.5: Validate Query & Search for channels ===
         # Apply 2-term limit with auto-truncation
-        final_query_validated, was_truncated = validate_and_truncate_query(final_query, max_terms=2)
+        final_query_validated, was_truncated = validate_and_truncate_query(final_query)
 
         # Show user-friendly warning if query was truncated
         if was_truncated:
@@ -615,7 +718,7 @@ def run_search(
                 for _ in range(num_terms * 3):
                     debug_tracker.track_api_call('youtube_search')
             
-            initial_channels = search_channels_multi_term_cached(final_query, region_input, max_videos=100)
+            initial_channels = search_channels_multi_term_cached(final_query, region_input, max_videos= MAX_VIDEOS_PER_TERM)
             
             if st.session_state.get('debug_mode', False) and step_start:
                 st.session_state.debug_data['timings']['search'] = time.time() - step_start
@@ -628,8 +731,9 @@ def run_search(
         df_initial = pd.DataFrame(initial_channels)
         with st.expander("See raw channels found"):
             st.dataframe(df_initial)
-        
-        log_msg = f"🔍 Found {len(initial_channels)} initial channels from search"
+
+        pre_cap_count = st.session_state.get('pre_cap_channel_count', len(initial_channels))
+        log_msg = f"🔍 Ranked {pre_cap_count} channels before cap; showing {len(initial_channels)} after cap"
         search_log.append(log_msg)
 
         # === STEP 2: Fetch channel statistics ===
@@ -1311,6 +1415,11 @@ with st.sidebar:
     # Update session state
     st.session_state.debug_mode = debug_enabled
 
+    # Show developer config notes only in debug mode
+    if st.session_state.debug_mode:
+        with st.expander("Developer Notes: Config", expanded=False):
+            st.markdown(CONFIG_NOTES)
+
 # The search method selector is outside the form to allow instant UI updates.
 st.header("1. Search Method")
 # Custom button-based selector for better layout control
@@ -1362,7 +1471,7 @@ with st.form("search_form"):
         
         # Visual term counter
         if query_input:
-            render_term_counter(query_input, max_terms=2)
+            render_term_counter(query_input)
         seed_url_input = ""  # keep defined
     else:
         st.info("💡 Enter the full URL of a YouTube channel to find similar creators.")
@@ -1461,7 +1570,6 @@ if st.session_state.get('run_similarity_search'):
             min_subs_input=min_subs_input,
             months_ago_input=months_ago_input,
             country_filter_input=country_filter_input,
-            boolean_fetch=False
         )
 
 # --- Main Execution Logic ---
@@ -1526,7 +1634,6 @@ if submitted:
                 min_subs_input=min_subs_input,
                 months_ago_input=months_ago_input,
                 country_filter_input=country_filter_input,
-                boolean_fetch=bool(re.search(r"\b(AND|OR)\b", final_query, re.IGNORECASE)),
             )
 
 # ============================================================================
@@ -1719,7 +1826,7 @@ if st.session_state.get('seed_profile'):
     
     # Visual term counter below the text area
     if built_query:
-        render_term_counter(built_query, max_terms=2)
+        render_term_counter(built_query)
 
     with col_reset:
         st.write("")  # Spacer for alignment

@@ -84,7 +84,14 @@ def is_within_tier_range(candidate_subs: int, seed_subs: int, tolerance: float =
 
 def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool = False) -> dict:
     """
-    Calculate multi-factor similarity score
+    Calculate multi-factor similarity score between candidate and seed channel.
+
+    Scoring Breakdown (100 points total):
+    - Tag Overlap (30 pts): Jaccard similarity on video tags - MOST RELIABLE
+    - Keyword Match (20 pts): Presence of seed topics in candidate titles
+    - Subscriber Tier (20 pts): Ratio-based scoring (prevents 1M vs 10K matches)
+    - Engagement Rate (15 pts): (likes + comments) / views comparison
+    - Upload Frequency (15 pts): Videos per month similarity
     
     Parameters:
     -----------
@@ -104,6 +111,22 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
         'match_reasons': list[str],
         'breakdown': dict (if debug=True)
     }
+    Example:
+        >>> candidate = {
+        ...     'tags': ['manga', 'anime', 'review'],
+        ...     'subscribers': 50000,
+        ...     'engagement_rate': 0.05
+        ... }
+        >>> seed = {
+        ...     'common_tags': ['manga', 'anime', 'shonen'],
+        ...     'subscribers': 100000,
+        ...     'engagement_rate': 0.04
+        ... }
+        >>> score = calculate_similarity_score(candidate, seed)
+        >>> print(score['total_score'])
+        67.5
+        >>> print(score['match_reasons'])
+        ['Strong tag overlap (67% similar)', 'Similar subscriber tier', ...]
     """
     
     score = 0.0

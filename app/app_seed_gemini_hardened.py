@@ -519,17 +519,14 @@ def get_channel_stats(youtube_service, channel_ids):
                 avg_views_per_video = round(total_views / videos_count, 0) if videos_count > 0 else 0
                 
                 stats_data.append({
-                    # Existing fields (unchanged)
                     "channel_id": item["id"],
                     "country": snippet.get("country", "N/A"),
                     "subscribers": int(statistics.get("subscriberCount", 0)),
                     "views": total_views,
                     "videos": videos_count,
                     "uploads_playlist_id": uploads_id,
-                    
-                    # NEW: Phase 1 additions (safe additions only)
-                    "avg_views_per_video": avg_views_per_video,        # Main display metric
-                    "channel_age_days": channel_age_days,              # For future ranking logic
+                    "avg_views_per_video": avg_views_per_video,        
+                    "channel_age_days": channel_age_days,              
                 })
                     
     return stats_data
@@ -1360,7 +1357,7 @@ Act as a marketing professional. Your task is to write a short, friendly, and pr
 
 st.set_page_config(
     page_title="CCSeeker - YouTube Creator Search",
-    page_icon="appicons/app-icon-192x192.png",  # Relative path to your favicon
+    page_icon="docs/appicons/app-icon-192x192.png",  # Relative path to your favicon
     layout="wide"
 )
 
@@ -1395,7 +1392,7 @@ inject_css("app/theme_ccseeker_dark.css")
 col_logo, col_title = st.columns([1, 10], vertical_alignment="center")
 
 with col_logo:
-    st.image("appicons/app-icon-192x192.png", width=100)  # Bigger logo
+    st.image("docs/appicons/app-icon-192x192.png", width=100)  # Bigger logo
 
 with col_title:
     st.title("CCSeeker")

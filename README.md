@@ -52,7 +52,7 @@ The system ranks results by relevance/similarity, tracks API usage to stay withi
 
 </details>
 
-<details>
+<details open>
 <summary><strong>Channel-as-Seed Mode</strong></summary>
 
 ![Channel-as-Seed Interface](docs/screenshots/screenshot_seed_mode.jpg)
@@ -92,12 +92,16 @@ The system ranks results by relevance/similarity, tracks API usage to stay withi
 <details>
 <summary><strong>Real-Time API Tracking</strong></summary>
 
-![Debug Sidebar](docs/screenshots/screenshot_debug_collapsed.jpg)
+### Debug Panel
+*Collapsible sidebar provides transparency into API usage and performance metrics*
 
 Toggle debug mode to see:
 
+![Debug Sidebar](docs/screenshots/screenshot_debug_collapsed.jpg)
+
 **API Call Summary**
 ![API Calls](docs/screenshots/screenshot_api_summary.jpg)
+![API Calls2](docs/screenshots/screenshot_api_summary2.jpg)
 - Tracks YouTube (search, channels, videos, playlists)
 - Tracks Gemini (summary, outreach, similarity)
 - Shows quota units consumed
@@ -119,17 +123,10 @@ Toggle debug mode to see:
 
 ---
 
-## 🖼️ Demo
-
-### Main Interface
-![Home Screen](docs/screenshots/screenshot_keyword_search.jpg)
-*Dual search mode selector with gradient design*
-
 ### Search Results
 *Results table shows relevance scores, engagement rates, and subscriber counts. Seed mode adds similarity scores and match reasons.*
 
-### Debug Panel
-*Collapsible sidebar provides transparency into API usage and performance metrics*
+![Search Results](docs/screenshots/screenshot_display_df.jpg)
 
 ---
 
@@ -258,7 +255,10 @@ CCSeeker/
 │   ├── smart_cache.py               # Per-channel caching layer
 │   ├── debug_tracker.py             # API tracking & performance monitoring
 │   └── theme_ccseeker_dark.css      # Custom dark theme
-├── appicons/                         # App icons (192x192, 512x512)
+├── docs/
+|   |── appicons/                    # App icons (192x192, 512x512)
+|   |── screenshots/                 # Multiple screenshots from the app
+|                    
 ├── .streamlit/                       # Streamlit config
 ├── requirements.txt                  # Python dependencies
 ├── .env.example                      # API key template
@@ -365,18 +365,6 @@ Manual testing checklist:
 
 ---
 
-## 🛣️ Future Enhancements
-
-- [ ] Export results to CSV/Excel
-- [ ] Save search history
-- [ ] Bulk email sender integration
-- [ ] Channel analytics dashboard
-- [ ] Multi-language UI support
-- [ ] Automated testing suite
-- [ ] Streamlit Cloud deployment
-
----
-
 ## 📄 License
 
 This project is licensed under the Apache License 2.0 - see [LICENSE](LICENSE) for details.
@@ -387,19 +375,11 @@ This project is licensed under the Apache License 2.0 - see [LICENSE](LICENSE) f
 
 **Martín Dorado**
 - Portfolio: [yourwebsite.com](https://yourwebsite.com)
-- LinkedIn: [linkedin.com/in/yourprofile](https://linkedin.com/in/yourprofile)
-- GitHub: [@yourusername](https://github.com/yourusername)
+- LinkedIn: [linkedin.com/in/martin-dorado](https://www.linkedin.com/in/martin-dorado/)
+- GitHub: [@MartinDorado](https://github.com/MartinDorado)
 
 ---
 
-## 🙏 Acknowledgments
-
-- YouTube Data API v3 documentation
-- Google Gemini AI
-- Streamlit community
-- pycountry library for country data
-
----
 
 ## 📚 Additional Resources
 
@@ -410,9 +390,5 @@ This project is licensed under the Apache License 2.0 - see [LICENSE](LICENSE) f
 ---
 
 <div align="center">
-
-**⭐ Star this repo if you find it useful!**
-
-*Built with ❤️ and ☕ as a portfolio project*
 
 </div>

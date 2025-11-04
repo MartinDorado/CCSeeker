@@ -210,7 +210,14 @@ def get_video_details_cached(channel_ids_tuple, max_videos= MAX_VIDEOS_PER_CHANN
 
 
 @st.cache_data(ttl=259200) # 3 days
-def search_channels_multi_term_cached(query, region_code, max_videos= MAX_VIDEOS_PER_TERM):
+def search_channels_multi_term_cached(query, region_code, max_videos= MAX_VIDEOS_PER_TERM, cache_bust: str = "v2-no-early-cap"):
+    """Cached wrapper for multi-term search.
+
+    cache_bust: change this string to invalidate prior cached results
+    when search logic changes (e.g., removed early cap).
+    """
+    # cache_bust is unused in logic; only to affect cache key
+    _ = cache_bust
     return search_channels_multi_term(query, region_code, max_videos)
 
 
@@ -400,7 +407,7 @@ def search_channels_multi_term(
     query: str,
     region_code: str,
     max_videos_per_term: int = MAX_VIDEOS_PER_TERM,
-    max_channels: int = MAX_SEARCH_RESULTS,
+    max_channels: int | None = None,
 ):
     """
     Handle comma-separated queries as OR logic.
@@ -465,6 +472,12 @@ def search_channels_multi_term(
             reverse=True
         )
     ]
+    
+    # Record the true pre-cap count for logging downstream
+    try:
+        st.session_state['pre_cap_channel_count'] = len(merged)
+    except Exception:
+        pass
     
     if max_channels is not None:
         # Limit number of channels returned to control quota usage
@@ -715,8 +728,21 @@ Notes:
                 for _ in range(num_terms * 3):
                     debug_tracker.track_api_call('youtube_search')
             
-            initial_channels = search_channels_multi_term_cached(final_query, region_input, max_videos= MAX_VIDEOS_PER_TERM)
+            # Pass a cache_bust tag to ensure we don't reuse
+            # older cached results from the pre-cap version
+            initial_channels = search_channels_multi_term_cached(
+                final_query,
+                region_input,
+                max_videos= MAX_VIDEOS_PER_TERM,
+                cache_bust="mt-search-v2"
+            )
             
+            # Always set pre-cap count based on current Step 1 output
+            try:
+                st.session_state['pre_cap_channel_count'] = len(initial_channels)
+            except Exception:
+                pass
+
             if st.session_state.get('debug_mode', False) and step_start:
                 st.session_state.debug_data['timings']['search'] = time.time() - step_start
         
@@ -730,7 +756,12 @@ Notes:
             st.dataframe(df_initial)
 
         pre_cap_count = st.session_state.get('pre_cap_channel_count', len(initial_channels))
-        log_msg = f"🔍 Ranked {pre_cap_count} channels before cap; showing {len(initial_channels)} after cap"
+        if len(initial_channels) < pre_cap_count:
+            # Early cap applied in the search helper
+            log_msg = f"🔍 Ranked {pre_cap_count} channels before cap; showing {len(initial_channels)} after cap"
+        else:
+            # No early cap (cap happens later in Step 4)
+            log_msg = f"🔍 Ranked {pre_cap_count} channels before cap (no early cap applied)"
         search_log.append(log_msg)
 
         # === STEP 2: Fetch channel statistics ===
@@ -783,7 +814,7 @@ Notes:
             if st.session_state.get('debug_mode', False) and step_start:
                 st.session_state.debug_data['timings']['filtering'] = time.time() - step_start
 
-       # === STEP 4: Prepare channels for analysis (cap at 40 max) ===
+       # === STEP 4: Prepare channels for analysis (cap at 50 max) ===
         with st.spinner("Step 4/5: Preparing channels for analysis..."):
             step_start = time.time() if st.session_state.get('debug_mode', False) else None
             

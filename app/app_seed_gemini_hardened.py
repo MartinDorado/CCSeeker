@@ -588,49 +588,65 @@ def get_video_details(youtube_service, channel_data, max_videos_per_channel):
             })
     return all_video_details
 
-def calculate_keyword_relevance(df, query):
+def calculate_keyword_relevance(df, query, title_weight: float = 2.0, tags_weight: float = 1.0):
     """Compute per-channel relevance by matching query terms against title and tags.
+
+    Notes:
+    - Parsing is comma-only: "term1, term2, phrase three". Boolean text like AND/OR is not parsed.
+    - Word boundaries are added for simple alphanumeric terms to avoid substring matches (e.g., "man" won't match "manga").
+    - Index alignment is preserved by creating fallback Series with `index=df.index`.
+    - Title vs tags can be weighted via `title_weight` and `tags_weight`. The per-video score is a weighted average in [0, 1].
     """
     if df.empty or not isinstance(query, str) or not query.strip():
         return pd.DataFrame(columns=['channel_id', 'relevance_score'])
 
+    # Accept only comma-separated terms; otherwise treat the entire query as one term
     if ',' in query:
-        # Comma-separated format: "manga, anime, review"
         raw_terms = [t.strip() for t in query.split(',') if t.strip()]
     else:
-        # Legacy format: "manga OR anime" or "manga AND review"
-        # Split on OR/AND tokens, then normalize terms
-        raw_terms = [word.strip() for word in re.split(r"OR|AND", query, flags=re.IGNORECASE)]
-    
-    cleaned = []
+        raw_terms = [query.strip()]
+
+    # Build regex parts with safe escaping and word boundaries for simple words
+    cleaned_parts = []
     for t in raw_terms:
         if not t:
             continue
-        # Remove outer quotes if present
-        t = _strip_outer_quotes(t)  # Use your existing helper
+        t = _strip_outer_quotes(t)
         if not t:
             continue
-        cleaned.append(re.escape(t))
+        # If the term is a single "word" (letters/digits/_), wrap with word boundaries
+        if re.match(r'^\w+$', t, flags=re.UNICODE):
+            cleaned_parts.append(r'\b' + re.escape(t) + r'\b')
+        else:
+            cleaned_parts.append(re.escape(t))
 
-    if not cleaned:
+    if not cleaned_parts:
         return pd.DataFrame(columns=['channel_id', 'relevance_score'])
 
-    # Match ANY term (OR logic)
-    pattern = '(?:' + '|'.join(cleaned) + ')'
+    pattern = '(?:' + '|'.join(cleaned_parts) + ')'
 
-    # Build a combined text field: title + joined tags
     def _tags_to_text(x):
         if isinstance(x, list):
             return ' '.join([str(i) for i in x if i is not None])
         return str(x) if x is not None else ''
 
-    df = df.copy()
-    title_series = df['video_title'] if 'video_title' in df.columns else pd.Series([''] * len(df))
-    tags_series = df['video_tags'] if 'video_tags' in df.columns else pd.Series([''] * len(df))
-    df['combined_text'] = title_series.fillna('') + ' ' + tags_series.apply(_tags_to_text)
-    df['is_relevant'] = df['combined_text'].str.contains(pattern, case=False, na=False)
-    relevance = df.groupby('channel_id')['is_relevant'].mean().reset_index()
-    relevance = relevance.rename(columns={'is_relevant': 'relevance_score'})
+    # Ensure alignment by constructing fallbacks with the same index
+    title_series = df.get('video_title', pd.Series('', index=df.index)).fillna('')
+    tags_series = df.get('video_tags', pd.Series('', index=df.index))
+    tags_text = tags_series.apply(_tags_to_text)
+
+    # Boolean matches per field
+    title_match = title_series.str.contains(pattern, case=False, na=False, regex=True)
+    tags_match = tags_text.str.contains(pattern, case=False, na=False, regex=True)
+
+    # Weighted per-video score in [0, 1]
+    denom = float(title_weight + tags_weight) if (title_weight + tags_weight) != 0 else 1.0
+    video_score = (title_weight * title_match.astype(float) + tags_weight * tags_match.astype(float)) / denom
+
+    # Average to channel-level relevance score
+    tmp = pd.DataFrame({'channel_id': df['channel_id'], 'video_score': video_score})
+    relevance = tmp.groupby('channel_id', as_index=False)['video_score'].mean()
+    relevance = relevance.rename(columns={'video_score': 'relevance_score'})
     return relevance
 
 

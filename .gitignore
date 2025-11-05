@@ -8,6 +8,11 @@ __pycache__/
 
 # Virtual environments
 .venv/
+.venv*/
+venv/
+env/
+ENV/
+*.venv
 
 # OS/editor noise
 .DS_Store

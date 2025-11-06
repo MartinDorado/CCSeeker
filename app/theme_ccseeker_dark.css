@@ -2,77 +2,28 @@
 /* Order matters: ccseeker base first, then theme_dark to keep the current dark look authoritative. */
 
 /* ---- Begin ccseeker_streamlit_style.css ---- */
-/* Force dark background globally */
-html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
-    background-color: #111827 !important;
-    color: #e9eef4 !important;
-}
+/* Force dark background globally (defined in theme_dark below) */
 
 section.main {
     background-color: #111827 !important;
 }
 
 
-/* Title headers */
-h1, h2, h3, .stTitle {
-    color: #ffffff;
-}
+/* Title headers (defined in theme_dark below) */
 
-/* Sidebar (if used) */
-section[data-testid="stSidebar"] {
-    background-color: #1f2937;
-    border-right: 1px solid #374151;
-}
+/* Sidebar (defined in theme_dark below) */
 
-/* Buttons */
-button[kind="primary"] {
-    background: linear-gradient(to right, #3b82f6, #34d399);
-    color: #ffffff;
-    font-weight: 600;
-    border-radius: 6px;
-    border: none;
-}
+/* Buttons (consolidated later) */
 
-button[kind="primary"]:hover {
-    background: linear-gradient(to right, #60a5fa, #6ee7b7);
-}
+/* Inputs (consolidated below) */
 
-/* Inputs */
-input, textarea, select {
-    background-color: #1e293b !important;
-    color: #e9eef4 !important;
-    border: 1px solid #374151 !important;
-    border-radius: 6px !important;
-}
+/* Checkbox/Radio text (consolidated below) */
 
-input:focus, textarea:focus, select:focus {
-    border-color: #60a5fa !important;
-}
+/* Alerts (consolidated below) */
 
-/* Checkboxes and radio buttons */
-label, .stCheckbox, .stRadio {
-    color: #e9eef4;
-}
+/* DataFrame (consolidated below) */
 
-/* Info boxes and alerts */
-.stAlert {
-    background-color: #0f172a !important;
-    border-left: 4px solid #60a5fa !important;
-    color: #e9eef4 !important;
-}
-
-/* DataFrame box */
-div[data-testid="stDataFrame"] {
-    background-color: #1e293b;
-    color: #e9eef4;
-    border-radius: 6px;
-    padding: 1rem;
-}
-
-/* Captions, help texts */
-.stCaption, .stHelp {
-    color: #9ca3af;
-}
+/* Captions, help texts (consolidated below) */
 
 /* Form section spacing */
 form {
@@ -83,26 +34,15 @@ form {
     margin-bottom: 1.5rem;
 }
 
-/* Fix selectbox dropdown */
-.css-1wa3eu0-placeholder, .css-qc6sy-singleValue {
-    color: #e9eef4 !important;
-}
+/* Fix selectbox dropdown (consolidated with select labels below) */
 /* 🧠 Fix text labels and help text */
-label, .css-1cpxqw2, .css-16huue1, .stRadio > div, .stCheckbox > div, .st-bf, .st-dx {
-    color: #e5e7eb !important;  /* soft white */
-    font-weight: 500;
-}
+/* Removed redundant hashed label selectors */
 
 /* 🖱️ Fix button text */
-button span, .stButton button {
-    color: #0f172a !important;  /* dark blue-gray */
-    font-weight: 600;
-}
+/* Removed outdated button text color */
 
 /* 🧩 Tooltip or hint text */
-.css-qrbaxs, .css-1v0mbdj, .stTooltip {
-    color: #94a3b8 !important;
-}
+/* Tooltip or hint text - handled in tooltip/popup section below */
 
 /* 🧩 Fix select labels */
 .css-1wa3eu0-placeholder,
@@ -132,19 +72,7 @@ section[data-testid="stSidebar"] {
     border-right: 1px solid #374151;
 }
 
-/* Buttons */
-.stButton button {
-    background: linear-gradient(to right, #3b82f6, #10b981);
-    color: #ffffff !important;
-    font-weight: 600;
-    border: none;
-    border-radius: 6px;
-    padding: 0.5rem 1rem;
-}
-
-.stButton button:hover {
-    background: linear-gradient(to right, #60a5fa, #34d399);
-}
+/* Buttons - consolidated in FIX: Button visibility block */
 
 /* Inputs, text areas, selects */
 input, textarea, select {
@@ -249,13 +177,7 @@ button[kind="primary"] span {
     font-weight: 600 !important;
 }
 
-/* Form submit buttons */
-.stForm button[type="submit"],
-form button {
-    background: linear-gradient(to right, #3b82f6, #10b981) !important;
-    color: #ffffff !important;
-    font-weight: 600 !important;
-}
+/* Form submit buttons - see PHASE 1.2 block for authoritative styles */
 
 /* === FIX: Info icons (help text) visibility === */
 /* Help icon buttons */
@@ -334,7 +256,6 @@ h1, h2, h3, h4 {
 /* === FIX: Form submit button - SUPER AGGRESSIVE === */
 form button[type="submit"],
 .stForm button,
-button[kind="primary"],
 div[data-testid="stFormSubmitButton"] button,
 div[data-testid="stFormSubmitButton"] button > div,
 div[data-testid="stFormSubmitButton"] button p {
@@ -572,14 +493,7 @@ div[data-baseweb="tooltip"]::before {
    ======================================== */
 
 /* === MAIN TITLE - YouTube Creator Search Agent === */
-h1 {
-    color: #ffffff !important;
-    font-weight: 800 !important;
-    font-size: 2.75rem !important;
-    margin-bottom: 2rem !important;
-    letter-spacing: -1px !important;
-    text-shadow: 0 2px 8px rgba(59, 130, 246, 0.3) !important;
-}
+/* Final h1 values are defined in the Title styling section later */
 
 /* === SECTION HEADERS (1. Search Method, 2. Filtering Criteria) === */
 h2 {
@@ -1158,11 +1072,7 @@ h1 + .stMarkdown p {
    ======================================== */
 
 /* === Logo size === */
-img[src*="app-icon"] {
-    width: 100px !important;
-    height: 100px !important;
-    margin-right: 1.5rem !important;
-}
+/* Consolidated with the logo group above */
 
 /* === Smooth transitions everywhere === */
 button, input, select, [role="button"], [data-baseweb="select"] {

@@ -60,7 +60,7 @@ Python decorators require literal values, so TTL constants below are
 documented here but hardcoded in @st.cache_data decorators with comments.
 
 ON SIMILARITY WEIGHTS:
-These weights are hardcoded in similarity_engine.py calculate_similarity_score().
+These weights are hardcoded in similarity_engine.py on calculate_similarity_score().
 Refactoring to make them configurable would require significant changes for 
 minimal practical benefit.
 """
@@ -230,7 +230,9 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 YOUTUBE_API_SERVICE_NAME = "youtube"
 YOUTUBE_API_VERSION = "v3"
 
-# --- Helper & API Functions ---
+# ============================================================================
+# --- API Functions ---
+# ============================================================================
 
 @st.cache_resource(show_spinner=False)
 def get_youtube():
@@ -249,11 +251,13 @@ def get_gemini_model(temperature: float | None = None):
         cfg["generation_config"] = {"temperature": float(temperature)}
     return genai.GenerativeModel('gemini-2.0-flash-lite', **cfg)
 
+# --- Query ---
+
 def extract_identifier_from_url(url):
     """Extract a channel identifier from common YouTube URL formats.
 
     Returns either a channel ID (starting with 'UC...') or a handle/username
-    (e.g., 'SomeCreator'). Resolution to an actual channel ID is done elsewhere.
+    (e.g., 'SomeCreator'). Resolution to an actual channel ID in `resolve_channel_id()`.
     """
     patterns = [
         r'(?:youtube\.com/channel/)([^/?&]+)',
@@ -266,7 +270,9 @@ def extract_identifier_from_url(url):
     return None
 
 def resolve_channel_id(youtube_service, user_input: str):
-    """Resolve a channel identifier from a URL, @handle, or UC... id.
+    """Accepts any user input (URL, handle, or raw UC… ID) and normalizes it to a canonical channel ID.
+
+    If the identifier is still a handle/name, it strips any leading @ and calls the YouTube Data API to resolve it.
 
     Returns channel_id or None.
     """
@@ -290,6 +296,16 @@ def resolve_channel_id(youtube_service, user_input: str):
         return None
     except HttpError:
         return None
+    
+def _strip_outer_quotes(s: str) -> str:
+    s = (s or "").strip()
+    if len(s) >= 2 and ((s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'"))):
+        return s[1:-1].strip()
+    return s    
+
+# ============================================================================    
+#---- Core logic ---
+# ============================================================================
 
 @st.cache_data(show_spinner=False, ttl=259200) # 3 days
 def search_channels_hybrid(query: str, region_code: str, max_videos: int = MAX_VIDEOS_PER_TERM, max_channels: int = MAX_SEARCH_RESULTS):
@@ -413,7 +429,7 @@ def search_channels_multi_term(
     Handle comma-separated queries as OR logic.
     Example: "manga, anime" → search both terms, merge results
     
-    Returns: List[dict] with deduplicated channels sorted by relevance, capped by max_channels
+    Returns: List[dict] with deduplicated channels sorted by relevance
     """
     # Split by comma and clean
     terms = [t.strip() for t in query.split(',') if t.strip()]
@@ -485,18 +501,8 @@ def search_channels_multi_term(
     
     return merged
 
-# --- Boolean query helpers (minimal) ---
-def _strip_outer_quotes(s: str) -> str:
-    s = (s or "").strip()
-    if len(s) >= 2 and ((s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'"))):
-        return s[1:-1].strip()
-    return s
-
 
 def get_channel_stats(youtube_service, channel_ids):
-    """
-    Phase 1 enhancement: Add 3 high-value metrics with minimal breaking changes
-    """
     stats_data = []
     for i in range(0, len(channel_ids), 50):
         chunk = channel_ids[i:i + 50]
@@ -545,7 +551,6 @@ def get_channel_stats(youtube_service, channel_ids):
     return stats_data
 
 def get_video_details(youtube_service, channel_data, max_videos_per_channel):
-    # ... (This function is now also used by the seed analysis)
     all_video_details = []
     for channel in channel_data:
         playlist_id = channel["uploads_playlist_id"]
@@ -649,6 +654,198 @@ def calculate_keyword_relevance(df, query, title_weight: float = 2.0, tags_weigh
     relevance = relevance.rename(columns={'video_score': 'relevance_score'})
     return relevance
 
+# --- Gemini AI Integration ---
+def generate_summary(df_results, query):
+    """Formats the data and calls the Gemini API to generate a summary.
+    
+    Detects search mode (keywords vs channel-as-seed) and provides appropriate context.
+    """
+    try:
+        # Track Gemini usage
+        if st.session_state.get('debug_mode', False):
+            try:
+                import debug_tracker
+                debug_tracker.track_api_call('gemini_summary')
+                
+                # Verify
+                count = st.session_state.debug_data.get('gemini_summary_calls', 0)
+                print(f"DEBUG: gemini_summary_calls now = {count}")
+            except Exception as e:
+                print(f"ERROR tracking summary call: {e}")               
+
+        model = get_gemini_model()
+
+        top_5_df = df_results.head(5)
+        
+        # Detect search mode by checking for similarity_score column
+        is_seed_based = 'similarity_score' in df_results.columns
+        
+        data_string = ""
+        for _, row in top_5_df.iterrows():
+            data_string += f"- Channel: {row['channel_title']}\n"
+            data_string += f"  - Subscribers: {row['subscribers']:,}\n"
+            data_string += f"  - Country: {row['country']}\n"
+            
+            if is_seed_based:
+                # Seed-based mode: show BOTH similarity and relevance
+                similarity_score = row.get('similarity_score', 'N/A')
+                relevance_score = row.get('relevance_score', 'N/A')
+                
+                # Extract match reasons from similarity dict if available
+                if 'similarity' in row and isinstance(row['similarity'], dict):
+                    reasons = row['similarity'].get('match_reasons', [])
+                    reasons_text = ', '.join(reasons[:2]) if reasons else 'See detailed analysis'
+                else:
+                    reasons_text = 'N/A'
+                
+                data_string += f"  - Similarity Score: {similarity_score}/100\n"
+                data_string += f"  - Why Similar: {reasons_text}\n"
+                data_string += f"  - Topic Focus (Relevance): {relevance_score}\n"
+            else:
+                # Keyword mode: show relevance score
+                data_string += f"  - Relevance Score: {row['relevance_score']}\n"
+            
+            data_string += f"  - Avg. Engagement Rate: {row['engagement_rate']}\n\n"
+
+        # Adjust prompt based on search mode
+        if is_seed_based:
+            seed_name = st.session_state.get('seed_profile', {}).get('channel_name', 'the seed channel')
+            prompt = f"""
+You are an expert marketing analyst. Provide a concise summary of the top YouTube channels similar to "{seed_name}".
+
+These channels were found using similarity analysis based on content topics, tags, audience size, and engagement patterns.
+
+For each channel, consider:
+- **Similarity Score (0-100)**: Overall match to the seed channel
+- **Topic Focus (Relevance %)**: How focused they are on the auto-generated keywords from the seed
+- **Engagement Rate**: How interactive their audience is
+
+Base your analysis ONLY on the data below and highlight 2–3 standout matches and why they're good fits for collaboration.
+
+Data:
+{data_string}
+"""
+        else:
+            prompt = f"""
+You are an expert marketing analyst. Provide a concise summary of the top YouTube channels for the query "{query}".
+
+Base your analysis ONLY on the data below and highlight 2–3 standout channels and why.
+
+Data:
+{data_string}
+"""
+
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"An error occurred while generating the summary: {e}"
+
+def generate_outreach_drafts(
+    top_channels_df: pd.DataFrame,
+    original_query: str,
+    limit: int = 3,
+    temperature: float = 0.7,
+    retries: int = 2,
+    language: str = "en",   # <- NEW: "en" or "es"
+) -> list[dict]:
+    """
+    Generate short, friendly outreach email drafts for the top N channels using Gemini.
+
+    Parameters
+    ----------
+    top_channels_df : pd.DataFrame
+        Must contain a 'channel_title' column (string-like).
+    original_query : str
+        The original search query to reference for authenticity.
+    limit : int
+        Number of channels to process (default 3).
+    temperature : float
+        Sampling temperature for Gemini (0.0-1.0 usually).
+    retries : int
+        How many times to retry a failed API call (default 2).
+    language : str
+        "en" for English or "es" for Spanish (default "en").
+
+    Returns
+    -------
+    List[dict]: [{'channel_title': str, 'draft_text': str}, ...]
+    """
+    results: list[dict] = []
+
+    if top_channels_df is None or top_channels_df.empty:
+        return results
+    if 'channel_title' not in top_channels_df.columns:
+        return results
+
+    model = get_gemini_model(temperature=temperature)
+
+    df = (
+        top_channels_df[['channel_title']]
+        .dropna(subset=['channel_title'])
+        .copy()
+    )
+    df['channel_title'] = df['channel_title'].astype(str).str.strip()
+    df = df[df['channel_title'] != ""].drop_duplicates(subset=['channel_title'])
+    df = df.head(max(0, int(limit)))
+
+    oq = (original_query or "").strip() or "my audience’s interests"
+
+    # Language instruction
+    lang = (language or "en").lower()
+    if lang.startswith("es"):
+        lang_line = "Write the email in Spanish. Usa un español claro, neutro y profesional."
+    else:
+        lang_line = "Write the email in English in a clear, professional yet friendly tone."
+
+    for _, row in df.iterrows():
+        channel_name = row['channel_title']
+
+         # Track each Gemini call
+        if st.session_state.get('debug_mode', False):
+            debug_tracker.track_api_call('gemini_outreach')
+
+        prompt = f"""
+Act as a marketing professional. Your task is to write a short, friendly, and professional outreach email to a YouTube creator.
+
+**Instructions:**
+- The tone should be respectful and concise.
+- Mention the creator's channel name specifically.
+- Reference the topic of my original search, which was "{oq}".
+- The goal is to express interest in a potential collaboration.
+- Do not use overly corporate language.
+- {lang_line}
+
+**Creator Channel Name:** {channel_name}
+
+**Email Draft:**
+"""
+
+        draft_text = ""
+        last_err = None
+        for attempt in range(retries + 1):
+            try:
+                resp = model.generate_content(prompt)
+                draft_text = (getattr(resp, "text", None) or str(resp)).strip()
+                if draft_text.startswith("```"):
+                    draft_text = draft_text.strip("`").strip()
+                break
+            except Exception as e:
+                last_err = e
+                continue
+
+        if not draft_text and last_err:
+            draft_text = f"(Error generating draft for '{channel_name}': {type(last_err).__name__}: {last_err})"
+
+        results.append({
+            "channel_title": channel_name,
+            "draft_text": draft_text
+        })
+
+    return results
+
+# ============================================================================
+#---Init App----
+# ============================================================================
 
 def run_search(
     youtube,
@@ -880,6 +1077,7 @@ Notes:
                 
                 log_msg = (
                     f"📊 Analyzing top {channels_analyzed_count} channels "
+                    f"Retrieved {len(video_data)} videos from {channels_analyzed_count} channelsRetrieved {len(video_data)} videos from {channels_analyzed_count} channels"
                     f"(match scores: {min_match:.0f}-{max_match:.0f}, avg: {avg_match:.0f}) "
                     f"from {len(quality_channels)} quality matches"
                 )
@@ -911,10 +1109,6 @@ Notes:
             
             if st.session_state.get('debug_mode', False) and step_start:
                 st.session_state.debug_data['timings']['video_details'] = time.time() - step_start
-        
-        # Debug checkpoint
-        if st.session_state.get('debug_mode', False):
-            st.write(f"✓ Step 5: Retrieved {len(video_data)} videos from {channels_analyzed_count} channels")
 
         if not video_data:
             st.warning("Could not retrieve any video details from the channels.")
@@ -978,11 +1172,6 @@ Notes:
             
             if st.session_state.get('debug_mode', False) and step_start:
                 st.session_state.debug_data['timings']['relevance_filtering'] = time.time() - step_start
-
-            # Debug checkpoint
-            if st.session_state.get('debug_mode', False):
-                avg_relevance = top_channels['relevance_score'].mean()
-                st.write(f"✓ Showing {len(top_channels)} channels (avg relevance: {avg_relevance:.1%}, {high_relevance_count} with ≥15%)")
 
         # === SIMILARITY RANKING (if using seed) ===
         if 'seed_profile' in st.session_state:
@@ -1144,11 +1333,6 @@ Notes:
             display_columns = ['channel_title', 'relevance_score', 'subscribers', 
                             'avg_views_per_video', 'country', 'engagement_rate']
 
-        # Debug checkpoint
-        if st.session_state.get('debug_mode', False):
-            st.write(f"✓ Preparing to display {len(top_channels)} channels")
-            st.write(f"Display columns: {display_columns}")
-
         # STORE IN SESSION STATE FOR DISPLAY
         st.session_state['display_df'] = top_channels[display_columns].copy()
 
@@ -1173,10 +1357,6 @@ Notes:
                 "country": "Country where the channel is registered (from YouTube's data).",
                 "engagement_rate": "(Likes + Comments) / Views, averaged across recent videos. Shows audience interactivity."
             }
-        
-        # Debug checkpoint
-        if st.session_state.get('debug_mode', False):
-            st.write(f"✓ display_df stored successfully with shape {st.session_state['display_df'].shape}")
         
        # === TRACK FINAL METRICS ===
         if st.session_state.get('debug_mode', False):
@@ -1210,197 +1390,9 @@ Notes:
             st.write(f"- Session state keys: {list(st.session_state.keys())}")
             st.write(f"- Debug data: {st.session_state.get('debug_data', {})}")   
 
-# --- Gemini AI Integration ---
-def generate_summary(df_results, query):
-    """Formats the data and calls the Gemini API to generate a summary.
-    
-    Detects search mode (keywords vs channel-as-seed) and provides appropriate context.
-    """
-    try:
-        # Track Gemini usage
-        if st.session_state.get('debug_mode', False):
-            try:
-                import debug_tracker
-                debug_tracker.track_api_call('gemini_summary')
-                
-                # Verify
-                count = st.session_state.debug_data.get('gemini_summary_calls', 0)
-                print(f"DEBUG: gemini_summary_calls now = {count}")
-            except Exception as e:
-                print(f"ERROR tracking summary call: {e}")               
-
-        model = get_gemini_model()
-
-        top_5_df = df_results.head(5)
-        
-        # Detect search mode by checking for similarity_score column
-        is_seed_based = 'similarity_score' in df_results.columns
-        
-        data_string = ""
-        for _, row in top_5_df.iterrows():
-            data_string += f"- Channel: {row['channel_title']}\n"
-            data_string += f"  - Subscribers: {row['subscribers']:,}\n"
-            data_string += f"  - Country: {row['country']}\n"
-            
-            if is_seed_based:
-                # Seed-based mode: show BOTH similarity and relevance
-                similarity_score = row.get('similarity_score', 'N/A')
-                relevance_score = row.get('relevance_score', 'N/A')
-                
-                # Extract match reasons from similarity dict if available
-                if 'similarity' in row and isinstance(row['similarity'], dict):
-                    reasons = row['similarity'].get('match_reasons', [])
-                    reasons_text = ', '.join(reasons[:2]) if reasons else 'See detailed analysis'
-                else:
-                    reasons_text = 'N/A'
-                
-                data_string += f"  - Similarity Score: {similarity_score}/100\n"
-                data_string += f"  - Why Similar: {reasons_text}\n"
-                data_string += f"  - Topic Focus (Relevance): {relevance_score}\n"
-            else:
-                # Keyword mode: show relevance score
-                data_string += f"  - Relevance Score: {row['relevance_score']}\n"
-            
-            data_string += f"  - Avg. Engagement Rate: {row['engagement_rate']}\n\n"
-
-        # Adjust prompt based on search mode
-        if is_seed_based:
-            seed_name = st.session_state.get('seed_profile', {}).get('channel_name', 'the seed channel')
-            prompt = f"""
-You are an expert marketing analyst. Provide a concise summary of the top YouTube channels similar to "{seed_name}".
-
-These channels were found using similarity analysis based on content topics, tags, audience size, and engagement patterns.
-
-For each channel, consider:
-- **Similarity Score (0-100)**: Overall match to the seed channel
-- **Topic Focus (Relevance %)**: How focused they are on the auto-generated keywords from the seed
-- **Engagement Rate**: How interactive their audience is
-
-Base your analysis ONLY on the data below and highlight 2–3 standout matches and why they're good fits for collaboration.
-
-Data:
-{data_string}
-"""
-        else:
-            prompt = f"""
-You are an expert marketing analyst. Provide a concise summary of the top YouTube channels for the query "{query}".
-
-Base your analysis ONLY on the data below and highlight 2–3 standout channels and why.
-
-Data:
-{data_string}
-"""
-
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        return f"An error occurred while generating the summary: {e}"
-
-def generate_outreach_drafts(
-    top_channels_df: pd.DataFrame,
-    original_query: str,
-    limit: int = 3,
-    temperature: float = 0.7,
-    retries: int = 2,
-    language: str = "en",   # <- NEW: "en" or "es"
-) -> list[dict]:
-    """
-    Generate short, friendly outreach email drafts for the top N channels using Gemini.
-
-    Parameters
-    ----------
-    top_channels_df : pd.DataFrame
-        Must contain a 'channel_title' column (string-like).
-    original_query : str
-        The original search query to reference for authenticity.
-    limit : int
-        Number of channels to process (default 3).
-    temperature : float
-        Sampling temperature for Gemini (0.0-1.0 usually).
-    retries : int
-        How many times to retry a failed API call (default 2).
-    language : str
-        "en" for English or "es" for Spanish (default "en").
-
-    Returns
-    -------
-    List[dict]: [{'channel_title': str, 'draft_text': str}, ...]
-    """
-    results: list[dict] = []
-
-    if top_channels_df is None or top_channels_df.empty:
-        return results
-    if 'channel_title' not in top_channels_df.columns:
-        return results
-
-    model = get_gemini_model(temperature=temperature)
-
-    df = (
-        top_channels_df[['channel_title']]
-        .dropna(subset=['channel_title'])
-        .copy()
-    )
-    df['channel_title'] = df['channel_title'].astype(str).str.strip()
-    df = df[df['channel_title'] != ""].drop_duplicates(subset=['channel_title'])
-    df = df.head(max(0, int(limit)))
-
-    oq = (original_query or "").strip() or "my audience’s interests"
-
-    # Language instruction
-    lang = (language or "en").lower()
-    if lang.startswith("es"):
-        lang_line = "Write the email in Spanish. Usa un español claro, neutro y profesional."
-    else:
-        lang_line = "Write the email in English in a clear, professional yet friendly tone."
-
-    for _, row in df.iterrows():
-        channel_name = row['channel_title']
-
-         # Track each Gemini call
-        if st.session_state.get('debug_mode', False):
-            debug_tracker.track_api_call('gemini_outreach')
-
-        prompt = f"""
-Act as a marketing professional. Your task is to write a short, friendly, and professional outreach email to a YouTube creator.
-
-**Instructions:**
-- The tone should be respectful and concise.
-- Mention the creator's channel name specifically.
-- Reference the topic of my original search, which was "{oq}".
-- The goal is to express interest in a potential collaboration.
-- Do not use overly corporate language.
-- {lang_line}
-
-**Creator Channel Name:** {channel_name}
-
-**Email Draft:**
-"""
-
-        draft_text = ""
-        last_err = None
-        for attempt in range(retries + 1):
-            try:
-                resp = model.generate_content(prompt)
-                draft_text = (getattr(resp, "text", None) or str(resp)).strip()
-                if draft_text.startswith("```"):
-                    draft_text = draft_text.strip("`").strip()
-                break
-            except Exception as e:
-                last_err = e
-                continue
-
-        if not draft_text and last_err:
-            draft_text = f"(Error generating draft for '{channel_name}': {type(last_err).__name__}: {last_err})"
-
-        results.append({
-            "channel_title": channel_name,
-            "draft_text": draft_text
-        })
-
-    return results
-
-
+# ============================================================================
 # --- Streamlit User Interface ---
+# ============================================================================
 
 st.set_page_config(
     page_title="CCSeeker - YouTube Creator Search",
@@ -1544,10 +1536,10 @@ with st.form("search_form"):
         country_options.sort()
         country_options.insert(0, "Global")
         selected_country = st.selectbox(
-        "Prioritize Region",
+        "Relevant in:",
         country_options,
         index=0,  # Default to Global (no regional bias)
-        help="YouTube will show channels popular in this region first, but results aren't limited to it.",
+        help="YouTube will show channels popular in this country first, but results aren't limited to it.",
     )
         region_input = "" if selected_country == "Global" else selected_country.split("(")[-1][:2]
 
@@ -1557,7 +1549,7 @@ with st.form("search_form"):
         with c1:
             min_subs_input = st.number_input(
                 "Minimum Subscribers",
-                min_value=0, value=10000, step=1000, format="%d",
+                min_value=0, value=1000, step=1000, format="%d",
                 help="Set to 0 to ignore."
             )
 
@@ -1741,12 +1733,12 @@ if st.session_state.get('seed_profile'):
     country_options.sort()
     country_options.insert(0, "Global")
     
-    # Prioritize Region
+    # Relevant in region
     selected_country = st.selectbox(
-        "Prioritize Region",
+        "Relevant in:",
         country_options,
         index=0,  # Default to Global
-        help="YouTube will show channels popular in this region first, but results aren't limited to it.",
+        help="YouTube will show channels popular in this country first, but results aren't limited to it.",
         key="seed_region_select"
     )
     region_input = "" if selected_country == "Global" else selected_country.split("(")[-1][:2]

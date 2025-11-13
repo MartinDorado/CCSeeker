@@ -52,19 +52,6 @@ import time
 # CONFIGURATION CONSTANTS
 # ============================================================================
 
-CONFIG_NOTES = """
-Centralized configuration for CCSeeker.
-
-ON CACHE TTLs: 
-Python decorators require literal values, so TTL constants below are 
-documented here but hardcoded in @st.cache_data decorators with comments.
-
-ON SIMILARITY WEIGHTS:
-These weights are hardcoded in similarity_engine.py on calculate_similarity_score().
-Refactoring to make them configurable would require significant changes for 
-minimal practical benefit.
-"""
-
 # API Configuration
 YOUTUBE_API_SERVICE_NAME = "youtube"
 YOUTUBE_API_VERSION = "v3"
@@ -89,7 +76,7 @@ DEFAULT_MIN_SUBSCRIBERS = 10000
 DEFAULT_MONTHS_RECENT = 18
 
 # Similarity Scoring Weights (total: 100 points)
-# Implementation: similarity_engine.py calculate_similarity_score()
+# These weights are hardcoded in similarity_engine.py on calculate_similarity_score(). Refactoring to make them configurable would require significant changes for minimal practical benefit.
 # Changing these requires modifying multiple lines in that function.
 SIMILARITY_WEIGHTS = {
     'tag_overlap': 30,        # Tag Jaccard similarity (most reliable signal)
@@ -103,7 +90,15 @@ SIMILARITY_WEIGHTS = {
 # For implementation details, see similarity_engine.py lines 137-260
 
 # ============================================================================
-# Helper functions
+# --- Securely Load API Keys ---
+# ============================================================================
+
+load_dotenv()
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+# ============================================================================
+# Helper query functions
 # ============================================================================
 
 def validate_and_truncate_query(query: str) -> tuple[str, bool]:
@@ -175,84 +170,6 @@ def render_term_counter(current_query: str) -> None:
         unsafe_allow_html=True
     )
 
-
-# ============================================================================
-# CACHING LAYER - with accurate tracking
-# ============================================================================
-
-@st.cache_data(ttl=604800) # 7 days
-def get_channel_stats_cached(channel_ids_tuple):
-    youtube = get_youtube()
-    return get_channel_stats(youtube, list(channel_ids_tuple))
-
-@st.cache_data(ttl=259200) # 3 days
-def get_video_details_cached(channel_ids_tuple, max_videos= MAX_VIDEOS_PER_CHANNEL):
-    """
-    Cached wrapper using smart per-channel caching
-    Tracking happens inside smart_cache.py
-    """
-    from smart_cache import get_video_details_smart
-    
-    youtube = get_youtube()
-    
-    # Get channel stats to get uploads playlist IDs
-    stats = get_channel_stats(youtube, list(channel_ids_tuple))
-    channel_data_full = []
-    
-    for stat in stats:
-        channel_data_full.append({
-            'channel_id': stat['channel_id'],
-            'uploads_playlist_id': stat['uploads_playlist_id']
-        })
-    
-    # Smart caching handles tracking internally
-    return get_video_details_smart(youtube, channel_data_full, max_videos)
-
-
-@st.cache_data(ttl=259200) # 3 days
-def search_channels_multi_term_cached(query, region_code, max_videos= MAX_VIDEOS_PER_TERM, cache_bust: str = "v2-no-early-cap"):
-    """Cached wrapper for multi-term search.
-
-    cache_bust: change this string to invalidate prior cached results
-    when search logic changes (e.g., removed early cap).
-    """
-    # cache_bust is unused in logic; only to affect cache key
-    _ = cache_bust
-    return search_channels_multi_term(query, region_code, max_videos)
-
-
-# --- Securely Load API Keys ---
-load_dotenv()
-YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-# --- Constants ---
-YOUTUBE_API_SERVICE_NAME = "youtube"
-YOUTUBE_API_VERSION = "v3"
-
-# ============================================================================
-# --- API Functions ---
-# ============================================================================
-
-@st.cache_resource(show_spinner=False)
-def get_youtube():
-    """Create and cache a YouTube Data API client using the env API key."""
-    if not YOUTUBE_API_KEY:
-        raise ValueError("YOUTUBE_API_KEY is not configured")
-    return build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, developerKey=YOUTUBE_API_KEY)
-
-def get_gemini_model(temperature: float | None = None):
-    """Configure and return a Gemini model for content generation."""
-    if not GEMINI_API_KEY:
-        raise ValueError("GEMINI_API_KEY is not configured")
-    genai.configure(api_key=GEMINI_API_KEY)
-    cfg = {}
-    if temperature is not None:
-        cfg["generation_config"] = {"temperature": float(temperature)}
-    return genai.GenerativeModel('gemini-2.0-flash-lite', **cfg)
-
-# --- Query ---
-
 def extract_identifier_from_url(url):
     """Extract a channel identifier from common YouTube URL formats.
 
@@ -302,6 +219,72 @@ def _strip_outer_quotes(s: str) -> str:
     if len(s) >= 2 and ((s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'"))):
         return s[1:-1].strip()
     return s    
+
+# ============================================================================
+# CACHING LAYER - with accurate tracking
+# ============================================================================
+
+@st.cache_data(ttl=604800) # 7 days
+def get_channel_stats_cached(channel_ids_tuple):
+    youtube = get_youtube()
+    return get_channel_stats(youtube, list(channel_ids_tuple))
+
+@st.cache_data(ttl=259200) # 3 days
+def get_video_details_cached(channel_ids_tuple, max_videos= MAX_VIDEOS_PER_CHANNEL):
+    """
+    Cached wrapper using smart per-channel caching
+    Tracking happens inside smart_cache.py
+    """
+    from smart_cache import get_video_details_smart
+    
+    youtube = get_youtube()
+    
+    # Get channel stats to get uploads playlist IDs
+    stats = get_channel_stats(youtube, list(channel_ids_tuple))
+    channel_data_full = []
+    
+    for stat in stats:
+        channel_data_full.append({
+            'channel_id': stat['channel_id'],
+            'uploads_playlist_id': stat['uploads_playlist_id']
+        })
+    
+    # Smart caching handles tracking internally
+    return get_video_details_smart(youtube, channel_data_full, max_videos)
+
+
+@st.cache_data(ttl=259200) # 3 days
+def search_channels_multi_term_cached(query, region_code, max_videos= MAX_VIDEOS_PER_TERM, cache_bust: str = "v2-no-early-cap"):
+    """Cached wrapper for multi-term search.
+
+    cache_bust: change this string to invalidate prior cached results
+    when search logic changes (e.g., removed early cap).
+    """
+    # cache_bust is unused in logic; only to affect cache key
+    _ = cache_bust
+    return search_channels_multi_term(query, region_code, max_videos)
+
+
+# ============================================================================
+# --- API Functions ---
+# ============================================================================
+
+@st.cache_resource(show_spinner=False)
+def get_youtube():
+    """Create and cache a YouTube Data API client using the env API key."""
+    if not YOUTUBE_API_KEY:
+        raise ValueError("YOUTUBE_API_KEY is not configured")
+    return build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, developerKey=YOUTUBE_API_KEY)
+
+def get_gemini_model(temperature: float | None = None):
+    """Configure and return a Gemini model for content generation."""
+    if not GEMINI_API_KEY:
+        raise ValueError("GEMINI_API_KEY is not configured")
+    genai.configure(api_key=GEMINI_API_KEY)
+    cfg = {}
+    if temperature is not None:
+        cfg["generation_config"] = {"temperature": float(temperature)}
+    return genai.GenerativeModel('gemini-2.0-flash-lite', **cfg)
 
 # ============================================================================    
 #---- Core logic ---
@@ -1450,11 +1433,6 @@ with st.sidebar:
     
     # Update session state
     st.session_state.debug_mode = debug_enabled
-
-    # Show developer config notes only in debug mode
-    if st.session_state.debug_mode:
-        with st.expander("Developer Notes: Config", expanded=False):
-            st.markdown(CONFIG_NOTES)
 
 # The search method selector is outside the form to allow instant UI updates.
 st.header("1. Search Method")

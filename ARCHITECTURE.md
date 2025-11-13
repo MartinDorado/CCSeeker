@@ -84,7 +84,7 @@ def search_channels_hybrid(query: str, region_code: str):
 video_response = youtube.search().list(
     q=query,
     type='video',
-    maxResults=50,
+    maxResults=50, #Is 50 for being able to fetch a nextPageToken. MAX_VIDEOS_PER_TERM = 100
     order='relevance'
 ).execute()
 
@@ -308,7 +308,7 @@ def calculate_similarity_score(candidate: dict,
 **The Algorithm:**
 
 ```python
-# Factor 1: Tag Overlap (30 points) - MOST RELIABLE
+# Factor 1: Tag Overlap (30 points)
 candidate_tags = set(candidate['tags'])
 seed_tags = set(seed_profile['common_tags'])
 tag_overlap = jaccard_similarity(candidate_tags, seed_tags)

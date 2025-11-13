@@ -23,7 +23,7 @@
 Digital marketers spend hours manually searching for niche content creators on YouTube:
 - **Time-intensive**: Manual channel discovery takes 4-6 hours per campaign
 - **Limited tools**: Existing solutions are expensive ($50-200/month) or lack depth
-- **Knowledge gap**: Finding creators when you don't know the exact terminology is difficult
+- **Knowledge gap**: Finding creators when you don't know the exact terminology is difficult of the niche
 
 ## 💡 The Solution
 
@@ -46,6 +46,7 @@ The system ranks results by relevance/similarity, tracks API usage to stay withi
 ![Keyword Search Interface](docs/screenshots/screenshot_keyword_search.jpg)
 
 - **Multi-term support**: Search with up to 2 comma-separated topics
+- **Prioritize region**: Where channels are more relevant
 - **Hybrid matching**: Finds channels by video content AND channel names
 - **Smart ranking**: Channels with 8 relevant videos (80 pts) outrank those with keyword only in name (5 pts)
 - **Visual term counter**: Real-time feedback on query validity
@@ -124,7 +125,7 @@ Toggle debug mode to see:
 ---
 
 ### Search Results
-*Results table shows relevance scores, engagement rates, and subscriber counts. Seed mode adds similarity scores and match reasons.*
+Results table shows relevance scores, subscriber counts, engagement rates, and more. Seed mode adds similarity scores and match reasons.
 
 ![Search Results](docs/screenshots/screenshot_display_df.jpg)
 
@@ -150,7 +151,7 @@ Toggle debug mode to see:
 
 **Two Search Modes**
 - **Keywords**: When you know the niche ("vegan cooking")
-- **Seed**: When you have an example but don't know the terminology
+- **Seed**: When you have an example, don't know niche's terminology, and just want to find simmilar channels.  
 
 **Filter Before Fetching Videos**
 - Apply subscriber/country filters BEFORE analyzing videos
@@ -169,7 +170,7 @@ Toggle debug mode to see:
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/ccseeker.git
+git clone https://github.com/MartinDorado/CCSeeker.git
 cd ccseeker
 
 # Create virtual environment
@@ -207,9 +208,10 @@ App opens at `http://localhost:8501`
 
 1. Select **🔑 Keywords** mode
 2. Enter 1-2 search terms (e.g., "manga, anime")
+3. Relevant in: Country (optional) 
 3. Set filters:
    - Minimum subscribers (default: 10,000)
-   - Channel country (optional)
+   - Channel's origin country (optional)
    - Recent activity (default: 18 months)
 4. Click **Find Creators**
 
@@ -240,7 +242,7 @@ Results ranked by similarity score (0-100) with match reasons.
 **Create Outreach Emails**
 - Select language (English/Español)
 - Click **Generate Outreach Drafts**
-- Get 3 personalized email templates
+- Get personalized email templates for TOP 3. 
 
 ---
 
@@ -266,16 +268,17 @@ CCSeeker/
 └── README.md                         # This file
 ```
 
-**Key Files:**
+**Key Functions:**
 
-| File | Responsibility |
-|------|----------------|
-| `run_search()` | Pipeline coordinator - calls all other functions |
-| `search_channels_hybrid()` | YouTube hybrid search (video + channel name) |
-| `analyze_seed_channel_v2()` | Extract topics from seed channel |
-| `calculate_similarity_score()` | Multi-factor similarity algorithm |
-| `get_channel_videos()` | Cached video fetcher |
-| `track_api_call()` | Debug mode API tracking |
+| Function | Purpose | File |
+|----------|---------|------|
+| `run_search()` | Pipeline coordinator - calls all other functions | app_seed_gemini_hardened.py |
+| `search_channels_hybrid()` | YouTube hybrid search (video + channel name) | app_seed_gemini_hardened.py |
+| `analyze_seed_channel_v2()` | Extract topics from seed channel | seed_topics_v2.py |
+| `calculate_similarity_score()` | Multi-factor similarity algorithm | similarity_engine.py |
+| `get_channel_videos()` | Cached video fetcher | smart_cache.py |
+| `track_api_call()` | Debug mode API tracking | debug_tracker.py |
+
 
 ---
 
@@ -289,7 +292,17 @@ MAX_SEARCH_RESULTS = 50           # Channels returned per search
 MAX_VIDEOS_PER_CHANNEL = 10       # Videos analyzed for relevance
 MAX_VIDEOS_PER_SEED = 50          # Videos analyzed for seed profile
 MIN_RELEVANCE_SCORE = 0.15        # 15% keyword match required
-CACHE_TTL_SECONDS = 86400         # 24-hour cache lifetime
+
+# Cache TTLs (in seconds)
+CACHE_TTL_CHANNEL_STATS = 604800   # 1 week - used in get_channel_stats_cached()
+CACHE_TTL_VIDEO_DETAILS = 259200   # 3 days - used in get_video_details_cached()
+CACHE_TTL_SEARCH_RESULTS = 259200  # 3 days - used in search_channels_multi_term_cached()
+
+# Filtering Thresholds
+MIN_RELEVANCE_SCORE = 0.15         # 15% keyword match required
+DEFAULT_MIN_SUBSCRIBERS = 10000
+DEFAULT_MONTHS_RECENT = 18
+
 ```
 
 **Similarity Weights** (in `similarity_engine.py`):
@@ -335,23 +348,6 @@ Enable debug mode to see real-time usage.
 - ✅ Input validation (query truncation, URL parsing)
 - ✅ Rate limiting awareness via debug panel
 - ✅ No web scraping (ToS-compliant API usage)
-
----
-
-## 🧪 Testing
-
-Basic import test:
-```bash
-python tests/test_basic.py
-```
-
-Manual testing checklist:
-- [ ] Keyword search returns relevant channels
-- [ ] Seed analysis extracts valid topics
-- [ ] Filters work (subscribers, country, recency)
-- [ ] Debug mode tracks API calls accurately
-- [ ] Cache reduces redundant API calls
-- [ ] AI features generate coherent text (if enabled)
 
 ---
 

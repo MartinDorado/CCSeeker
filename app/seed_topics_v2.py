@@ -317,9 +317,11 @@ def analyze_seed_channel_v2(
             from dateutil import parser
             dates = [parser.parse(d) for d in publish_dates]
             dates.sort()
-            days_span = (dates[-1] - dates[0]).days
-            if days_span > 0:
-                upload_frequency = (len(dates) / days_span) * 30  # videos per month
+            time_span_days = (dates[-1] - dates[0]).total_seconds() / 86400
+            if time_span_days <= 0:
+                time_span_days = 1 / 24  # fallback: treat as at least an hour
+            upload_frequency = (len(dates) / time_span_days) * 30
+
         except:
             pass
     

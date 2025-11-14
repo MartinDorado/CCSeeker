@@ -1060,7 +1060,6 @@ Notes:
                 
                 log_msg = (
                     f"📊 Analyzing top {channels_analyzed_count} channels "
-                    f"Retrieved {len(video_data)} videos from {channels_analyzed_count} channelsRetrieved {len(video_data)} videos from {channels_analyzed_count} channels"
                     f"(match scores: {min_match:.0f}-{max_match:.0f}, avg: {avg_match:.0f}) "
                     f"from {len(quality_channels)} quality matches"
                 )
@@ -1097,6 +1096,9 @@ Notes:
             st.warning("Could not retrieve any video details from the channels.")
             st.dataframe(channels_to_analyze.sort_values(by="subscribers", ascending=False))
             return
+        
+        log_msg = (f"🎬 Retrieved {len(video_data)} videos for deep analysis from {channels_analyzed_count} channels")
+        search_log.append(log_msg)
 
         # === STEP 6: Calculate relevance and filter ===
         with st.spinner("Calculating relevance and engagement metrics..."):
@@ -1674,7 +1676,7 @@ if st.session_state.get('seed_profile'):
         st.metric("Engagement Rate", f"{profile['avg_engagement_rate']:.2%}")
     
     # Show extracted topics with clear distinction
-    st.subheader("📌 Content Analysis")
+    st.subheader("📌 Topic Extraction")
 
     col_topics, col_tags = st.columns(2)
 
@@ -1685,10 +1687,14 @@ if st.session_state.get('seed_profile'):
             st.markdown(f"<div style='padding: 10px; background-color: rgba(59, 130, 246, 0.1); border-radius: 6px; border-left: 3px solid #3b82f6;'>{phrases_display}</div>", unsafe_allow_html=True)
         else:
             st.info("No multi-word phrases extracted")
+
+        st.markdown("<div style='margin-top: 12px'></div>", unsafe_allow_html=True)
         
         # Show single keywords too
+        st.markdown("**💬 Single Keywords** *(from video titles)*")
         if profile['secondary_keywords']:
-            st.caption("Single keywords: " + ", ".join(profile['secondary_keywords'][:8]))
+            keywords_display ="Single keywords: " + ", ".join(profile['secondary_keywords'][:8])
+            st.markdown(f"<div style='padding: 10px; background-color: rgba(174, 127, 57, 0.1); border-radius: 6px; border-left: 3px solid #AE7F39;'>{phrases_display}</div>", unsafe_allow_html=True)
 
     with col_tags:
         st.markdown("**🏷️ Creator Tags** *(used by the channel)*")
@@ -1697,6 +1703,8 @@ if st.session_state.get('seed_profile'):
             st.markdown(f"<div style='padding: 10px; background-color: rgba(16, 185, 129, 0.1); border-radius: 6px; border-left: 3px solid #10b981;'>{tags_display}</div>", unsafe_allow_html=True)
         else:
             st.info("No tags found in recent videos")
+    
+    st.markdown("<div style='margin-top: 12px'></div>", unsafe_allow_html=True)
     
     # Show AI summary if available
     if profile.get('description_summary'):

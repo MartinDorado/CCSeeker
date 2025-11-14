@@ -51,28 +51,6 @@ The system ranks results by relevance/similarity, tracks API usage to stay withi
 - **Smart ranking**: Channels with 8 relevant videos (80 pts) outrank those with keyword only in name (5 pts)
 - **Visual term counter**: Real-time feedback on query validity
 
-</details>
-
-<details open>
-<summary><strong>Channel-as-Seed Mode</strong></summary>
-
-![Channel-as-Seed Interface](docs/screenshots/screenshot_seed_mode.jpg)
-
-- **Paste any YouTube channel URL** and the system:
-  - Analyzes 50 recent videos
-  - Extracts primary topics (multi-word phrases) and tags
-  - Detects content language (EN/ES)
-  - Calculates engagement patterns and upload frequency
-- **Multi-signal similarity scoring** (100-point scale):
-  - Tag overlap (30%) - Jaccard similarity
-  - Keyword matching (30%)
-  - Subscriber tier (15%) - prevents 10M vs 10K mismatches
-  - Engagement rate (17%)
-  - Upload frequency (8%)
-- **Optional AI enhancement**: Gemini can analyze top 10 matches for "vibe" similarity
-
-</details>
-
 ### 🔍 Advanced Filtering
 
 ![Filtering Options](docs/screenshots/screenshot_filtering.jpg)
@@ -85,8 +63,43 @@ The system ranks results by relevance/similarity, tracks API usage to stay withi
 ### 🤖 AI-Powered Features (Optional)
 
 - **Channel Summaries**: Auto-generated overviews using Google Gemini
+(docs/screenshots/screenshot_keywords_ai_summary.jpg)
 - **Outreach Emails**: Personalized drafts in English or Spanish
+(docs/screenshots/screenshot_ ai_outreach_emails.jpg)
+
+</details>
+
+<details open>
+<summary><strong>Channel-as-Seed Mode</strong></summary>
+
+![Channel-as-Seed Interface](docs/screenshots/screenshot_seed_mode.jpg)
+
+- **Paste any YouTube channel URL** and the system:
+  - Analyzes 50 recent videos
+  - Detects content language (EN/ES)
+  - Calculates engagement patterns and upload frequency
+  (docs/screenshots/screenshot_seed_channel_profile.jpg) 
+
 - **Topic Extraction**: Identifies niche keywords from video titles and tags
+  (docs/screenshots/screenshot_seed_topic_extraction_and_ai_channel_summary.jpg)
+  (docs/screenshots/screenshot_seed_filtering_and_search_options.jpg)
+
+- **Optional AI enhancement**: Gemini can analyze top 10 matches for "vibe" similarity
+(docs/screenshots/screenshot_seed_ai_generated_summary.jpg)
+
+- **Seed detailed match analysis**: Deep dive into why channels match the seed.
+(docs/screenshots/screenshot_seed_detailed_match_analysis.jpg)
+
+- **Multi-signal similarity scoring** (100-point scale):
+  - Tag overlap (30%) - Jaccard similarity
+  - Keyword matching (30%)
+  - Subscriber tier (15%) - prevents 10M vs 10K mismatches
+  - Engagement rate (17%)
+  - Upload frequency (8%)
+  (docs/screenshots/screenshot_seed_similarity_score.jpg)
+</details>
+
+
 
 ### 📊 Debug & Monitoring System
 

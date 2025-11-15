@@ -168,6 +168,29 @@ Toggle debug mode to see:
 - Apply subscriber/country filters BEFORE analyzing videos
 - Saves API quota - no point fetching 10 videos from a 500-sub channel if minimum is 10K
 
+## 🧪 Testing & QA
+
+At this stage, CCSeeker does **not** include automated unit or integration tests.
+
+During development, all testing has been done **manually**, focusing on:
+
+- Both search modes (🔑 Keywords and 📺 Channel-as-Seed)
+- Typical user flows: running searches, applying filters, generating summaries and outreach emails
+- Handling of missing/invalid API keys and exhausted YouTube quota
+- Basic error handling in the Streamlit UI
+
+Because the app started as a fast MVP and evolved organically, most logic is currently
+tightly coupled to the Streamlit UI, which makes it harder to introduce automated tests
+without some refactoring (see `ARCHITECTURE.md` for details on this trade-off).
+
+### Future Testing Roadmap
+
+Planned improvements:
+
+1. **Extract testable core logic** (e.g., similarity scoring, keyword relevance, seed-topic extraction) into smaller, pure functions.
+2. **Add unit tests** for these core modules (e.g. `similarity_engine.py`, `seed_topics_v2.py`, `smart_cache.py`).
+3. **Introduce integration tests** for the main search pipeline (from user input to final DataFrame).
+
 ---
 
 ## 📦 Installation
@@ -274,7 +297,6 @@ CCSeeker/
 |                    
 ├── .streamlit/                       # Streamlit config
 ├── requirements.txt                  # Python dependencies
-├── .env.example                      # API key template
 ├── ARCHITECTURE.md                   # Technical deep dive
 └── README.md                         # This file
 ```

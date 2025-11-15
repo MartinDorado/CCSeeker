@@ -70,7 +70,7 @@ Once real user feedback validates core functionality:
 
 ## Mode 1: Keyword Search
 
-**Entry Point:** `run_search()` in `app_seed_gemini_hardened.py`
+**Entry Point:** `run_search()` in `main.py`
 
 ### Flow
 

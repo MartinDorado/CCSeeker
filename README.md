@@ -206,7 +206,7 @@ cp .env.example .env
 ### Run
 
 ```bash
-streamlit run app/app_seed_gemini_hardened.py
+streamlit run app/main.py
 ```
 
 App opens at `http://localhost:8501`
@@ -262,7 +262,7 @@ Results ranked by similarity score (0-100) with match reasons.
 ```
 CCSeeker/
 ├── app/
-│   ├── app_seed_gemini_hardened.py  # Main UI & search orchestration
+│   ├── main.py                      # Main UI & search orchestration
 │   ├── seed_topics_v2.py            # Seed channel analysis engine
 │   ├── similarity_engine.py         # Multi-factor similarity scoring
 │   ├── smart_cache.py               # Per-channel caching layer

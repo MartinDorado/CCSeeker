@@ -60,11 +60,32 @@ The main application file (~2000 lines) consolidates UI, business logic, and orc
 - Some functions are far from ideal length 
 - Testing requires more setup due to tight coupling
 
-**Post-Launch Refactoring Roadmap:**
-Once real user feedback validates core functionality:
-1. Extract pure business logic (similarity scoring, relevance calculation) - easiest to test
-2. Separate API layer with proper mocking boundaries
-3. Add integration tests for critical paths
+## 🔧 Post-Launch Refactoring Roadmap
+
+This project started life as an MVP, optimized for getting a working tool into my hands
+as fast as possible. As a result, a lot of logic currently lives inside the Streamlit app
+(`main.py`), and most testing has been manual.
+
+The refactoring plan is intentionally incremental and test-first:
+
+1. **Stabilize current behaviour**
+   - Document a manual QA checklist for both search modes (keywords + seed).
+   - Add a few tiny smoke tests for pure functions (e.g. similarity scoring).
+
+2. **Add unit tests for core logic**
+   - Cover `similarity_engine.py` (Jaccard similarity, scoring breakdown).
+   - Cover parts of `seed_topics_v2.py` (topic extraction, penalty system).
+   - Add small tests for cache-key generation and tag handling in `smart_cache.py`.
+
+3. **Split main.py into smaller modules (no behaviour changes)**
+   - `config.py` – constants and configuration notes.
+   - `youtube_client.py` / `gemini_client.py` – external API clients and helpers.
+   - `search_pipeline.py` – `run_search` and related search/relevance logic.
+   - `ui_seed.py`, `ui_results.py` – seed profile panel and results/analysis UI.
+
+4. **Gradually increase test coverage**
+   - Add tests around the search pipeline with mocked YouTube/Gemini clients.
+   - Add regression tests for edge cases (no results, quota errors, missing data).
 
 ---
 

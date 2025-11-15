@@ -144,9 +144,24 @@ SIMILARITY_WEIGHTS = {
 # --- Securely Load API Keys ---
 # ============================================================================
 
-load_dotenv()
-YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+load_dotenv()  # Load .env for local dev
+
+def _get_secret(name: str) -> str | None:
+    """Try env var first, then Streamlit secrets (for Streamlit Cloud)."""
+    # 1) Local env / .env
+    value = os.getenv(name)
+    if value:
+        return value
+
+    # 2) Streamlit Cloud secrets
+    try:
+        return st.secrets[name]  # raises KeyError if missing
+    except Exception:
+        return None
+
+YOUTUBE_API_KEY = _get_secret("YOUTUBE_API_KEY")
+GEMINI_API_KEY = _get_secret("GEMINI_API_KEY")
 
 # ============================================================================
 # Helper query functions

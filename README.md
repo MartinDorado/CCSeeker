@@ -23,7 +23,7 @@
 Digital marketers spend hours manually searching for niche content creators on YouTube:
 - **Time-intensive**: Manual channel discovery takes 4-6 hours per campaign
 - **Limited tools**: Existing solutions are expensive ($50-200/month) or lack depth
-- **Knowledge gap**: Finding creators when you don't know the exact terminology is difficult of the niche
+- **Knowledge gap**: Finding creators when you don't know the exact terminology of the niche is difficult 
 
 ## 💡 The Solution
 
@@ -60,12 +60,19 @@ The system ranks results by relevance/similarity, tracks API usage to stay withi
 - **Activity filter**: Only show channels with uploads in last X months
 - **Relevance threshold**: Automatically excludes channels with <15% keyword match
 
+### Search Results
+Results table shows relevance scores, subscriber counts, engagement rates, and more. Seed mode adds similarity scores and match reasons.
+
+![Search Results](docs/screenshots/screenshot_display_df.jpg)
+
 ### 🤖 AI-Powered Features (Optional)
 
 - **Channel Summaries**: Auto-generated overviews using Google Gemini
-(docs/screenshots/screenshot_keywords_ai_summary.jpg)
+![Channel Summaries](docs/screenshots/screenshot_keywords_ai_summary.jpg)
 - **Outreach Emails**: Personalized drafts in English or Spanish
-(docs/screenshots/screenshot_ ai_outreach_emails.jpg)
+![Outreach Emails](docs/screenshots/screenshot_ai_outreach_emails.jpg)
+
+</details
 
 </details>
 
@@ -78,17 +85,17 @@ The system ranks results by relevance/similarity, tracks API usage to stay withi
   - Analyzes 50 recent videos
   - Detects content language (EN/ES)
   - Calculates engagement patterns and upload frequency
-  (docs/screenshots/screenshot_seed_channel_profile.jpg) 
+  ![Seed Channel Profile](docs/screenshots/screenshot_seed_channel_profile.jpg) 
 
 - **Topic Extraction**: Identifies niche keywords from video titles and tags
-  (docs/screenshots/screenshot_seed_topic_extraction_and_ai_channel_summary.jpg)
-  (docs/screenshots/screenshot_seed_filtering_and_search_options.jpg)
+  ![Seed Topic Extraction & AI channel summary](docs/screenshots/screenshot_seed_topic_extraction_and_ai_channel_summary.jpg)
+  ![Filtering + Search Options](docs/screenshots/screenshot_seed_filtering_and_search_options.jpg)
 
 - **Optional AI enhancement**: Gemini can analyze top 10 matches for "vibe" similarity
-(docs/screenshots/screenshot_seed_ai_generated_summary.jpg)
+![Seed AI Generated Summary](docs/screenshots/screenshot_seed_ai_generated_summary.jpg)
 
 - **Seed detailed match analysis**: Deep dive into why channels match the seed.
-(docs/screenshots/screenshot_seed_detailed_match_analysis.jpg)
+![Seed Detailed Match Analysis](docs/screenshots/screenshot_seed_detailed_match_analysis.jpg)
 
 - **Multi-signal similarity scoring** (100-point scale):
   - Tag overlap (30%) - Jaccard similarity
@@ -96,10 +103,8 @@ The system ranks results by relevance/similarity, tracks API usage to stay withi
   - Subscriber tier (15%) - prevents 10M vs 10K mismatches
   - Engagement rate (17%)
   - Upload frequency (8%)
-  (docs/screenshots/screenshot_seed_similarity_score.jpg)
+  ![Seed Similarity Score](docs/screenshots/screenshot_seed_similarity_score.jpg)
 </details>
-
-
 
 ### 📊 Debug & Monitoring System
 
@@ -134,13 +139,6 @@ Toggle debug mode to see:
 - Shows cache effectiveness
 
 </details>
-
----
-
-### Search Results
-Results table shows relevance scores, subscriber counts, engagement rates, and more. Seed mode adds similarity scores and match reasons.
-
-![Search Results](docs/screenshots/screenshot_display_df.jpg)
 
 ---
 

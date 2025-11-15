@@ -350,6 +350,30 @@ upload_frequency: 8    # Videos per month comparison
 
 ---
 
+## ⚠️ Beta status & known limitations
+
+This is an early **beta** version of CCSeeker. It’s stable enough for real use,
+but you should expect some rough edges.
+
+Current limitations / known issues:
+
+- **No automated tests yet** – all QA is manual. The main flows (keyword search
+  and channel-as-seed search) are tested by hand before each deploy.
+- **API quotas:** The app is limited by the YouTube Data API daily quota.
+  Heavy use may cause some searches to fail until the quota resets.
+- **AI timeouts / failures:** Gemini may occasionally time out or return an
+  error. When that happens, the search results still appear, but AI summaries
+  and outreach suggestions may be missing for that run.
+- **Performance:** On free Streamlit Cloud hardware, searches with a large
+  number of channels/videos can feel slow, especially with similarity scoring
+  enabled.
+- **Layout:** The UI is optimised for desktop/laptop screens. On small screens
+  you may need to scroll horizontally to see all columns.
+
+If you run into bugs, confusing behaviour, or have ideas for improvements,
+please open an issue in this repo or contact me.
+
+
 ## 📊 API Quotas & Costs
 
 ### YouTube Data API v3 (Free Tier)
@@ -403,7 +427,6 @@ This project is licensed under the Apache License 2.0 - see [LICENSE](LICENSE) f
 ## 👤 Author
 
 **Martín Dorado**
-- Portfolio: [yourwebsite.com](https://yourwebsite.com)
 - LinkedIn: [linkedin.com/in/martin-dorado](https://www.linkedin.com/in/martin-dorado/)
 - GitHub: [@MartinDorado](https://github.com/MartinDorado)
 

@@ -40,6 +40,57 @@ except ImportError:
 import math
 import time
 
+# ============================================================================
+# --- TABLE OF CONTENTS ---
+# ============================================================================
+# LINES 1-154      | IMPORTS & CONFIGURATION
+#                   - Module imports (seed_topics_v2, similarity_engine, smart_cache, debug_tracker)
+#                   - Constants (MAX_SEARCH_TERMS=2, cache TTLs, thresholds)
+#                   - Environment setup (API keys from .env)
+                 
+
+# LINES 155-276    | HELPER QUERY FUNCTIONS
+#                  - validate_and_truncate_query() - Enforce 2-term limit
+#                  - render_term_counter() - Visual query validation
+#                  - extract_identifier_from_url() - Parse YouTube URLs
+#                  - resolve_channel_id() - Convert handles/URLs to channel IDs
+#                  - _strip_outer_quotes() - Clean user input
+
+# LINES 277-342   | CACHING LAYER (@st.cache_data decorators)
+#                  - get_channel_stats_cached() - 7-day TTL
+#                  - get_video_details_cached() - 3-day TTL
+#                  - search_channels_multi_term_cached() - 3-day TTL
+
+# LINES 343- 879   | CORE LOGIC - YOUTUBE API WRAPPERS + AI GENERATION (Gemini)
+#                  - get_youtube() - Initialize API client
+#                  - get_channel_stats() - Fetch channel metadata
+#                  - search_channels_multi_term() - Multi-term OR search
+#                  - search_channels_hybrid() - Two-phase search (video + name)
+#                  - calculate_keyword_relevance() - Match scoring
+#                  - generate_summary() - Channel overview
+#                  - generate_outreach_emails() - Personalized drafts
+
+# LINES 880 -1428  | MAIN PIPELINE: run_search()
+#                  ~604-638: Docstring (pipeline overview)
+#                  ~640-680: Step 0.5 - Query validation & truncation
+#                  ~681-720: Step 1 - Search channels (hybrid strategy)
+#                  ~721-760: Step 2 - Fetch channel stats
+#                  ~761-800: Step 3 - Apply filters (subs, country)
+#                  ~801-850: Step 4 - Quality selection (cap at 50)
+#                  ~851-950: Step 5 - Deep analysis (fetch videos, calc relevance)
+#                  ~951-1020: Step 6 - Similarity ranking (if seed mode)
+#                  ~1021-1060: Step 7 - AI summary generation
+#                  ~1061-1100: Step 8 - Format & store results
+
+# LINES 1429-END | STREAMLIT UI SETUP
+#                  - inject_css() - Load custom theme
+#                  - Input form
+#                  - Seed analysis handeler
+#                  - Seed profile display
+#                  - Result display
+#                  - Global features
+
+
 # === SESSION STATE KEYS ===
 # This app uses the following st.session_state keys:
 # - debug_mode: bool - Toggle for debug panel
@@ -287,7 +338,7 @@ def get_gemini_model(temperature: float | None = None):
     return genai.GenerativeModel('gemini-2.0-flash-lite', **cfg)
 
 # ============================================================================    
-#---- Core logic ---
+#---- CORE LOGIC - YOUTUBE API WRAPPERS + AI GENERATION (Gemini)
 # ============================================================================
 
 @st.cache_data(show_spinner=False, ttl=259200) # 3 days
@@ -827,7 +878,7 @@ Act as a marketing professional. Your task is to write a short, friendly, and pr
     return results
 
 # ============================================================================
-#---Init App----
+#---MAIN PIPELINE: run_search()
 # ============================================================================
 
 def run_search(

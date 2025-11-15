@@ -61,16 +61,16 @@ The system ranks results by relevance/similarity, tracks API usage to stay withi
 - **Relevance threshold**: Automatically excludes channels with <15% keyword match
 
 ### Search Results
-Results table shows relevance scores, subscriber counts, engagement rates, and more. Seed mode adds similarity scores and match reasons.
+Results table shows relevance scores, subscriber counts, engagement rates, and more.
 
-![Search Results](docs/screenshots/screenshot_display_df.jpg)
+![Search Results](docs/screenshots/screenshot_keywords_display_df.jpg)
 
 ### 🤖 AI-Powered Features (Optional)
 
 - **Channel Summaries**: Auto-generated overviews using Google Gemini
 ![Channel Summaries](docs/screenshots/screenshot_keywords_ai_summary.jpg)
 - **Outreach Emails**: Personalized drafts in English or Spanish
-![Outreach Emails](docs/screenshots/screenshot_ai_outreach_emails.jpg)
+![Outreach Emails](docs/screenshots/screenshot_keywords_ai_outreach_emails.jpg)
 
 </details
 

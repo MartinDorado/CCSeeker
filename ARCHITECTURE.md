@@ -39,6 +39,32 @@ Search     (extract topics)
          ↓
    Display Results + Optional AI Features
 ```
+## Design Evolution
+
+**Initial Constraints:**
+- First production application 
+- Uncertain scope during development (started as keyword search, evolved to include AI-powered seed analysis)
+- Rapid as possible prototyping with AI assistance to validate product-market fit.
+
+
+**Architectural Decision: Monolithic Structure**
+
+The main application file (~2000 lines) consolidates UI, business logic, and orchestration in a single module. This was a deliberate choice to:
+
+1. **Maintain coherent data flow** - Streamlit's reactive model makes state management across modules complex
+2. **Minimize integration points** - Fewer files = fewer places for API quota tracking to break
+3. **Enable rapid iteration** - Changes to search logic often require UI adjustments; co-location speeds this up
+
+**Trade-offs Accepted:**
+- Harder for external contributors to navigate (mitigated by section comments and docstrings)
+- Some functions are far from ideal length 
+- Testing requires more setup due to tight coupling
+
+**Post-Launch Refactoring Roadmap:**
+Once real user feedback validates core functionality:
+1. Extract pure business logic (similarity scoring, relevance calculation) - easiest to test
+2. Separate API layer with proper mocking boundaries
+3. Add integration tests for critical paths
 
 ---
 

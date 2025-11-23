@@ -1241,9 +1241,7 @@ Notes:
                     st.error("No channels in the similar size range. Try disabling the size filter.")
                     return
                 else:
-                        log_msg = ("🎯 Preparing data for similarity analysis...")
-                        search_log.append(log_msg)
-                        
+                       
                         # ✅ REUSE video data we already fetched!
                         # df_videos already has 10 videos from all channels (line 691)
                         
@@ -1326,11 +1324,7 @@ Notes:
                         )
                         
                         top_channels = top_channels.sort_values('similarity_score', ascending=False)
-                        
-                        st.success(f"✅ Similarity ranking complete! Top match: {top_channels.iloc[0]['channel_title']} ({top_channels.iloc[0]['similarity_score']:.1f}/100)")
-        
-        log_msg = ("💡 Results include channels whose content matches your search topics, not just their names.")
-        search_log.append(log_msg)
+                                             
 
         # Track quota efficiency (for cache savings comparison)
         search_params = f"{final_query}|{region_input}|{min_subs_input}"
@@ -1512,7 +1506,7 @@ col1, col2, col3 = st.columns([2, 2, 3])
 
 # Initialize session state if not exists
 if 'search_method' not in st.session_state:
-    st.session_state.search_method = "Keywords"
+    st.session_state.search_method = None
 
 with col1:
     if st.button(
@@ -1535,98 +1529,103 @@ with col2:
         st.rerun()
 
 # Use the session state value
-search_method = st.session_state.search_method
-with st.form("search_form"):
-    # Inputs change depending on the selected method
-    if search_method == "Keywords":
-        query_input = st.text_input(
-            "Search Keywords",
-            "manga, anime",
-            help=(
-                "⚠ Enter up to 2 topics separated by commas. "
-                "Examples: 'manga, anime' or 'cooking, recipes'. "
-                "If you enter more than 2 terms, only the first 2 will be used. "
-                "Matches channel content (videos, descriptions) not just channel names."
-            ),
-            key="keywords_input"
+search_method = st.session_state.get('search_method')
+
+# Initialize submitted to False to prevent NameError on first run
+submitted = False
+if search_method:
+    with st.form("search_form"):
+        # Inputs change depending on the selected method
+        if search_method == "Keywords":
+            query_input = st.text_input(
+                "Search Keywords",
+                "manga, anime",
+                help=(
+                    "⚠ Enter up to 2 topics separated by commas. "
+                    "Examples: 'manga, anime' or 'cooking, recipes'. "
+                    "If you enter more than 2 terms, only the first 2 will be used. "
+                    "Matches channel content (videos, descriptions) not just channel names."
+                ),
+                key="keywords_input"
+            )
+            
+            # Visual term counter
+            if query_input:
+                render_term_counter(query_input)
+            seed_url_input = ""  # keep defined
+        else:
+            st.info("💡 Enter the full URL of a YouTube channel to find similar creators or just the channel's name.")
+            seed_url_input = st.text_input("YouTube Channel URL or name (the 'seed')", "https://www.youtube.com/@YourFavoriteChannel")
+            query_input = ""  # keep defined
+
+            # Set defaults for advanced options (will be shown in Search Options expander later)
+            target_language_code = "auto"
+            ignore_words_input = ""
+            
+            with st.expander("How does Channel-as-Seed work?"):
+                st.markdown("""
+                    This method discovers new channels based on a single example channel you provide.
+                    1.  **Analyze:** The agent fetches the latest videos from the URL you enter.
+                    2.  **Learn:** It extracts the most common topics and keywords from that channel's video titles and tags.
+                    3.  **Discover:** It then uses those learned keywords to launch a new, highly specific search to find other channels with similar content.
+                    4.  **Rank & Analyze:** Finally, it ranks the results by similarity to your seed channel based on a blend between an algorithmic score and an AI score. Giving 80% weight to the algorithmic score and 20% to the AI's score. The algorithmic score is based on similarity on topics, audience size, engagement patterns, and upload frequency.    
+                """)
+            
+            # Initialize defaults for seed-specific options (will be shown in Search Options later)
+            target_language_code = "auto"
+            ignore_words_input = ""
+
+        # For Keywords mode: show all filters in the form
+        if search_method == "Keywords":
+            country_options = COUNTRY_OPTIONS_BASE.copy()
+            country_options.sort()
+            country_options.insert(0, "Global")
+            selected_country = st.selectbox(
+            "Relevant in:",
+            country_options,
+            index=0,  # Default to Global (no regional bias)
+            help="YouTube will show channels popular in this country first, but results aren't limited to it.",
         )
-        
-        # Visual term counter
-        if query_input:
-            render_term_counter(query_input)
-        seed_url_input = ""  # keep defined
-    else:
-        st.info("💡 Enter the full URL of a YouTube channel to find similar creators.")
-        seed_url_input = st.text_input("YouTube Channel URL (the 'seed')", "https://www.youtube.com/@YourFavoriteChannel")
-        query_input = ""  # keep defined
+            region_input = "" if selected_country == "Global" else selected_country.split("(")[-1][:2]
 
-        # Set defaults for advanced options (will be shown in Search Options expander later)
-        target_language_code = "auto"
-        ignore_words_input = ""
-        
-        with st.expander("How does Channel-as-Seed work?"):
-            st.markdown("""
-                This method discovers new channels based on a single example channel you provide.
-                1.  **Analyze:** The agent fetches the latest videos from the URL you enter.
-                2.  **Learn:** It extracts the most common topics and keywords from that channel's video titles and tags.
-                3.  **Discover:** It then uses those learned keywords to launch a new, highly specific search to find other channels with similar content.
-            """)
-        
-        # Initialize defaults for seed-specific options (will be shown in Search Options later)
-        target_language_code = "auto"
-        ignore_words_input = ""
+            st.header("2. Filtering Criteria")
+            c1, c2, c3 = st.columns(3)
 
-    # For Keywords mode: show all filters in the form
-    if search_method == "Keywords":
-        country_options = COUNTRY_OPTIONS_BASE.copy()
-        country_options.sort()
-        country_options.insert(0, "Global")
-        selected_country = st.selectbox(
-        "Relevant in:",
-        country_options,
-        index=0,  # Default to Global (no regional bias)
-        help="YouTube will show channels popular in this country first, but results aren't limited to it.",
-    )
-        region_input = "" if selected_country == "Global" else selected_country.split("(")[-1][:2]
+            with c1:
+                min_subs_input = st.number_input(
+                    "Minimum Subscribers",
+                    min_value=0, value=1000, step=1000, format="%d",
+                    help="Set to 0 to ignore."
+                )
 
-        st.header("2. Filtering Criteria")
-        c1, c2, c3 = st.columns(3)
+            with c2:
+                # Create country dropdown options (same as Search Region)
+                country_filter_options = country_options.copy()  # Uses same list as region selector
+                selected_country_filter = st.selectbox(
+                    "Channel Country (strict filter)",
+                    country_filter_options,
+                    index=0,  # Default to "Global"
+                    help="Only show channels registered in this country. Leave as 'Global' to see all countries.",
+                    key="country_filter_select"
+                )
+                country_filter_input = "" if selected_country_filter == "Global" else selected_country_filter.split("(")[-1][:2]
 
-        with c1:
-            min_subs_input = st.number_input(
-                "Minimum Subscribers",
-                min_value=0, value=1000, step=1000, format="%d",
-                help="Set to 0 to ignore."
-            )
+            with c3:
+                months_ago_input = st.number_input(
+                    "Published within last (months)",
+                    value=18, min_value=0, step=1,
+                    help="Only show channels with uploads in the last X months. Set to 0 to ignore upload recency."
+                )
+        else:
+            # For Channel-as-Seed: initialize default values (filters will be shown after analysis)
+            region_input = ""
+            min_subs_input = 10000
+            country_filter_input = ""
+            months_ago_input = 18
 
-        with c2:
-            # Create country dropdown options (same as Search Region)
-            country_filter_options = country_options.copy()  # Uses same list as region selector
-            selected_country_filter = st.selectbox(
-                "Channel Country (strict filter)",
-                country_filter_options,
-                index=0,  # Default to "Global"
-                help="Only show channels registered in this country. Leave as 'Global' to see all countries.",
-                key="country_filter_select"
-            )
-            country_filter_input = "" if selected_country_filter == "Global" else selected_country_filter.split("(")[-1][:2]
-
-        with c3:
-            months_ago_input = st.number_input(
-                "Published within last (months)",
-                value=18, min_value=0, step=1,
-                help="Only show channels with uploads in the last X months. Set to 0 to ignore upload recency."
-            )
-    else:
-        # For Channel-as-Seed: initialize default values (filters will be shown after analysis)
-        region_input = ""
-        min_subs_input = 10000
-        country_filter_input = ""
-        months_ago_input = 18
-
-    # Button label changes based on search method
-    button_label = "Analyse Seed" if search_method == "Channel-as-Seed" else "Find Creators"
-    submitted = st.form_submit_button(button_label)
+        # Button label changes based on search method
+        button_label = "Analyse Seed" if search_method == "Channel-as-Seed" else "Find Creators"
+        submitted = st.form_submit_button(button_label)
     
 # ============================================================================
 # === HANDLE SEED-BASED SEARCH ===
@@ -1698,7 +1697,6 @@ if submitted:
                     st.session_state['seed_profile'] = seed_profile
                     st.session_state['seed_channel_id'] = seed_channel_id
                     
-                    st.success("✅ Seed analysis complete! Review the profile below.")
                 else:
                     st.error("Failed to analyze seed channel. Please check the URL and try again.")
                     seed_profile = None

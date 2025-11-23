@@ -378,7 +378,6 @@ def search_channels_hybrid(query: str, region_code: str, max_videos: int = MAX_V
         'type': 'video',
         'maxResults': 50,
         'order': 'relevance',
-        'relevanceLanguage': region_code if region_code else None,
         'regionCode': region_code if region_code else None
     }
     

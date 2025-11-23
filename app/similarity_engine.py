@@ -134,7 +134,7 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
     breakdown = {}
     
     # ========================================================================
-    # FACTOR 1: Tag Overlap (30 points) - MOST RELIABLE SIGNAL ⭐ INCREASED
+    # FACTOR 1: Tag Overlap (30 points) - MOST RELIABLE SIGNAL 
     # ========================================================================
     
     # Safety check: ensure tags are lists
@@ -266,7 +266,7 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
     breakdown['engagement_diff'] = round(engagement_diff, 4)
     
     # ========================================================================
-    # FACTOR 5: Upload Frequency Similarity (8 points) ⬇️ DECREASED
+    # FACTOR 5: Upload Frequency Similarity (8 points) 
     # ========================================================================
     
     candidate_freq = candidate.get('upload_frequency', 0.0)

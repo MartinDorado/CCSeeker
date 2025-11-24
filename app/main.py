@@ -702,6 +702,51 @@ def calculate_keyword_relevance(df, query, title_weight: float = 2.0, tags_weigh
     relevance = relevance.rename(columns={'video_score': 'relevance_score'})
     return relevance
 
+def generate_ai_relevance_score(model, channel_data: dict, query: str) -> float:
+    """
+    Uses a Gemini model to score channel relevance based on video titles.
+
+    Args:
+        model: An initialized Gemini model instance.
+        channel_data: A dict with 'channel_title' and a list of 'video_titles'.
+        query: The user's original search query.
+
+    Returns:
+        A relevance score between 0.0 and 1.0, or 0.0 on failure.
+    """
+    if not channel_data.get("video_titles"):
+        return 0.0
+
+    # Create a concise summary of video titles
+    titles_str = "\n- ".join(channel_data["video_titles"][:10]) # Use up to 10 titles
+
+    prompt = f"""
+    Act as a YouTube content analyst. Your task is to evaluate how relevant a channel's content is to a given search query.
+
+    **Search Query:** "{query}"
+    **Channel Name:** "{channel_data['channel_title']}"
+
+    **Recent Video Titles:**
+    - {titles_str}
+
+    **Instructions:**
+    Based ONLY on the video titles provided, rate the channel's relevance to the search query on a scale from 0 to 10, where 0 is completely irrelevant and 10 is a perfect match.
+    Your response MUST be a single integer (e.g., 8). Do not provide any explanation.
+
+    **Relevance Score (0-10):**
+    """
+    try:
+        response = model.generate_content(prompt)
+        # Extract the first integer found in the response text
+        match = re.search(r'\d+', response.text)
+        if match:
+            score = int(match.group(0))
+            return min(10, max(0, score)) / 10.0  # Normalize to 0.0-1.0
+        return 0.0
+    except Exception:
+        # On API error or parsing failure, return a neutral score
+        return 0.0
+
 # --- Gemini AI Integration ---
 def generate_summary(df_results, query):
     """Formats the data and calls the Gemini API to generate a summary.
@@ -1223,6 +1268,47 @@ Notes:
             if st.session_state.get('debug_mode', False) and step_start:
                 st.session_state.debug_data['timings']['relevance_filtering'] = time.time() - step_start
 
+        # === STEP 7: AI-Enhanced Relevance Scoring  ===
+        # This step blends the keyword score with a semantic AI score.
+        if GEMINI_API_KEY:
+            with st.spinner("✨ Enhancing relevance with AI..."):
+                step_start = time.time() if st.session_state.get('debug_mode', False) else None
+                
+                model = get_gemini_model()
+                ai_scores = []
+
+                # Group video titles by channel for AI analysis
+                video_titles_by_channel = df_videos.groupby('channel_id')['video_title'].apply(list).to_dict()
+
+                # Iterate through the channels we've already analyzed
+                for _, row in top_channels.iterrows():
+                    channel_id = row['channel_id']
+                    
+                    # Prepare data for the AI function
+                    channel_data_for_ai = {
+                        'channel_title': row['channel_title'],
+                        'video_titles': video_titles_by_channel.get(channel_id, [])
+                    }
+                    
+                    # Get the AI score
+                    ai_score = generate_ai_relevance_score(model, channel_data_for_ai, final_query)
+                    ai_scores.append({'channel_id': channel_id, 'ai_relevance_score': ai_score})
+
+                if ai_scores:
+                    df_ai_scores = pd.DataFrame(ai_scores)
+                    # Merge AI scores back into the main dataframe
+                    top_channels = pd.merge(top_channels, df_ai_scores, on='channel_id', how='left')
+                    top_channels['ai_relevance_score'] = top_channels['ai_relevance_score'].fillna(0)
+
+                    # Blend the scores: 80% algorithmic, 20% AI
+                    top_channels['relevance_score'] = (0.8 * top_channels['relevance_score'] + 0.2 * top_channels['ai_relevance_score'])
+                    
+                    # Re-sort with the new blended score
+                    top_channels = top_channels.sort_values(by=['relevance_score', 'subscribers'], ascending=False).copy()
+
+                    log_msg = f"🧠 Blended keyword scores with AI relevance for higher accuracy"
+                    search_log.append(log_msg)
+                    
         # === SIMILARITY RANKING (if using seed) ===
         if 'seed_profile' in st.session_state:
             with st.spinner("🧠 Calculating similarity scores..."):
@@ -1433,6 +1519,7 @@ Notes:
             st.write("### Debug Info at Failure:")
             st.write(f"- Session state keys: {list(st.session_state.keys())}")
             st.write(f"- Debug data: {st.session_state.get('debug_data', {})}")   
+        
 
 # ============================================================================
 # --- Streamlit User Interface ---

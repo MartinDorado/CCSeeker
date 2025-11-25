@@ -1249,7 +1249,7 @@ Notes:
             # Sort by relevance (primary) then subscribers (secondary)
             # No hard filtering - let users see all results ranked by relevance
             final_channels_sorted = final_channels.sort_values(
-                by=['relevance_score', 'subscribers'], 
+                by=['relevance_score', 'engagement_rate'], 
                 ascending=False
             ).copy()
 
@@ -1304,7 +1304,7 @@ Notes:
                     top_channels['relevance_score'] = (0.8 * top_channels['relevance_score'] + 0.2 * top_channels['ai_relevance_score'])
                     
                     # Re-sort with the new blended score
-                    top_channels = top_channels.sort_values(by=['relevance_score', 'subscribers'], ascending=False).copy()
+                    top_channels = top_channels.sort_values(by=['relevance_score', 'engagement_rate'], ascending=False).copy()
 
                     log_msg = f"🧠 Blended keyword scores with AI relevance for higher accuracy"
                     search_log.append(log_msg)
@@ -1651,7 +1651,7 @@ if search_method:
             with st.expander("How does Channel-as-Seed work?"):
                 st.markdown("""
                     This method discovers new channels based on a single example channel you provide.
-                    1.  **Analyze:** The agent fetches the latest videos from the URL you enter.
+                    1.  **Analyze:** It fetches the latest videos from the URL you enter.
                     2.  **Learn:** It extracts the most common topics and keywords from that channel's video titles and tags.
                     3.  **Discover:** It then uses those learned keywords to launch a new, highly specific search to find other channels with similar content.
                     4.  **Rank & Analyze:** Finally, it ranks the results by similarity to your seed channel based on a blend between an algorithmic score and an AI score. Giving 80% weight to the algorithmic score and 20% to the AI's score. The algorithmic score is based on similarity on topics, audience size, engagement patterns, and upload frequency.    
@@ -1844,7 +1844,7 @@ if st.session_state.get('seed_profile'):
         st.markdown("**💬 Single Keywords** *(from video titles)*")
         if profile['secondary_keywords']:
             keywords_display ="Single keywords: " + ", ".join(profile['secondary_keywords'][:8])
-            st.markdown(f"<div style='padding: 10px; background-color: rgba(174, 127, 57, 0.1); border-radius: 6px; border-left: 3px solid #AE7F39;'>{phrases_display}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='padding: 10px; background-color: rgba(174, 127, 57, 0.1); border-radius: 6px; border-left: 3px solid #AE7F39;'>{keywords_display}</div>", unsafe_allow_html=True)
 
     with col_tags:
         st.markdown("**🏷️ Creator Tags** *(used by the channel)*")

@@ -1638,6 +1638,13 @@ if search_method:
             # Visual term counter
             if query_input:
                 render_term_counter(query_input)
+            with st.expander("How does Keyword Search work?"):
+                st.markdown("""
+                1. **Hybrid Search**: We find channels by matching your keywords in **video content** (primary signal) and **channel names** (secondary). Multi-term queries merge results, boosting channels that match all topics.
+                2. **Filter & Select**: We apply your subscriber/country filters, remove weak matches, and cap the list at the top 50 strongest candidates.
+                3. **Deep Analysis**: We fetch 10 recent videos per channel to calculate **engagement rates** and a **relevance score** (blending 80% keyword matching with 20% AI semantic analysis).
+                4. **AI Summary**: The top 5 results are analyzed by Gemini to highlight the best collaboration opportunities.
+                """)
             seed_url_input = ""  # keep defined
         else:
             st.info("💡 Enter the full URL of a YouTube channel to find similar creators or just the channel's name.")

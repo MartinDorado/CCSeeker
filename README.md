@@ -242,15 +242,15 @@ App opens at `http://localhost:8501`
 
 1. Select **🔑 Keywords** mode
 2. Enter 1-2 search terms (e.g., "manga, anime")
-3. Relevant in: Country (optional) 
+3. Relevant in: Country (default: Global) 
 3. Set filters:
-   - Minimum subscribers (default: 10,000)
-   - Channel's origin country (optional)
+   - Minimum subscribers (default: 1,000)
+   - Channel's origin country (default: Global)
    - Recent activity (default: 18 months)
 4. Click **Find Creators**
 
 Results show:
-- Relevance score (% of videos matching keywords)
+- Relevance score 
 - Subscriber count
 - Average views per video
 - Engagement rate
@@ -317,7 +317,7 @@ CCSeeker/
 
 ## 🔧 Configuration
 
-Key constants in `app/app_seed_gemini_hardened.py`:
+Key constants in `app/main.py`:
 
 ```python
 MAX_SEARCH_TERMS = 2              # Maximum comma-separated terms

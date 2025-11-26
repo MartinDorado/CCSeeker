@@ -122,9 +122,9 @@ CACHE_TTL_VIDEO_DETAILS = 259200   # 3 days - used in get_video_details_cached()
 CACHE_TTL_SEARCH_RESULTS = 259200  # 3 days - used in search_channels_multi_term_cached()
 
 # Filtering Thresholds
-MIN_RELEVANCE_SCORE = 0.15         # 15% keyword match required
-DEFAULT_MIN_SUBSCRIBERS = 10000
-DEFAULT_MONTHS_RECENT = 18
+MIN_MATCH_SCORE = 5         # 5 points on keyword match required. 5 points = 1 channel name match. 10 points = 1 video match.
+MAX_CHANNELS_TO_ANALYZE = 50  # Cap channels for deep analysis to control quota
+# Default values are defined in the STREAMLIT UI SETUP section.
 
 # Similarity Scoring Weights (total: 100 points)
 # These weights are hardcoded in similarity_engine.py on calculate_similarity_score(). Refactoring to make them configurable would require significant changes for minimal practical benefit.
@@ -1124,9 +1124,6 @@ Notes:
         with st.spinner("Step 4/5: Preparing channels for analysis..."):
             step_start = time.time() if st.session_state.get('debug_mode', False) else None
             
-            # Define minimum match score threshold (configurable)
-            MIN_MATCH_SCORE = 10  # Filters out barely-relevant channels
-            
             # Filter channels by minimum relevance threshold
             quality_channels = filtered_channels[
                 filtered_channels['match_score'] >= MIN_MATCH_SCORE
@@ -1156,8 +1153,6 @@ Notes:
                 ascending=[False, False]  # Both descending
             )
             
-            # Cap at 50 channels to control API quota usage
-            MAX_CHANNELS_TO_ANALYZE = 50
             channels_to_analyze = filtered_sorted.head(MAX_CHANNELS_TO_ANALYZE).copy()
             
             channels_analyzed_count = len(channels_to_analyze)
@@ -1780,7 +1775,7 @@ if submitted:
                     seed_profile = seedmod.analyze_seed_channel_v2(
                         youtube,
                         seed_channel_id,
-                        max_videos=30,
+                        max_videos=50,
                         user_banned_words=penalties,
                         gemini_api_key=GEMINI_API_KEY
                     )

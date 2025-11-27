@@ -565,6 +565,6 @@ Answer in the same language as the channel ({detected_language}).
         'description_summary': description_summary
     }
     
-    st.success(f"✅ Analysis complete! Found {len(primary_keywords)} primary topics and {len(common_tags)} common tags")
+    st.success(f"✅ Analysis complete! Found {len(primary_keywords)} top phrases, {len(common_tags)} common tags and {len(secondary_keywords)} top keywords.")
     
     return profile

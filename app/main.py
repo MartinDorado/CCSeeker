@@ -1178,7 +1178,7 @@ Notes:
                 
 
         # === STEP 5: Single-pass deep analysis (10 videos per channel) ===
-        with st.spinner(f"Step 5/5: Deep analysis - fetching 10 videos from {channels_analyzed_count} channels..."):
+        with st.spinner(f"Deep analysis - fetching 10 videos from {channels_analyzed_count} channels..."):
             step_start = time.time() if st.session_state.get('debug_mode', False) else None
             
             channel_ids_tuple = tuple(channels_to_analyze['channel_id'].tolist())
@@ -1303,8 +1303,8 @@ Notes:
 
                     log_msg = f"🧠 Blended keyword scores with AI relevance for higher accuracy"
                     search_log.append(log_msg)
-                    
-        # === SIMILARITY RANKING (if using seed) ===
+
+        # === STEP 8: Similarity Raking Orchestation (if using seed)===            
         if 'seed_profile' in st.session_state:
             with st.spinner("🧠 Calculating similarity scores..."):
                 seed_channel_id = st.session_state['seed_profile']['channel_id']
@@ -1411,7 +1411,7 @@ Notes:
         st.session_state['last_search_params'] = search_params
         debug_tracker.track_quota_efficiency(search_params)
 
-        # === AI SUMMARY (Generate but don't display yet - will show after results table) ===
+        # === STEP 9: AI SUMMARY for Results (Generate but don't display yet - will show after results table) ===
         if GEMINI_API_KEY:
             with st.spinner("✨ Generating AI Summary..."):
                 step_start = time.time() if st.session_state.get('debug_mode', False) else None
@@ -1811,7 +1811,7 @@ if submitted:
 if st.session_state.get('seed_profile'):
     profile = st.session_state['seed_profile']
     
-    st.header("3. 📊 Seed Channel Profile")
+    st.header("📊 Seed Channel Profile")
     
     # Display key metrics in columns
     col1, col2, col3 = st.columns(3)

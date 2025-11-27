@@ -1714,32 +1714,6 @@ if search_method:
         # Button label changes based on search method
         button_label = "Analyse Seed" if search_method == "Channel-as-Seed" else "Find Creators"
         submitted = st.form_submit_button(button_label)
-    
-# ============================================================================
-# === HANDLE SEED-BASED SEARCH ===
-# ============================================================================
-
-if st.session_state.get('run_similarity_search'):
-    # Clear the trigger
-    st.session_state['run_similarity_search'] = False
-    
-    # Get the built query and run search
-    if st.session_state.get('built_query') and st.session_state.get('seed_profile'):
-        
-        youtube = get_youtube()
-        query = st.session_state['built_query']
-        
-        st.info(f"🔎 Searching for channels similar to: **{st.session_state['seed_profile']['channel_name']}**")
-        
-        # Run the search with the generated query
-        run_search(
-            youtube=youtube,
-            final_query=query,
-            region_input=region_input,
-            min_subs_input=min_subs_input,
-            months_ago_input=months_ago_input,
-            country_filter_input=country_filter_input,
-        )
 
 # --- Main Execution Logic ---
 if submitted:
@@ -2022,6 +1996,32 @@ if st.session_state.get('seed_profile'):
         st.session_state['built_query'] = built_query
         st.session_state['run_similarity_search'] = True
         st.rerun()
+
+    # ============================================================================
+    # === HANDLE SIMILARITY SEARCH ===
+    # ============================================================================
+
+    if st.session_state.get('run_similarity_search'):
+        # Clear the trigger
+        st.session_state['run_similarity_search'] = False
+        
+        # Get the built query and run search
+        if st.session_state.get('built_query') and st.session_state.get('seed_profile'):
+            
+            youtube = get_youtube()
+            query = st.session_state['built_query']
+            
+            st.info(f"🔎 Searching for channels similar to: **{st.session_state['seed_profile']['channel_name']}**")
+            
+            # Run the search with the generated query
+            run_search(
+                youtube=youtube,
+                final_query=query,
+                region_input=region_input,
+                min_subs_input=min_subs_input,
+                months_ago_input=months_ago_input,
+                country_filter_input=country_filter_input,
+            )
 
 
 # Keep the results table visible across reruns

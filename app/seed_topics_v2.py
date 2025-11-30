@@ -510,7 +510,7 @@ def analyze_seed_channel_v2(
             
             # Summarize channel description
             summary_prompt = f"""
-Analyze this YouTube channel in 1-2 sentences:
+Analyze this YouTube channel in 2-3 sentences:
 
 Channel: {channel_name}
 Description: {channel_description[:500]}

@@ -56,9 +56,9 @@ import time
 #                  - resolve_channel_id() - Convert handles/URLs to channel IDs
 #                  - _strip_outer_quotes() - Clean user input
 
-# LINES 277-342   | CACHING LAYER (@st.cache_data decorators)
+# LINES 277-342   | CACHING LAYER (Streamlit cache helpers)
 #                  - get_channel_stats_cached() - 7-day TTL
-#                  - get_video_details_cached() - 3-day TTL
+#                  - get_video_details_cached() - delegates to per-channel cache (24h in smart_cache.py)
 #                  - search_channels_multi_term_cached() - 3-day TTL
 
 # LINES 343- 879   | CORE LOGIC - YOUTUBE API WRAPPERS + AI GENERATION (Gemini)
@@ -292,21 +292,29 @@ def _strip_outer_quotes(s: str) -> str:
 
 @st.cache_data(ttl=604800) # 7 days
 def get_channel_stats_cached(channel_ids_tuple):
+    # Normalize order to maximize cache hits and avoid duplicate fetches
+    channel_ids = tuple(sorted(set(channel_ids_tuple)))
+    if not channel_ids:
+        return []
     youtube = get_youtube()
-    return get_channel_stats(youtube, list(channel_ids_tuple))
+    return get_channel_stats(youtube, list(channel_ids))
 
-@st.cache_data(ttl=259200) # 3 days
 def get_video_details_cached(channel_ids_tuple, max_videos= MAX_VIDEOS_PER_CHANNEL):
     """
-    Cached wrapper using smart per-channel caching
-    Tracking happens inside smart_cache.py
+    Wrapper using smart per-channel caching (see smart_cache.py).
+    Tracking happens inside smart_cache.py.
     """
     from smart_cache import get_video_details_smart
     
     youtube = get_youtube()
+
+    # Normalize order to improve cache hits downstream and deduplicate
+    channel_ids_norm = tuple(sorted(set(channel_ids_tuple)))
+    if not channel_ids_norm:
+        return []
     
     # Get channel stats to get uploads playlist IDs
-    stats = get_channel_stats(youtube, list(channel_ids_tuple))
+    stats = get_channel_stats_cached(channel_ids_norm)
     channel_data_full = []
     
     for stat in stats:
@@ -326,9 +334,16 @@ def search_channels_multi_term_cached(query, region_code, max_videos= MAX_VIDEOS
     cache_bust: change this string to invalidate prior cached results
     when search logic changes (e.g., removed early cap).
     """
+    # Normalize query terms for a stable cache key (order-agnostic)
+    terms = [t.strip() for t in (query or "").split(',') if t.strip()]
+    if not terms:
+        return []
+    canonical_terms = sorted(set(terms), key=str.lower)
+    canonical_query = ", ".join(canonical_terms)
+
     # cache_bust is unused in logic; only to affect cache key
     _ = cache_bust
-    return search_channels_multi_term(query, region_code, max_videos)
+    return search_channels_multi_term(canonical_query, region_code, max_videos)
 
 
 # ============================================================================
@@ -390,6 +405,8 @@ def search_channels_hybrid(query: str, region_code: str, max_videos: int = MAX_V
         
         try:
             video_response = youtube.search().list(**video_search_params).execute()
+            if st.session_state.get('debug_mode', False):
+                debug_tracker.track_api_call('youtube_search')
         except HttpError as e:
             st.warning(f"Video search error for '{query}': {e}")
             break
@@ -428,6 +445,8 @@ def search_channels_hybrid(query: str, region_code: str, max_videos: int = MAX_V
     
     try:
         channel_response = youtube.search().list(**channel_search_params).execute()
+        if st.session_state.get('debug_mode', False):
+            debug_tracker.track_api_call('youtube_search')
         
         for item in channel_response.get('items', []):
             channel_id = item.get('id', {}).get('channelId')
@@ -559,6 +578,8 @@ def get_channel_stats(youtube_service, channel_ids):
             id=",".join(chunk)
         )
         response = request.execute()
+        if st.session_state.get('debug_mode', False):
+            debug_tracker.track_api_call('youtube_channel')
         
         for item in response.get("items", []):
             content_details = item.get('contentDetails', {})
@@ -964,7 +985,7 @@ Pipeline:
 
 .Similarity (optional): if a seed_profile is present, exclude the seed, reuse fetched videos to derive tags/keywords, rank with similarity_engine (optionally using Gemini), compute similarity_score and match_reasons, and re-sort.
 .AI Summary (optional): when GEMINI_API_KEY is configured, generate and store a textual summary of the top channels.
-.Display and state: format metrics, choose display columns, and update session state; track timings and quota efficiency in debug mode.
+.Display and state: format metrics, choose display columns, and update session state; track timings in debug mode.
 
 Args:
 youtube: Authenticated YouTube Data API client.
@@ -983,7 +1004,6 @@ Session state:
 - 'top_channels_full' (when similarity ranking runs)
 - 'ai_summary' or 'ai_summary_error'
 - 'debug_data' timings and metrics (when debug mode is enabled)
-- 'last_search_params'
 
 Notes:
 - Catches exceptions and surfaces them via Streamlit; does not raise.
@@ -1021,19 +1041,11 @@ Notes:
             
             # Update final_query for the rest of the function
             final_query = final_query_validated
+
         # === STEP 1: Search for channels ===
         with st.spinner("Step 1/4: Searching for channels..."):
             step_start = time.time() if st.session_state.get('debug_mode', False) else None
-            
-            # ✅ TRACK API CALLS (not units!)
-            if st.session_state.get('debug_mode', False):
-                # Track actual number of searches (split by comma)
-                num_terms = len([t for t in final_query.split(',') if t.strip()])
-                # Each term makes ~3 search API calls
-                # (video search + channel search + pagination)
-                for _ in range(num_terms * 3):
-                    debug_tracker.track_api_call('youtube_search')
-            
+
             # Pass a cache_bust tag to ensure we don't reuse
             # older cached results from the pre-cap version
             initial_channels = search_channels_multi_term_cached(
@@ -1075,14 +1087,7 @@ Notes:
             step_start = time.time() if st.session_state.get('debug_mode', False) else None
             
             channel_ids_tuple = tuple(df_initial['channel_id'].tolist())
-            
-            # ✅ TRACK BEFORE calling cached function
-            if st.session_state.get('debug_mode', False):
-                # We make 1 call per 50 channels (batching)
-                num_calls = math.ceil(len(channel_ids_tuple) / 50)
-                for _ in range(num_calls):
-                    debug_tracker.track_api_call('youtube_channel')
-            
+
             channel_statistics = get_channel_stats_cached(channel_ids_tuple)
             
             if st.session_state.get('debug_mode', False) and step_start:
@@ -1182,12 +1187,7 @@ Notes:
             step_start = time.time() if st.session_state.get('debug_mode', False) else None
             
             channel_ids_tuple = tuple(channels_to_analyze['channel_id'].tolist())
-            
-            # Track API calls for debug
-            if st.session_state.get('debug_mode', False):
-                for _ in channels_to_analyze.itertuples():
-                    debug_tracker.track_api_call('youtube_video')
-            
+
             # Fetch 10 videos for comprehensive relevance analysis
             video_data = get_video_details_cached(
                 channel_ids_tuple, 
@@ -1205,7 +1205,7 @@ Notes:
         log_msg = (f"🎬 Retrieved {len(video_data)} videos for deep analysis from {channels_analyzed_count} channels")
         search_log.append(log_msg)
 
-        # === STEP 6: Calculate relevance and filter ===
+        # === STEP 6: Calculate relevance and engagement ===
         with st.spinner("Calculating relevance and engagement metrics..."):
             step_start = time.time() if st.session_state.get('debug_mode', False) else None
             
@@ -1406,11 +1406,6 @@ Notes:
                         top_channels = top_channels.sort_values('similarity_score', ascending=False)
                                              
 
-        # Track quota efficiency (for cache savings comparison)
-        search_params = f"{final_query}|{region_input}|{min_subs_input}"
-        st.session_state['last_search_params'] = search_params
-        debug_tracker.track_quota_efficiency(search_params)
-
         # === STEP 9: AI SUMMARY for Results (Generate but don't display yet - will show after results table) ===
         if GEMINI_API_KEY:
             with st.spinner("✨ Generating AI Summary..."):
@@ -1433,7 +1428,7 @@ Notes:
             st.session_state['ai_summary'] = None
             st.session_state['ai_summary_error'] = "GEMINI_API_KEY not configured"
 
-        # === FORMAT AND DISPLAY RESULTS ===
+        # === Step 10: Display results ranked by relevance (keywords mode) and similarity (for seed mode)===
         top_channels['relevance_score'] = top_channels['relevance_score'].fillna(0).map('{:.0%}'.format)
         top_channels['engagement_rate'] = top_channels['engagement_rate'].fillna(0).map('{:.2%}'.format)
         top_channels['avg_views_per_video'] = top_channels['avg_views_per_video'].fillna(0).map('{:,.0f}'.format)
@@ -1492,11 +1487,6 @@ Notes:
                 debug_tracker.track_similarity_scores(
                     st.session_state['top_channels_full'].to_dict('records')
                 )
-            
-            # Track quota efficiency (for cache savings comparison)
-            search_params = f"{final_query}|{region_input}|{min_subs_input}"
-            st.session_state['last_search_params'] = search_params
-            debug_tracker.track_quota_efficiency(search_params)
 
         # Display search log in collapsible section
         if search_log:

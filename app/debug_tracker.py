@@ -5,7 +5,6 @@ Tracks:
 - API calls per search (YouTube + Gemini)
 - Daily quota usage (persists to disk)
 - Performance timing
-- Quota efficiency (shows cache savings)
 """
 
 import streamlit as st
@@ -68,13 +67,6 @@ def initialize_debug_tracking():
             'similarity_details': []
         }
     
-    # ========================================================================
-    # QUOTA EFFICIENCY TRACKING (for cache savings comparison)
-    # ========================================================================
-    
-    if 'quota_baselines' not in st.session_state:
-        st.session_state.quota_baselines = {}
-
 
 def reset_debug_tracking():
     """
@@ -287,70 +279,6 @@ def calculate_gemini_cost_estimate():
 
 
 # ============================================================================
-# QUOTA EFFICIENCY TRACKING (Option C)
-# ============================================================================
-
-def track_quota_efficiency(search_params: str):
-    """
-    Track quota usage for this search and compare to baseline.
-    
-    Call this at the END of each search with a unique identifier.
-    
-    Args:
-        search_params: Unique string representing this search (e.g., "anime,AR,10000")
-    """
-    if 'quota_baselines' not in st.session_state:
-        st.session_state.quota_baselines = {}
-    
-    current_quota = calculate_youtube_quota_used()
-    
-    # Store baseline if this is the first time
-    if search_params not in st.session_state.quota_baselines:
-        st.session_state.quota_baselines[search_params] = {
-            'baseline': current_quota,
-            'runs': 1
-        }
-    else:
-        # Update runs counter
-        st.session_state.quota_baselines[search_params]['runs'] += 1
-
-
-def get_quota_savings(search_params: str):
-    """
-    Get quota savings for a specific search.
-    
-    Returns:
-        dict: {'saved': int, 'baseline': int, 'current': int, 'percent': float}
-        or None if no baseline exists
-    """
-    if 'quota_baselines' not in st.session_state:
-        return None
-    
-    baseline_data = st.session_state.quota_baselines.get(search_params)
-    if not baseline_data:
-        return None
-    
-    baseline = baseline_data['baseline']
-    current = calculate_youtube_quota_used()
-    runs = baseline_data['runs']
-    
-    if runs <= 1:
-        # First run, no savings yet
-        return None
-    
-    saved = baseline - current
-    percent = (saved / baseline * 100) if baseline > 0 else 0
-    
-    return {
-        'saved': saved,
-        'baseline': baseline,
-        'current': current,
-        'percent': percent,
-        'runs': runs
-    }
-
-
-# ============================================================================
 # DAILY QUOTA PERSISTENCE
 # ============================================================================
 
@@ -539,42 +467,6 @@ def display_debug_panel():
         
         reset_time = get_next_reset_time()
         st.caption(f"🔄 Resets {reset_time} (midnight PT)")
-    
-    # QUOTA EFFICIENCY (Option C - replaces cache hit/miss tracking)
-    with st.sidebar.expander("💾 Quota Efficiency", expanded=False):
-        # Get current search params
-        search_params = st.session_state.get('last_search_params', '')
-        
-        if search_params:
-            savings = get_quota_savings(search_params)
-            
-            if savings:
-                # We have a baseline to compare
-                if savings['saved'] > 0:
-                    st.success(f"✅ Saved {savings['saved']:,} units!")
-                    st.caption(f"First run: {savings['baseline']:,} units")
-                    st.caption(f"This run: {savings['current']:,} units")
-                    st.caption(f"Reduction: {savings['percent']:.1f}%")
-                    st.caption(f"Cache is working! 🎉")
-                elif savings['saved'] < 0:
-                    # Used more than baseline (shouldn't happen often)
-                    st.warning(f"Used {abs(savings['saved']):,} more units")
-                    st.caption(f"Baseline: {savings['baseline']:,} units")
-                    st.caption(f"This run: {savings['current']:,} units")
-                else:
-                    # Exactly the same
-                    st.info(f"Same as baseline: {savings['current']:,} units")
-                
-                st.caption(f"Total runs: {savings['runs']}")
-            else:
-                # First run of this search
-                st.info("📊 Establishing baseline")
-                current = calculate_youtube_quota_used()
-                st.caption(f"Used: {current:,} units")
-                st.caption("Run same search again to see savings!")
-        else:
-            st.text("No search data yet")
-            st.caption("Complete a search to track efficiency")
     
     # TIMING DATA
     timings = data.get('timings', {})

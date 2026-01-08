@@ -10,6 +10,11 @@ __pycache__/
 .venv_win/
 venv/
 .venv/
+.venv*/
+venv/
+env/
+ENV/
+*.venv
 
 # OS/editor noise
 .DS_Store

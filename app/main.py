@@ -1388,7 +1388,6 @@ Notes:
                         ranked = similarity_engine.rank_channels_by_similarity(
                             candidates,
                             st.session_state['seed_profile'],
-                            use_gemini=st.session_state.get('use_gemini_ranking', False),
                             gemini_api_key=GEMINI_API_KEY,
                             gemini_limit=10
                         )
@@ -1897,17 +1896,6 @@ if st.session_state.get('seed_profile'):
     
     # Use the editable query (or default if not yet edited)
     built_query = st.session_state.get('editable_seed_query', default_query)
-    
-    # Search options
-    st.subheader("🔍 Search Options")
-
-    # Main option (AI-enhanced ranking)
-    use_gemini_ranking = st.checkbox(
-        "✨ Use AI-enhanced ranking",
-        value=True,
-        help="Let Gemini analyze the top 10 matches for better accuracy (slower but more precise)"
-    )
-    st.session_state['use_gemini_ranking'] = use_gemini_ranking
 
     # Advanced options (moved from search method section)
     with st.expander("⚙️ Advanced Analysis Options"):

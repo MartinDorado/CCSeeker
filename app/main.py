@@ -1442,14 +1442,19 @@ Notes:
         if 'similarity_score' in top_channels.columns:
             st.session_state['top_channels_full'] = top_channels.copy()
 
+        # Create YouTube channel URL from channel_id
+        top_channels['channel_url'] = top_channels['channel_id'].apply(
+            lambda x: f"https://www.youtube.com/channel/{x}" if x else ""
+        )
+
         # Choose display columns
         if 'similarity_score' in top_channels.columns:
             # Seed mode: show similarity, relevance, and avg views (remove match_reasons to save space)
-            display_columns = ['channel_title', 'similarity_score', 'relevance_score', 
+            display_columns = ['channel_title', 'channel_url', 'similarity_score', 'relevance_score',
                             'avg_views_per_video', 'subscribers', 'country', 'engagement_rate']
         else:
             # Keyword mode: show relevance and avg views
-            display_columns = ['channel_title', 'relevance_score', 'subscribers', 
+            display_columns = ['channel_title', 'channel_url', 'relevance_score', 'subscribers',
                             'avg_views_per_video', 'country', 'engagement_rate']
 
         # STORE IN SESSION STATE FOR DISPLAY
@@ -2009,6 +2014,11 @@ if 'display_df' in st.session_state:
     st.dataframe(
         st.session_state['display_df'],
         column_config={
+            "channel_url": st.column_config.LinkColumn(
+                label="Link",
+                display_text="Open",
+                help="Click to open this YouTube channel in a new tab"
+            ),
             "similarity_score": st.column_config.Column(
                 help="How similar this channel is to your seed channel (0-100). Based on shared topics, tags, audience size, engagement patterns, and upload frequency. Higher = better match."
             ),

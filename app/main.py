@@ -1020,7 +1020,7 @@ Notes:
         search_start_time = time.time()
     
     try:
-        # === STEP 0.5: Validate Query & Search for channels ===
+        # === STEP 0.5: Validate Query ===
         # Apply 2-term limit with auto-truncation
         final_query_validated, was_truncated = validate_and_truncate_query(final_query)
 
@@ -1100,7 +1100,7 @@ Notes:
         df_stats = pd.DataFrame(channel_statistics)
         enriched_channel_data = pd.merge(df_initial, df_stats, on='channel_id')
 
-        # === STEP 3: Filter channels FIRST (before fetching videos!) ===
+        # === STEP 3: User seleted filters ===
         with st.spinner("Step 3/5: Applying filters..."):
             step_start = time.time() if st.session_state.get('debug_mode', False) else None
             
@@ -1125,7 +1125,7 @@ Notes:
             if st.session_state.get('debug_mode', False) and step_start:
                 st.session_state.debug_data['timings']['filtering'] = time.time() - step_start
 
-       # === STEP 4: Prepare channels for analysis (cap at 50 max) ===
+       # === STEP 4: Backend filtering ===
         with st.spinner("Step 4/5: Preparing channels for analysis..."):
             step_start = time.time() if st.session_state.get('debug_mode', False) else None
             
@@ -1182,7 +1182,7 @@ Notes:
                 st.session_state.debug_data['timings']['select_channels'] = time.time() - step_start
                 
 
-        # === STEP 5: Single-pass deep analysis (10 videos per channel) ===
+        # === STEP 5: Deep analysis (10 videos per channel) ===
         with st.spinner(f"Deep analysis - fetching 10 videos from {channels_analyzed_count} channels..."):
             step_start = time.time() if st.session_state.get('debug_mode', False) else None
             

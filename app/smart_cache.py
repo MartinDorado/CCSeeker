@@ -19,15 +19,17 @@ class ChannelVideoCache:
         return f"ch_vids_{channel_id}_{max_videos}"
     
     @staticmethod
-    @st.cache_data(ttl=86400)  # 24 hours (vs 2 hours before)
+    @st.cache_data(ttl=86400)  # 24 hours
     def get_channel_videos(
         channel_id: str,
         uploads_playlist_id: str,
         max_videos: int,
-        _youtube_service  # ← FIXED: Added underscore to prevent hashing
+        _youtube_service  # Underscore prevents hashing
     ) -> List[Dict[str, Any]]:
         """
         Fetch and cache videos for a single channel.
+        
+        NOTE: Tracking happens OUTSIDE this function in get_video_details_smart()
         
         Returns: List of video dicts (empty list on error)
         """
@@ -69,8 +71,7 @@ class ChannelVideoCache:
             return videos
             
         except HttpError as e:
-            # Return empty list on error (graceful degradation)
-            return []
+            return []  # Graceful degradation
 
 
 def get_video_details_smart(youtube_service, channel_data: List[Dict], max_videos: int) -> List[Dict]:
@@ -95,13 +96,21 @@ def get_video_details_smart(youtube_service, channel_data: List[Dict], max_video
         channel_id = channel['channel_id']
         uploads_id = channel['uploads_playlist_id']
         
-        # Fetch with caching (underscore prefix means Streamlit won't hash it)
+        # Fetch with caching
         videos = ChannelVideoCache.get_channel_videos(
             channel_id,
             uploads_id,
             max_videos,
-            youtube_service  # Pass without underscore here
+            youtube_service
         )
+        
+        # Track API calls AFTER fetching (only if we got results)
+        if st.session_state.get('debug_mode', False) and videos:
+            # Each channel makes 2 API calls:
+            # 1. playlistItems.list (get video IDs)
+            # 2. videos.list (get video details)
+            debug_tracker.track_api_call('youtube_playlist')
+            debug_tracker.track_api_call('youtube_video')
         
         if videos:
             all_videos.extend(videos)

@@ -15,6 +15,11 @@ try:
 except ImportError:
     genai = None
 
+try:
+    from . import debug_tracker
+except ImportError:
+    import debug_tracker
+
 # ============================================================================
 # LANGUAGE DETECTION & STOPWORDS
 # ============================================================================
@@ -208,7 +213,9 @@ def analyze_seed_channel_v2(
             part="snippet,statistics,contentDetails",
             id=channel_id
         ).execute()
-        
+
+        debug_tracker.track_api_call('youtube_channel')
+
         if not channel_response.get('items'):
             st.error("Channel not found")
             return None
@@ -249,6 +256,8 @@ def analyze_seed_channel_v2(
             maxResults=min(50, max_videos)
         ).execute()
         
+        debug_tracker.track_api_call('youtube_playlist')
+
         video_ids = [
             item['snippet']['resourceId']['videoId']
             for item in playlist_response.get('items', [])
@@ -268,6 +277,8 @@ def analyze_seed_channel_v2(
             part="snippet,statistics",
             id=",".join(video_ids)
         ).execute()
+
+        debug_tracker.track_api_call('youtube_video')
         
         videos = videos_response.get('items', [])
         
@@ -306,9 +317,11 @@ def analyze_seed_channel_v2(
             from dateutil import parser
             dates = [parser.parse(d) for d in publish_dates]
             dates.sort()
-            days_span = (dates[-1] - dates[0]).days
-            if days_span > 0:
-                upload_frequency = (len(dates) / days_span) * 30  # videos per month
+            time_span_days = (dates[-1] - dates[0]).total_seconds() / 86400
+            if time_span_days <= 0:
+                time_span_days = 1 / 24  # fallback: treat as at least an hour
+            upload_frequency = (len(dates) / time_span_days) * 30
+
         except:
             pass
     
@@ -497,7 +510,7 @@ def analyze_seed_channel_v2(
             
             # Summarize channel description
             summary_prompt = f"""
-Analyze this YouTube channel in 1-2 sentences:
+Analyze this YouTube channel in 2-3 sentences:
 
 Channel: {channel_name}
 Description: {channel_description[:500]}
@@ -552,6 +565,6 @@ Answer in the same language as the channel ({detected_language}).
         'description_summary': description_summary
     }
     
-    st.success(f"✅ Analysis complete! Found {len(primary_keywords)} primary topics and {len(common_tags)} common tags")
+    st.success(f"✅ Analysis complete! Found {len(primary_keywords)} top phrases, {len(common_tags)} common tags and {len(secondary_keywords)} top keywords.")
     
     return profile

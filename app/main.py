@@ -12,10 +12,12 @@ try:
     # Try relative import (when run as module)
     from . import seed_topics_v2 as seedmod
     from . import similarity_engine
+    from . import feedback_tracker
 except ImportError:
     # Fallback for direct execution
     import seed_topics_v2 as seedmod
     import similarity_engine
+    import feedback_tracker
 
 try:
     import pycountry
@@ -1715,6 +1717,9 @@ if submitted:
     st.session_state.pop('top_channels_for_outreach', None)
     st.session_state.pop('final_query', None)
     st.session_state.pop('display_df', None)
+    # Reset feedback state for new search
+    st.session_state['feedback_submitted'] = False
+    st.session_state['show_reason_selector'] = False
     if not YOUTUBE_API_KEY:
         st.error("Please ensure your YOUTUBE_API_KEY is set in your .env file.")
     else:
@@ -2058,6 +2063,117 @@ if 'display_df' in st.session_state:
             st.markdown(st.session_state['ai_summary'])
         elif 'ai_summary_error' in st.session_state:
             st.warning(f"⚠️ {st.session_state['ai_summary_error']}")
+
+    # === USER FEEDBACK SECTION ===
+    st.divider()
+    st.markdown("#### 📝 How were these results?")
+
+    # Initialize feedback state if needed
+    if 'feedback_submitted' not in st.session_state:
+        st.session_state['feedback_submitted'] = False
+    if 'show_reason_selector' not in st.session_state:
+        st.session_state['show_reason_selector'] = False
+
+    if st.session_state['feedback_submitted']:
+        st.success("Thanks for your feedback! It helps us improve.")
+    else:
+        col_fb1, col_fb2, col_fb3 = st.columns([1, 1, 4])
+
+        with col_fb1:
+            if st.button("👍 Good", use_container_width=True):
+                # Gather search context
+                display_df = st.session_state.get('display_df', pd.DataFrame())
+                search_mode = "seed" if 'seed_profile' in st.session_state else "keyword"
+                query = st.session_state.get('final_query', '')
+
+                # Build top results list
+                top_results = []
+                if not display_df.empty:
+                    for _, row in display_df.head(5).iterrows():
+                        score = row.get('similarity_score') or row.get('relevance_score', 0)
+                        top_results.append({
+                            "channel_name": row.get('channel_title', ''),
+                            "score": score
+                        })
+
+                # Get seed info if available
+                seed_id = None
+                seed_name = None
+                if search_mode == "seed" and 'seed_profile' in st.session_state:
+                    seed_profile = st.session_state['seed_profile']
+                    seed_id = seed_profile.get('channel_id')
+                    seed_name = seed_profile.get('channel_name')
+
+                # Save positive feedback
+                feedback_tracker.save_feedback(
+                    feedback="up",
+                    search_mode=search_mode,
+                    query=query,
+                    results_count=len(display_df),
+                    top_results=top_results,
+                    seed_channel_id=seed_id,
+                    seed_channel_name=seed_name
+                )
+                st.session_state['feedback_submitted'] = True
+                st.rerun()
+
+        with col_fb2:
+            if st.button("👎 Not helpful", use_container_width=True):
+                st.session_state['show_reason_selector'] = True
+
+        # Show reason selector if thumbs down was clicked
+        if st.session_state.get('show_reason_selector', False):
+            st.markdown("**What was the issue?**")
+            reason = st.radio(
+                "Select a reason:",
+                options=[
+                    ("wrong_topic", "Wrong topic/niche"),
+                    ("size_mismatch", "Channel too big/small"),
+                    ("inactive", "Outdated/inactive channels"),
+                    ("other", "Other")
+                ],
+                format_func=lambda x: x[1],
+                label_visibility="collapsed"
+            )
+
+            if st.button("Submit Feedback", type="primary"):
+                # Gather search context
+                display_df = st.session_state.get('display_df', pd.DataFrame())
+                search_mode = "seed" if 'seed_profile' in st.session_state else "keyword"
+                query = st.session_state.get('final_query', '')
+
+                # Build top results list
+                top_results = []
+                if not display_df.empty:
+                    for _, row in display_df.head(5).iterrows():
+                        score = row.get('similarity_score') or row.get('relevance_score', 0)
+                        top_results.append({
+                            "channel_name": row.get('channel_title', ''),
+                            "score": score
+                        })
+
+                # Get seed info if available
+                seed_id = None
+                seed_name = None
+                if search_mode == "seed" and 'seed_profile' in st.session_state:
+                    seed_profile = st.session_state['seed_profile']
+                    seed_id = seed_profile.get('channel_id')
+                    seed_name = seed_profile.get('channel_name')
+
+                # Save negative feedback with reason
+                feedback_tracker.save_feedback(
+                    feedback="down",
+                    search_mode=search_mode,
+                    query=query,
+                    results_count=len(display_df),
+                    top_results=top_results,
+                    reason=reason[0],  # reason code
+                    seed_channel_id=seed_id,
+                    seed_channel_name=seed_name
+                )
+                st.session_state['feedback_submitted'] = True
+                st.session_state['show_reason_selector'] = False
+                st.rerun()
 
 # ============================================================================
 # === ENHANCED MATCH EXPLANATIONS ===

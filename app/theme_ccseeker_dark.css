@@ -639,108 +639,96 @@ div[data-testid="stDataFrame"] table thead th {
 }
 
 /* ========================================
-   PHASE 3.3: SEARCH METHOD PROMINENCE (NUCLEAR FIX)
+   PHASE 3.3: RADIO BUTTON STYLING
+   (For feedback reasons, language selection, etc.)
    ======================================== */
 
-/* === Force radio container to full width === */
-[data-testid="stRadio"],
-.stRadio,
-div.row-widget.stRadio,
-[data-testid="stRadio"] > div,
-[data-testid="stRadio"] > div > div {
-    width: 100% !important;
-    max-width: 100% !important;
+/* === Radio container - clean, minimal styling === */
+[data-testid="stRadio"] {
+    background: transparent !important;
+    padding: 0.5rem 0 !important;
+    border: none !important;
+    margin-bottom: 1rem !important;
+    box-shadow: none !important;
 }
 
-/* The actual radio group wrapper */
+/* === Radio group wrapper - allow wrapping === */
 [data-testid="stRadio"] [role="radiogroup"] {
     display: flex !important;
     flex-direction: row !important;
-    gap: 1.5rem !important;
+    flex-wrap: wrap !important;
+    gap: 0.5rem !important;
     width: 100% !important;
-    flex-wrap: nowrap !important;
 }
 
-/* === Style each radio option as a prominent card === */
-/* Target the label that wraps each radio option */
+/* === Style each radio option as a compact pill/chip === */
 [role="radiogroup"] > label {
-    flex: 1 !important;
-    min-width: 200px !important;
-    max-width: 300px !important;
-    padding: 1.25rem 2rem !important;
+    flex: 0 1 auto !important;
+    min-width: auto !important;
+    max-width: fit-content !important;
+    padding: 0.6rem 1.25rem !important;
     margin: 0 !important;
-    
-    /* Card appearance */
+
+    /* Compact card appearance */
     background-color: #1e293b !important;
-    border: 2px solid #475569 !important;
-    border-radius: 12px !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
-    
+    border: 1px solid #475569 !important;
+    border-radius: 8px !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2) !important;
+
     cursor: pointer !important;
-    transition: all 0.3s ease !important;
-    
+    transition: all 0.2s ease !important;
+
     /* Text styling */
-    font-size: 1.15rem !important;
-    font-weight: 600 !important;
+    font-size: 0.95rem !important;
+    font-weight: 500 !important;
     color: #e5e7eb !important;
-    
+
     /* Center content */
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
 }
 
-/* Hover effect on ALL radio options */
+/* Hover effect */
 [role="radiogroup"] > label:hover {
     background-color: #334155 !important;
     border-color: #60a5fa !important;
-    transform: translateY(-3px) !important;
-    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4) !important;
+    transform: none !important;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3) !important;
 }
 
-/* === SELECTED option - make it REALLY stand out === */
-/* Streamlit adds this attribute to selected radio */
+/* === SELECTED option === */
 [role="radiogroup"] > label:has(input[type="radio"]:checked),
 [role="radiogroup"] > label:has(input:checked) {
     background: linear-gradient(135deg, #3b82f6 0%, #10b981 100%) !important;
     border-color: #60a5fa !important;
-    border-width: 3px !important;
+    border-width: 2px !important;
     color: #ffffff !important;
-    font-weight: 700 !important;
-    transform: scale(1.05) !important;
-    box-shadow: 0 6px 24px rgba(59, 130, 246, 0.6) !important;
+    font-weight: 600 !important;
+    transform: none !important;
+    box-shadow: 0 2px 10px rgba(59, 130, 246, 0.4) !important;
 }
 
 /* Text inside selected option */
 [role="radiogroup"] > label:has(input:checked) span {
     color: #ffffff !important;
-    font-weight: 700 !important;
+    font-weight: 600 !important;
 }
 
-/* Radio circle itself */
+/* Radio circle */
 [role="radiogroup"] input[type="radio"] {
-    width: 24px !important;
-    height: 24px !important;
-    margin-right: 0.75rem !important;
+    width: 18px !important;
+    height: 18px !important;
+    margin-right: 0.5rem !important;
     flex-shrink: 0 !important;
 }
 
-/* === Make the radio button container itself prominent === */
-[data-testid="stRadio"] {
-    background: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.6) 100%) !important;
-    padding: 2rem !important;
-    border-radius: 16px !important;
-    border: 2px solid #374151 !important;
-    margin-bottom: 2rem !important;
-    backdrop-filter: blur(10px) !important;
-}
-
-/* "Choose your search method:" label */
+/* Radio label text */
 [data-testid="stRadio"] > label:first-child {
-    font-size: 1.15rem !important;
-    font-weight: 600 !important;
+    font-size: 1rem !important;
+    font-weight: 500 !important;
     color: #f3f4f6 !important;
-    margin-bottom: 1.25rem !important;
+    margin-bottom: 0.75rem !important;
     display: block !important;
 }
 
@@ -779,17 +767,7 @@ input[aria-label*="Search Keywords"] {
     animation: pulse-border 3s ease-in-out infinite !important;
 }
 
-/* === Add more space between radio options === */
-[role="radiogroup"] > label {
-    margin-right: 3rem !important;  /* Increased from 1.5rem */
-}
-
-/* Make each option wider */
-[role="radiogroup"] > label {
-    min-width: 250px !important;  /* Increased from 200px */
-    padding-left: 2.5rem !important;
-    padding-right: 2.5rem !important;
-}
+/* Radio option spacing - defined in PHASE 3.3 above */
 
 /* ========================================
    PHASE 3.4: MOBILE RESPONSIVENESS
@@ -852,9 +830,21 @@ input[aria-label*="Search Keywords"] {
     }
     
     /* Reduce padding on containers to save space */
-    [data-testid="stRadio"],
     form {
         padding: 1rem !important;
+    }
+
+    /* Radio buttons - stack vertically on mobile */
+    [data-testid="stRadio"] [role="radiogroup"] {
+        flex-direction: column !important;
+        align-items: stretch !important;
+    }
+
+    [role="radiogroup"] > label {
+        width: 100% !important;
+        max-width: 100% !important;
+        text-align: center !important;
+        justify-content: center !important;
     }
     
     /* Info icons - slightly larger for easier tapping */

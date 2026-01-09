@@ -1,116 +1,314 @@
-/* ===== CCSeeker — Single Dark Stylesheet (merged) ===== */
-/* Order matters: ccseeker base first, then theme_dark to keep the current dark look authoritative. */
+/* ===== CCSeeker — Dark Theme Stylesheet ===== */
+/*
+ * Refactored: January 2025
+ * Structure:
+ *   1. CSS Variables (Design Tokens)
+ *   2. Base Styles
+ *   3. Layout
+ *   4. Components
+ *   5. Utilities
+ *   6. Responsive
+ *
+ * Note: Uses Streamlit 1.49+ with config.toml base theming.
+ * This CSS extends the base theme with custom styling.
+ */
 
-/* ---- Begin ccseeker_streamlit_style.css ---- */
-/* Force dark background globally (defined in theme_dark below) */
+/* ============================================================================
+   SECTION 1: CSS VARIABLES (Design Tokens)
+   ============================================================================
+   Define all colors, spacing, typography, and effects in one place.
+   This makes the theme easy to maintain and modify.
+   ============================================================================ */
+
+:root {
+    /* === COLORS: Backgrounds === */
+    --bg-darkest: #0f172a;        /* Deepest background (table rows, cards) */
+    --bg-dark: #111827;           /* Main app background (from config.toml) */
+    --bg-medium: #1e293b;         /* Secondary surfaces (inputs, dropdowns) */
+    --bg-light: #1f2937;          /* Elevated surfaces (sidebar, forms) */
+    --bg-hover: #334155;          /* Hover state background */
+
+    /* === COLORS: Text === */
+    --text-primary: #f3f4f6;      /* Main text (from config.toml) */
+    --text-emphasis: #ffffff;     /* Headings, emphasized text */
+    --text-muted: #94a3b8;        /* Secondary text, captions */
+
+    /* === COLORS: Borders === */
+    --border-default: #374151;    /* Standard borders */
+    --border-light: #475569;      /* Lighter borders, dividers */
+
+    /* === COLORS: Accents (Brand Gradient) === */
+    --accent-blue: #3b82f6;       /* Primary blue */
+    --accent-blue-light: #60a5fa; /* Light blue (from config.toml primaryColor) */
+    --accent-blue-lighter: #93c5fd; /* Hover state blue */
+    --accent-green: #10b981;      /* Primary green */
+    --accent-green-light: #34d399; /* Light green */
+
+    /* === COLORS: Semantic === */
+    --color-success: #10b981;
+    --color-warning: #f59e0b;
+    --color-error: #ef4444;
+    --color-info: #60a5fa;
+
+    /* === GRADIENTS === */
+    --gradient-brand: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-green) 100%);
+    --gradient-brand-hover: linear-gradient(135deg, var(--accent-blue-light) 0%, var(--accent-green-light) 100%);
+    --gradient-brand-horizontal: linear-gradient(to right, var(--accent-blue), var(--accent-green));
+    --gradient-brand-horizontal-hover: linear-gradient(to right, var(--accent-blue-light), var(--accent-green-light));
+
+    /* === SPACING === */
+    --space-xs: 0.25rem;          /* 4px */
+    --space-sm: 0.5rem;           /* 8px */
+    --space-md: 1rem;             /* 16px */
+    --space-lg: 1.5rem;           /* 24px */
+    --space-xl: 2rem;             /* 32px */
+    --space-2xl: 2.5rem;          /* 40px */
+
+    /* === TYPOGRAPHY === */
+    --font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-size-xs: 0.85rem;      /* 13.6px */
+    --font-size-sm: 0.9rem;       /* 14.4px */
+    --font-size-base: 0.95rem;    /* 15.2px */
+    --font-size-md: 1rem;         /* 16px */
+    --font-size-lg: 1.15rem;      /* 18.4px */
+    --font-size-xl: 1.35rem;      /* 21.6px */
+    --font-size-2xl: 1.85rem;     /* 29.6px */
+    --font-size-3xl: 2.5rem;      /* 40px */
+
+    --font-weight-normal: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    --font-weight-bold: 700;
+    --font-weight-extrabold: 800;
+
+    /* === EFFECTS === */
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 10px;
+    --radius-xl: 12px;
+    --radius-2xl: 16px;
+
+    --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.2);
+    --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.3);
+    --shadow-xl: 0 6px 20px rgba(0, 0, 0, 0.4);
+    --shadow-accent: 0 4px 12px rgba(59, 130, 246, 0.4);
+    --shadow-accent-lg: 0 6px 24px rgba(59, 130, 246, 0.6);
+
+    --transition-fast: 0.15s ease;
+    --transition-normal: 0.25s ease;
+    --transition-slow: 0.3s ease;
+
+    /* === Z-INDEX === */
+    --z-sticky: 10;
+    --z-dropdown: 100;
+    --z-tooltip: 200;
+}
+
+/* ============================================================================
+   END SECTION 1: CSS VARIABLES
+   ============================================================================ */
+
+
+/* ============================================================================
+   SECTION 2: BASE STYLES
+   ============================================================================
+   Global resets, app container, and typography foundations.
+   Works alongside Streamlit's config.toml theme settings.
+   ============================================================================ */
+
+/* --- 2.1 Global App Container --- */
+html, body,
+[data-testid="stAppViewContainer"],
+[data-testid="stApp"] {
+    background-color: var(--bg-dark) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-family);
+}
 
 section.main {
-    background-color: #111827 !important;
+    background-color: var(--bg-dark) !important;
 }
 
-
-/* Title headers (defined in theme_dark below) */
-
-/* Sidebar (defined in theme_dark below) */
-
-/* Buttons (consolidated later) */
-
-/* Inputs (consolidated below) */
-
-/* Checkbox/Radio text (consolidated below) */
-
-/* Alerts (consolidated below) */
-
-/* DataFrame (consolidated below) */
-
-/* Captions, help texts (consolidated below) */
-
-/* Form section spacing */
-form {
-    padding: 1rem;
-    border-radius: 8px;
-    background-color: #1f2937;
-    border: 1px solid #374151;
-    margin-bottom: 1.5rem;
+/* --- 2.2 Typography: Headings --- */
+/* Base heading styles */
+h1, h2, h3, h4, .stTitle {
+    color: var(--text-emphasis) !important;
+    font-weight: var(--font-weight-semibold);
 }
 
-/* Fix selectbox dropdown (consolidated with select labels below) */
-/* 🧠 Fix text labels and help text */
-/* Removed redundant hashed label selectors */
-
-/* 🖱️ Fix button text */
-/* Removed outdated button text color */
-
-/* 🧩 Tooltip or hint text */
-/* Tooltip or hint text - handled in tooltip/popup section below */
-
-/* 🧩 Fix select labels */
-.css-1wa3eu0-placeholder,
-.css-qc6sy-singleValue {
-    color: #e5e7eb !important;
+/* h1: Main page title */
+h1 {
+    font-size: var(--font-size-3xl) !important;
+    font-weight: var(--font-weight-extrabold) !important;
+    margin-bottom: var(--space-xs) !important;
+    line-height: 1.2 !important;
 }
 
-
-
-/* ---- Begin theme_dark.css (authoritative overrides) ---- */
-/* === DARK THEME === */
-html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
-    background-color: #111827 !important;
-    color: #e9eef4 !important;
-    font-family: 'Segoe UI', sans-serif;
+/* h2: Section headers (1. Search Method, 2. Filtering Criteria) */
+h2 {
+    font-size: var(--font-size-2xl) !important;
+    font-weight: var(--font-weight-extrabold) !important;
+    margin-top: var(--space-2xl) !important;
+    margin-bottom: var(--space-lg) !important;
+    padding: var(--space-md) var(--space-lg) !important;
+    background: var(--gradient-brand) !important;
+    border-radius: var(--radius-lg) !important;
+    border-left: 6px solid var(--accent-blue-light) !important;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25) !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1.5px !important;
 }
 
-/* Headings */
-h1, h2, h3, .stTitle {
-    color: #ffffff !important;
-    font-weight: 600;
+/* h3: Subsection headers */
+h3 {
+    color: var(--accent-blue-light) !important;
+    font-size: var(--font-size-xl) !important;
+    font-weight: var(--font-weight-bold) !important;
+    margin-top: var(--space-xl) !important;
+    margin-bottom: var(--space-md) !important;
+    padding-bottom: var(--space-sm) !important;
+    border-bottom: 2px solid var(--accent-blue) !important;
 }
 
-/* Sidebar */
-section[data-testid="stSidebar"] {
-    background-color: #1f2937 !important;
-    border-right: 1px solid #374151;
+/* h4: Minor headers */
+h4 {
+    color: var(--text-primary) !important;
+    font-size: var(--font-size-lg) !important;
+    font-weight: var(--font-weight-semibold) !important;
 }
 
-/* Buttons - consolidated in FIX: Button visibility block */
-
-/* Inputs, text areas, selects */
-input, textarea, select {
-    background-color: #1e293b !important;
-    color: #e9eef4 !important;
-    border: 1px solid #374151 !important;
-    border-radius: 6px !important;
+/* Subheaders in markdown */
+.stMarkdown h3 {
+    color: var(--text-primary) !important;
+    margin-top: var(--space-lg) !important;
 }
 
-input:focus, textarea:focus, select:focus {
-    border-color: #60a5fa !important;
-    outline: none !important;
+/* --- 2.3 Typography: Body Text --- */
+/* Markdown paragraphs */
+[data-testid="stMarkdownContainer"] p {
+    color: var(--text-primary) !important;
 }
 
-/* Labels & captions */
-label, .stRadio > div, .stCheckbox > div, .stSelectbox, .stNumberInput label {
-    color: #e9eef4 !important;
-    font-weight: 500;
+/* Tagline/slogan styling (text after h1) */
+.stApp h1 + div p,
+h1 + p,
+h1 + .stMarkdown p {
+    font-size: var(--font-size-lg) !important;
+    color: var(--text-muted) !important;
+    font-weight: var(--font-weight-normal) !important;
+    font-style: italic !important;
+    margin-top: var(--space-xs) !important;
+    margin-bottom: var(--space-xl) !important;
 }
 
-.stCaption, .stHelp {
-    color: #9ca3af !important;
+/* --- 2.4 Labels & Captions --- */
+/* Generic labels */
+label,
+.stRadio > div,
+.stCheckbox > div,
+.stSelectbox,
+.stNumberInput label {
+    color: var(--text-primary) !important;
+    font-weight: var(--font-weight-medium);
 }
 
-/* Alerts */
+/* Field labels (inputs, selects) */
+label[data-testid="stTextInputLabel"],
+label[data-testid="stNumberInputLabel"],
+.stTextInput label,
+.stNumberInput label,
+.stSelectbox label {
+    color: var(--text-primary) !important;
+    font-weight: var(--font-weight-semibold) !important;
+    font-size: 1.05rem !important;
+    margin-bottom: var(--space-sm) !important;
+}
+
+/* Captions and help text */
+.stCaption,
+.stHelp {
+    color: var(--text-muted) !important;
+}
+
+/* --- 2.5 Alerts --- */
 .stAlert {
-    background-color: #0f172a !important;
-    border-left: 4px solid #60a5fa !important;
-    color: #e9eef4 !important;
+    background-color: var(--bg-darkest) !important;
+    border-left: 4px solid var(--accent-blue-light) !important;
+    color: var(--text-primary) !important;
 }
 
-/* DataFrames */
-div[data-testid="stDataFrame"] {
-    background-color: #1e293b !important;
-    color: #e9eef4 !important;
-    border-radius: 6px;
-    padding: 1rem;
+/* ============================================================================
+   END SECTION 2: BASE STYLES
+   ============================================================================ */
+
+
+/* ============================================================================
+   SECTION 3: LAYOUT
+   ============================================================================
+   Structural elements: sidebar, forms, logo, column alignment.
+   ============================================================================ */
+
+/* --- 3.1 Sidebar --- */
+section[data-testid="stSidebar"] {
+    background-color: var(--bg-light) !important;
+    border-right: 1px solid var(--border-default);
 }
+
+/* --- 3.2 Forms --- */
+form {
+    padding: var(--space-md);
+    border-radius: var(--radius-md);
+    background-color: var(--bg-light);
+    border: 1px solid var(--border-default);
+    margin-bottom: var(--space-lg);
+    box-shadow: var(--shadow-md);
+}
+
+/* Ensure form containers don't clip content (borders, shadows) */
+.stForm,
+form,
+[data-testid="stForm"] {
+    overflow: visible !important;
+}
+
+form > div {
+    overflow: visible !important;
+}
+
+/* --- 3.3 Logo & Branding --- */
+/* Make logo bigger and more prominent */
+img[data-testid="stLogo"],
+.css-1v0mbdj img,
+img[src*="app-icon"] {
+    width: 100px !important;
+    height: 100px !important;
+    margin-right: var(--space-lg) !important;
+}
+
+/* Ensure logo container doesn't restrict size */
+[data-testid="stLogo"],
+.css-1v0mbdj {
+    width: auto !important;
+    height: auto !important;
+}
+
+/* --- 3.4 Column Alignment --- */
+/* Ensure logo and title align nicely in columns */
+[data-testid="column"]:first-child {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+/* ============================================================================
+   END SECTION 3: LAYOUT
+   ============================================================================ */
+
+
+/* ============================================================================
+   LEGACY CODE BELOW - Will be refactored in subsequent sections
+   ============================================================================ */
 
 /* ========================================
    PHASE 1: VISIBILITY FIXES (AGGRESSIVE)
@@ -488,59 +686,7 @@ div[data-baseweb="tooltip"]::before {
     color: #f3f4f6 !important;
 }
 
-/* ========================================
-   PHASE 3.1: BOLD HEADER IMPROVEMENTS
-   ======================================== */
-
-/* === MAIN TITLE - YouTube Creator Search Agent === */
-/* Final h1 values are defined in the Title styling section later */
-
-/* === SECTION HEADERS (1. Search Method, 2. Filtering Criteria) === */
-h2 {
-    color: #ffffff !important;
-    font-weight: 800 !important;
-    font-size: 1.85rem !important;
-    margin-top: 2.5rem !important;
-    margin-bottom: 1.5rem !important;
-    padding: 1rem 1.5rem !important;
-    background: linear-gradient(135deg, #3b82f6 0%, #10b981 100%) !important;
-    border-radius: 10px !important;
-    border-left: 6px solid #60a5fa !important;
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25) !important;
-    text-transform: uppercase !important;
-    letter-spacing: 1.5px !important;
-}
-
-/* === SUBSECTION HEADERS (if any) === */
-h3 {
-    color: #60a5fa !important;
-    font-weight: 700 !important;
-    font-size: 1.35rem !important;
-    margin-top: 2rem !important;
-    margin-bottom: 1rem !important;
-    padding-bottom: 0.5rem !important;
-    border-bottom: 2px solid #3b82f6 !important;
-}
-
-/* === Field Labels - Make them more prominent === */
-label[data-testid="stTextInputLabel"],
-label[data-testid="stNumberInputLabel"],
-.stTextInput label,
-.stNumberInput label,
-.stSelectbox label {
-    color: #f3f4f6 !important;
-    font-weight: 600 !important;
-    font-size: 1.05rem !important;
-    margin-bottom: 0.5rem !important;
-}
-
-/* === "Choose your search method:" text === */
-[data-testid="stRadio"] > label:first-child {
-    color: #f3f4f6 !important;
-    font-weight: 600 !important;
-    font-size: 1.1rem !important;
-    margin-bottom: 1rem !important;
-}
+/* PHASE 3.1: BOLD HEADER IMPROVEMENTS - MOVED TO SECTION 2 */
 
 /* ========================================
    PHASE 3.2: RESULTS TABLE FIX (CORRECTED)
@@ -1017,59 +1163,16 @@ input[aria-label*="Search Keywords"] {
     }
 }
 
-/* ========================================
-   PHASE 3.5: LOGO & TITLE POLISH
-   ======================================== */
-
-/* === Make logo bigger and more prominent === */
-img[data-testid="stLogo"],
-.css-1v0mbdj img,
-img[src*="app-icon"] {
-    width: 100px !important;  /* Increased from ~64px */
-    height: 100px !important;
-    margin-right: 1.5rem !important;
-}
-
-/* Ensure logo container doesn't restrict size */
-[data-testid="stLogo"],
-.css-1v0mbdj {
-    width: auto !important;
-    height: auto !important;
-}
-
-/* === Title styling - make it a header/tagline combo === */
-/* Main title (YouTube Creator Search Agent / CCSeeker) */
-h1 {
-    font-size: 2.5rem !important;
-    font-weight: 800 !important;
-    margin-bottom: 0.25rem !important;
-    line-height: 1.2 !important;
-}
-
-/* If you want the slogan as a subtitle below the title */
-.stApp > header + div h1 + p,
-h1 + .stMarkdown p {
-    font-size: 1.15rem !important;
-    color: #94a3b8 !important;  /* Subtle gray */
-    font-weight: 400 !important;
-    font-style: italic !important;
-    margin-top: 0 !important;
-    margin-bottom: 2rem !important;
-}
-
-/* ========================================
-   PHASE 3.5: FINAL POLISH
-   ======================================== */
-
-/* === Logo size === */
-/* Consolidated with the logo group above */
+/* PHASE 3.5: LOGO & TITLE POLISH - MOVED TO SECTION 3 */
 
 /* === Smooth transitions everywhere === */
+/* NOTE: Will be moved to Section 5: Utilities */
 button, input, select, [role="button"], [data-baseweb="select"] {
     transition: all 0.25s ease !important;
 }
 
 /* === Consistent border radius === */
+/* NOTE: Will be consolidated with component styles in Section 4 */
 button, input, select, textarea,
 .stButton button,
 [data-baseweb="select"],
@@ -1078,13 +1181,8 @@ button, input, select, textarea,
     border-radius: 10px !important;
 }
 
-/* === Subtle depth with shadows === */
-form,
-[data-testid="stRadio"] {
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2) !important;
-}
-
 /* === Polish +/- buttons with gradient === */
+/* NOTE: Will be moved to Section 4: Components */
 button[data-testid="baseButton-secondary"] {
     background: linear-gradient(135deg, #3b82f6 0%, #10b981 100%) !important;
     border: none !important;
@@ -1095,21 +1193,4 @@ button[data-testid="baseButton-secondary"] {
 button[data-testid="baseButton-secondary"]:hover {
     background: linear-gradient(135deg, #60a5fa 0%, #34d399 100%) !important;
     transform: scale(1.05) !important;
-}
-
-/* === Slogan/tagline styling === */
-.stApp h1 + div p,
-h1 + p {
-    font-size: 1.15rem !important;
-    color: #94a3b8 !important;
-    font-weight: 400 !important;
-    font-style: italic !important;
-    margin-top: 0.25rem !important;
-}
-
-/* === Ensure logo and title align nicely === */
-[data-testid="column"]:first-child {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
 }

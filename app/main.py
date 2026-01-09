@@ -2133,7 +2133,9 @@ if 'display_df' in st.session_state:
                     ("other", "Other")
                 ],
                 format_func=lambda x: x[1],
-                label_visibility="collapsed"
+                label_visibility="collapsed",
+                horizontal=True,
+                key="feedback_reason_radio"
             )
 
             if st.button("Submit Feedback", type="primary"):

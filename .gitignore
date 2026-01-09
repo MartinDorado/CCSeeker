@@ -20,3 +20,4 @@ ENV/
 .DS_Store
 
 .quota_cache.json
+.feedback_data.json

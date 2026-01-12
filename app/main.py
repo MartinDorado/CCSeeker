@@ -39,6 +39,26 @@ try:
 except ImportError:
     import debug_tracker
 
+# Core module imports (extracted pure functions)
+try:
+    from .core import (
+        MAX_SEARCH_TERMS,
+        validate_and_truncate_query,
+        extract_identifier_from_url,
+        resolve_channel_id,
+        strip_outer_quotes,
+        calculate_keyword_relevance,
+    )
+except ImportError:
+    from core import (
+        MAX_SEARCH_TERMS,
+        validate_and_truncate_query,
+        extract_identifier_from_url,
+        resolve_channel_id,
+        strip_outer_quotes,
+        calculate_keyword_relevance,
+    )
+
 import math
 import time
 
@@ -110,7 +130,7 @@ YOUTUBE_API_SERVICE_NAME = "youtube"
 YOUTUBE_API_VERSION = "v3"
 
 # Search Parameters
-MAX_SEARCH_TERMS = 2              # Maximum comma-separated terms allowed
+# MAX_SEARCH_TERMS is imported from core.query_utils
 MAX_SEARCH_RESULTS = 50           # Maximum channels to return per search
 MAX_VIDEOS_PER_TERM = 100         # Videos to fetch from YouTube search per term
 MAX_VIDEOS_PER_CHANNEL = 10       # Videos to analyze per channel (for relevance)
@@ -168,39 +188,8 @@ GEMINI_API_KEY = _get_secret("GEMINI_API_KEY")
 # ============================================================================
 # Helper query functions
 # ============================================================================
-
-def validate_and_truncate_query(query: str) -> tuple[str, bool]:
-    """
-    Validate and auto-truncate search query to MAX_SEARCH_TERMS.
-    
-    Args:
-        query: Comma-separated search terms
-    
-    Returns:
-        tuple: (truncated_query, was_truncated)
-    
-    Examples:
-        >>> validate_and_truncate_query("manga, anime", 2)
-        ("manga, anime", False)
-        
-        >>> validate_and_truncate_query("manga, anime, gaming, tech", 2)
-        ("manga, anime", True)
-    """
-    if not query or not query.strip():
-        return "", False
-    
-    # Split by comma and clean whitespace
-    terms = [t.strip() for t in query.split(',') if t.strip()]
-    
-    # Check if within limit
-    if len(terms) <= MAX_SEARCH_TERMS:
-        return query, False
-    
-    # Truncate to first MAX_SEARCH_TERMS
-    truncated = terms[:MAX_SEARCH_TERMS]
-    truncated_query = ", ".join(truncated)
-    
-    return truncated_query, True
+# NOTE: validate_and_truncate_query, extract_identifier_from_url, resolve_channel_id,
+# and strip_outer_quotes are now imported from core.query_utils
 
 
 def render_term_counter(current_query: str) -> None:
@@ -238,55 +227,6 @@ def render_term_counter(current_query: str) -> None:
         unsafe_allow_html=True
     )
 
-def extract_identifier_from_url(url):
-    """Extract a channel identifier from common YouTube URL formats.
-
-    Returns either a channel ID (starting with 'UC...') or a handle/username
-    (e.g., 'SomeCreator'). Resolution to an actual channel ID in `resolve_channel_id()`.
-    """
-    patterns = [
-        r'(?:youtube\.com/channel/)([^/?&]+)',
-        r'(?:youtube\.com/@)([^/?&]+)'
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, url)
-        if match:
-            return match.group(1)
-    return None
-
-def resolve_channel_id(youtube_service, user_input: str):
-    """Accepts any user input (URL, handle, or raw UC… ID) and normalizes it to a canonical channel ID.
-
-    If the identifier is still a handle/name, it strips any leading @ and calls the YouTube Data API to resolve it.
-
-    Returns channel_id or None.
-    """
-    if not user_input:
-        return None
-    s = user_input.strip()
-    # Direct ID
-    if s.startswith("UC") and len(s) >= 20:
-        return s
-    # Try parsing URL
-    ident = extract_identifier_from_url(s) or s
-    if ident.startswith("UC"):
-        return ident
-    # Treat as handle or name: remove leading '@'
-    handle = ident[1:] if ident.startswith("@") else ident
-    try:
-        response = youtube_service.search().list(q=handle, part="id", type="channel", maxResults=1).execute()
-        items = response.get("items", [])
-        if items:
-            return items[0]["id"]["channelId"]
-        return None
-    except HttpError:
-        return None
-    
-def _strip_outer_quotes(s: str) -> str:
-    s = (s or "").strip()
-    if len(s) >= 2 and ((s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'"))):
-        return s[1:-1].strip()
-    return s    
 
 # ============================================================================
 # CACHING LAYER - with accurate tracking
@@ -664,66 +604,7 @@ def get_video_details(youtube_service, channel_data, max_videos_per_channel):
             })
     return all_video_details
 
-def calculate_keyword_relevance(df, query, title_weight: float = 2.0, tags_weight: float = 1.0):
-    """Compute per-channel relevance by matching query terms against title and tags.
-
-    Notes:
-    - Parsing is comma-only: "term1, term2, phrase three". Boolean text like AND/OR is not parsed.
-    - Word boundaries are added for simple alphanumeric terms to avoid substring matches (e.g., "man" won't match "manga").
-    - Index alignment is preserved by creating fallback Series with `index=df.index`.
-    - Title vs tags can be weighted via `title_weight` and `tags_weight`. The per-video score is a weighted average in [0, 1].
-    """
-    if df.empty or not isinstance(query, str) or not query.strip():
-        return pd.DataFrame(columns=['channel_id', 'relevance_score'])
-
-    # Accept only comma-separated terms; otherwise treat the entire query as one term
-    if ',' in query:
-        raw_terms = [t.strip() for t in query.split(',') if t.strip()]
-    else:
-        raw_terms = [query.strip()]
-
-    # Build regex parts with safe escaping and word boundaries for simple words
-    cleaned_parts = []
-    for t in raw_terms:
-        if not t:
-            continue
-        t = _strip_outer_quotes(t)
-        if not t:
-            continue
-        # If the term is a single "word" (letters/digits/_), wrap with word boundaries
-        if re.match(r'^\w+$', t, flags=re.UNICODE):
-            cleaned_parts.append(r'\b' + re.escape(t) + r'\b')
-        else:
-            cleaned_parts.append(re.escape(t))
-
-    if not cleaned_parts:
-        return pd.DataFrame(columns=['channel_id', 'relevance_score'])
-
-    pattern = '(?:' + '|'.join(cleaned_parts) + ')'
-
-    def _tags_to_text(x):
-        if isinstance(x, list):
-            return ' '.join([str(i) for i in x if i is not None])
-        return str(x) if x is not None else ''
-
-    # Ensure alignment by constructing fallbacks with the same index
-    title_series = df.get('video_title', pd.Series('', index=df.index)).fillna('')
-    tags_series = df.get('video_tags', pd.Series('', index=df.index))
-    tags_text = tags_series.apply(_tags_to_text)
-
-    # Boolean matches per field
-    title_match = title_series.str.contains(pattern, case=False, na=False, regex=True)
-    tags_match = tags_text.str.contains(pattern, case=False, na=False, regex=True)
-
-    # Weighted per-video score in [0, 1]
-    denom = float(title_weight + tags_weight) if (title_weight + tags_weight) != 0 else 1.0
-    video_score = (title_weight * title_match.astype(float) + tags_weight * tags_match.astype(float)) / denom
-
-    # Average to channel-level relevance score
-    tmp = pd.DataFrame({'channel_id': df['channel_id'], 'video_score': video_score})
-    relevance = tmp.groupby('channel_id', as_index=False)['video_score'].mean()
-    relevance = relevance.rename(columns={'video_score': 'relevance_score'})
-    return relevance
+# NOTE: calculate_keyword_relevance is now imported from core.relevance
 
 def generate_ai_relevance_score(model, channel_data: dict, query: str) -> float:
     """

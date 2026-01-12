@@ -307,507 +307,229 @@ img[src*="app-icon"] {
 
 
 /* ============================================================================
-   LEGACY CODE BELOW - Will be refactored in subsequent sections
+   SECTION 4: COMPONENTS
+   ============================================================================
+   Reusable UI elements: buttons, inputs, selects, radios, tables, tooltips.
+   Uses CSS variables from Section 1 for consistency.
    ============================================================================ */
 
-/* ========================================
-   PHASE 1: VISIBILITY FIXES (AGGRESSIVE)
-   ======================================== */
+/* --- 4.1 Buttons --- */
 
-/* === FIX: Radio button labels - ALL possible selectors === */
-[data-testid="stRadio"] label,
-[data-testid="stRadio"] div label,
-[data-testid="stRadio"] span,
-.stRadio label,
-.stRadio > div > label {
-    color: #f3f4f6 !important;
-    font-weight: 500 !important;
-    font-size: 1rem !important;
-}
-
-/* Radio group options */
-[role="radiogroup"] label,
-[role="radiogroup"] > label {
-    color: #f3f4f6 !important;
-    font-weight: 500 !important;
-    background-color: transparent !important;
-}
-
-/* Selected state */
-[role="radiogroup"] label[data-baseweb="radio"] {
-    color: #ffffff !important;
-}
-
-/* The actual text inside radio options */
-[data-testid="stMarkdownContainer"] p {
-    color: #f3f4f6 !important;
-}
-
-/* === FIX: Button visibility === */
 /* Primary buttons (Find Creators, Generate Outreach, etc.) */
 button[kind="primary"],
 .stButton > button,
 [data-testid="baseButton-primary"],
 .stButton button {
-    background: linear-gradient(to right, #3b82f6, #10b981) !important;
-    color: #ffffff !important;  /* Force white text */
-    font-weight: 600 !important;
+    background: var(--gradient-brand-horizontal) !important;
+    color: var(--text-emphasis) !important;
+    font-weight: var(--font-weight-semibold) !important;
+    font-size: var(--font-size-base) !important;
     border: none !important;
-    border-radius: 6px !important;
-    padding: 0.5rem 1rem !important;
+    border-radius: var(--radius-lg) !important;
+    padding: var(--space-sm) var(--space-md) !important;
     cursor: pointer !important;
+    transition: var(--transition-normal) !important;
 }
 
-/* Button hover state */
+/* Primary button hover */
 button[kind="primary"]:hover,
 .stButton > button:hover,
 .stButton button:hover {
-    background: linear-gradient(to right, #60a5fa, #34d399) !important;
-    color: #ffffff !important;
+    background: var(--gradient-brand-horizontal-hover) !important;
+    color: var(--text-emphasis) !important;
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4) !important;
+    box-shadow: var(--shadow-accent) !important;
 }
 
-/* Button text specifically */
+/* Button text */
 .stButton button span,
 button[kind="primary"] span {
-    color: #ffffff !important;
-    font-weight: 600 !important;
+    color: var(--text-emphasis) !important;
+    font-weight: var(--font-weight-semibold) !important;
 }
 
-/* Form submit buttons - see PHASE 1.2 block for authoritative styles */
-
-/* === FIX: Info icons (help text) visibility === */
-/* Help icon buttons */
-button[data-testid="stTooltipIcon"],
-.stTooltipIcon,
-[data-testid="stTooltipIcon"] svg {
-    color: #60a5fa !important;  /* Bright blue */
-    fill: #60a5fa !important;
-    opacity: 0.9 !important;
+/* Secondary buttons (+/- for number inputs) */
+button[data-testid="baseButton-secondary"] {
+    background: var(--gradient-brand) !important;
+    border: none !important;
+    color: var(--text-emphasis) !important;
+    font-weight: var(--font-weight-semibold) !important;
+    border-radius: var(--radius-lg) !important;
+    transition: var(--transition-normal) !important;
 }
 
-button[data-testid="stTooltipIcon"]:hover {
-    color: #93c5fd !important;
-    fill: #93c5fd !important;
-    opacity: 1 !important;
+button[data-testid="baseButton-secondary"]:hover {
+    background: var(--gradient-brand-hover) !important;
+    transform: scale(1.05) !important;
 }
 
-/* === FIX: Selectbox (dropdown) visibility === */
-/* Dropdown selected value text */
-[data-baseweb="select"] > div,
-.stSelectbox > div > div,
-[data-testid="stSelectbox"] div {
-    color: #f3f4f6 !important;
-}
-
-/* Dropdown placeholder and selected text */
-[data-baseweb="select"] [role="button"] {
-    color: #f3f4f6 !important;
-    background-color: #1e293b !important;
-    border: 1px solid #374151 !important;
-}
-
-/* Dropdown when opened */
-[data-baseweb="select"] [role="listbox"] {
-    background-color: #1e293b !important;
-}
-
-[data-baseweb="select"] [role="option"] {
-    color: #f3f4f6 !important;
-    background-color: #1e293b !important;
-}
-
-[data-baseweb="select"] [role="option"]:hover {
-    background-color: #334155 !important;
-    color: #ffffff !important;
-}
-
-/* === FIX: Text input labels === */
-/* Labels for text inputs */
-label[data-testid="stTextInputLabel"],
-label[data-testid="stNumberInputLabel"],
-.stTextInput label,
-.stNumberInput label {
-    color: #f3f4f6 !important;
-    font-weight: 500 !important;
-    font-size: 0.95rem !important;
-}
-
-/* === FIX: Section headers === */
-/* Headers (1. Search Method, 2. Filtering Criteria) */
-h1, h2, h3, h4 {
-    color: #ffffff !important;
-    font-weight: 600 !important;
-}
-
-/* Subheaders */
-.stMarkdown h3 {
-    color: #f3f4f6 !important;
-    margin-top: 1.5rem !important;
-}
-
-/* ========================================
-   PHASE 1.2: BUTTON & DROPDOWN FIXES
-   ======================================== */
-
-/* === FIX: Form submit button - SUPER AGGRESSIVE === */
+/* Form submit buttons */
 form button[type="submit"],
 .stForm button,
 div[data-testid="stFormSubmitButton"] button,
 div[data-testid="stFormSubmitButton"] button > div,
 div[data-testid="stFormSubmitButton"] button p {
-    background: linear-gradient(to right, #3b82f6, #10b981) !important;
-    color: #ffffff !important;
-    font-weight: 600 !important;
+    background: var(--gradient-brand-horizontal) !important;
+    color: var(--text-emphasis) !important;
+    font-weight: var(--font-weight-semibold) !important;
     border: none !important;
+    border-radius: var(--radius-lg) !important;
 }
 
 form button *,
 .stForm button *,
 div[data-testid="stFormSubmitButton"] button * {
-    color: #ffffff !important;
+    color: var(--text-emphasis) !important;
 }
 
 div[data-testid="stFormSubmitButton"] {
-    color: #ffffff !important;
+    color: var(--text-emphasis) !important;
 }
 
 form button[type="submit"]:hover,
 .stForm button:hover,
 div[data-testid="stFormSubmitButton"] button:hover {
-    background: linear-gradient(to right, #60a5fa, #34d399) !important;
+    background: var(--gradient-brand-horizontal-hover) !important;
     transform: translateY(-2px) !important;
-    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5) !important;
+    box-shadow: var(--shadow-accent-lg) !important;
 }
 
-/* === FIX: Dropdown selected value visibility === */
-[data-baseweb="select"] span,
-[data-baseweb="select"] > div > div,
-div[data-testid="stSelectbox"] span,
-.stSelectbox div[role="button"] span {
-    color: #f3f4f6 !important;
-    font-weight: 500 !important;
+/* --- 4.2 Text Inputs & Textareas --- */
+
+/* Base input styling */
+[data-testid="stTextInput"] input,
+[data-testid="stNumberInput"] input,
+textarea {
+    background-color: var(--bg-medium) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-default) !important;
+    border-radius: var(--radius-lg) !important;
+    font-size: var(--font-size-base) !important;
+    padding: var(--space-sm) var(--space-md) !important;
+    transition: var(--transition-normal) !important;
 }
 
-[data-baseweb="select"] [data-baseweb="select-value-label"] {
-    color: #f3f4f6 !important;
+[data-testid="stTextInput"] input:focus,
+[data-testid="stNumberInput"] input:focus,
+textarea:focus {
+    border-color: var(--accent-blue) !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
+    outline: none !important;
 }
 
+/* Search Keywords input - featured styling */
+[data-testid="stTextInput"]:first-of-type input,
+input[aria-label*="Search Keywords"] {
+    font-size: var(--font-size-lg) !important;
+    padding: var(--space-md) var(--space-lg) !important;
+    background-color: var(--bg-medium) !important;
+    border: 2px solid var(--accent-blue-light) !important;
+    border-radius: var(--radius-lg) !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+}
+
+[data-testid="stTextInput"]:first-of-type input:focus {
+    border-color: var(--accent-blue) !important;
+    box-shadow: 0 0 0 5px rgba(59, 130, 246, 0.3) !important;
+}
+
+[data-testid="stTextInput"]:first-of-type label {
+    font-size: var(--font-size-md) !important;
+    font-weight: var(--font-weight-semibold) !important;
+    color: var(--text-primary) !important;
+    margin-bottom: var(--space-sm) !important;
+}
+
+/* --- 4.3 Selects / Dropdowns --- */
+
+/* Dropdown container */
+[data-baseweb="select"] {
+    border-radius: var(--radius-lg) !important;
+}
+
+/* Dropdown trigger button */
+[data-baseweb="select"] [role="button"] {
+    color: var(--text-primary) !important;
+    background-color: var(--bg-medium) !important;
+    border: 1px solid var(--border-default) !important;
+    border-radius: var(--radius-lg) !important;
+}
+
+/* Dropdown arrow icon */
 [data-baseweb="select"] svg {
-    fill: #60a5fa !important;
+    fill: var(--accent-blue-light) !important;
 }
 
-/* ========================================
-   PHASE 1.3: DROPDOWN TEXT VISIBILITY FIX
-   ======================================== */
-
-/* === Target the exact container holding "Global" text === */
-/* Main dropdown value container */
-div[data-baseweb="select"] > div[data-baseweb="select-control-container"] {
-    color: #f3f4f6 !important;
-}
-
-/* The value container itself */
-div[data-baseweb="select"] div[id$="-value-container"] {
-    color: #f3f4f6 !important;
-}
-
-/* All text spans inside select dropdowns */
-div[data-baseweb="select"] span,
-div[data-baseweb="select"] div span {
-    color: #f3f4f6 !important;
-    font-size: 1rem !important;
-}
-
-/* Input element inside dropdown (where text appears) */
-div[data-baseweb="select"] input {
-    color: #f3f4f6 !important;
-}
-
-/* Placeholder text */
-div[data-baseweb="select"] [data-baseweb="input"] {
-    color: #f3f4f6 !important;
-}
-
-/* Selected value specifically */
-[data-baseweb="select"] [class*="singleValue"],
-[data-baseweb="select"] [class*="placeholder"] {
-    color: #f3f4f6 !important;
-}
-
-/* Force all child elements to inherit white color */
-.stSelectbox * {
-    color: #f3f4f6 !important;
-}
-
-/* ========================================
-   PHASE 1.4: NUCLEAR DROPDOWN FIX
-   ======================================== */
-
-/* FORCE all select elements to show white text */
+/* Force text visibility in select */
 [data-testid="stSelectbox"],
 [data-testid="stSelectbox"] *,
 div.stSelectbox,
-div.stSelectbox * {
-    color: #ffffff !important;
-}
-
-/* Target EVERY possible span inside selects */
+div.stSelectbox *,
 [data-baseweb="select"] span,
 [data-baseweb="select"] div span,
 [data-baseweb="select"] > div span,
-[data-baseweb="select"] > div > div span {
-    color: #ffffff !important;
-    opacity: 1 !important;
-    visibility: visible !important;
+[data-baseweb="select"] > div > div span,
+[data-baseweb="select"] > div,
+[data-baseweb="select"] div,
+[data-baseweb="select"] input {
+    color: var(--text-emphasis) !important;
 }
 
-/* The select control container */
-[data-baseweb="select"] > div {
-    color: #ffffff !important;
+/* Dropdown menu when opened */
+[data-baseweb="select"] [role="listbox"] {
+    background-color: var(--bg-medium) !important;
+    border: 1px solid var(--border-default) !important;
+    border-radius: var(--radius-md) !important;
+    box-shadow: var(--shadow-lg) !important;
 }
 
-/* All divs inside select */
-[data-baseweb="select"] div {
-    color: #ffffff !important;
+/* Dropdown options */
+[data-baseweb="select"] [role="option"] {
+    color: var(--text-primary) !important;
+    background-color: var(--bg-medium) !important;
+    padding: var(--space-sm) var(--space-md) !important;
 }
 
-/* Input placeholder and value */
-[data-baseweb="select"] input,
-[data-baseweb="select"] [role="button"] {
-    color: #ffffff !important;
+[data-baseweb="select"] [role="option"]:hover {
+    background-color: var(--bg-hover) !important;
+    color: var(--text-emphasis) !important;
 }
 
-/* BaseWeb specific classes */
+/* Selected value text */
+[data-baseweb="select"] [data-baseweb="select-value-label"],
 [class*="StyledSingleValue"],
 [class*="StyledPlaceholder"],
 [class*="ValueContainer"] {
-    color: #ffffff !important;
+    color: var(--text-primary) !important;
 }
 
-/* Last resort: force inline styles */
-.stSelectbox div[role="button"]::before {
-    color: #ffffff !important;
-}
-
-/* ========================================
-   PHASE 1.5: SELECTBOX VALUE TEXT FIX
-   ======================================== */
-
-/* Target the div that contains the selected value text */
-[data-baseweb="select"] div[value],
-div[class*="st-dq"],
-div[class*="st-cj"],
-div[class*="st-b6"] {
-    color: #f3f4f6 !important;
-    background-color: transparent !important;
-}
-
-/* Target ALL Streamlit selectbox value classes */
-div[class*="st-d"] {
-    color: #f3f4f6 !important;
-}
-
-/* The container with the value attribute */
-[data-baseweb="select"] div[value="Global"],
-[data-baseweb="select"] > div > div > div[value] {
-    color: #f3f4f6 !important;
-    font-weight: 500 !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-}
-
-/* Make sure all text nodes inside select are visible */
-[data-baseweb="select"] div:not(:empty) {
-    color: #f3f4f6 !important;
-}
-
-/* Input field inside the select */
+/* Combobox input */
 [data-baseweb="select"] input[role="combobox"] {
-    color: #f3f4f6 !important;
-    -webkit-text-fill-color: #f3f4f6 !important;
+    color: var(--text-primary) !important;
+    -webkit-text-fill-color: var(--text-primary) !important;
 }
 
-/* The aria-label element that shows the value */
-input[aria-label*="Global"],
-input[aria-label*="Search Region"],
-input[value*="Global"] {
-    color: #f3f4f6 !important;
-    -webkit-text-fill-color: #f3f4f6 !important;
-}
+/* --- 4.4 Radio Buttons --- */
 
-/* ========================================
-   PHASE 2.1: INFO ICON TOOLTIP FIX
-   ======================================== */
-
-/* Tooltip container */
-[data-testid="stTooltipContent"],
-div[data-baseweb="tooltip"] {
-    background-color: #1e293b !important;
-    border: 1px solid #60a5fa !important;
-    border-radius: 6px !important;
-    padding: 0.5rem !important;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
-}
-
-/* Tooltip text */
-[data-testid="stTooltipContent"] *,
-div[data-baseweb="tooltip"] *,
-[role="tooltip"],
-[role="tooltip"] * {
-    color: #f3f4f6 !important;
-    background-color: transparent !important;
-    font-size: 0.875rem !important;
-    line-height: 1.4 !important;
-}
-
-/* Tooltip paragraphs and spans */
-[data-testid="stTooltipContent"] p,
-[data-testid="stTooltipContent"] span,
-div[data-baseweb="tooltip"] p,
-div[data-baseweb="tooltip"] span {
-    color: #f3f4f6 !important;
-}
-
-/* Tooltip arrow/pointer */
-[data-testid="stTooltipContent"]::before,
-div[data-baseweb="tooltip"]::before {
-    border-color: #1e293b transparent transparent transparent !important;
-}
-
-/* Make sure the tooltip body has proper styling */
-[data-baseweb="popover"] {
-    background-color: #1e293b !important;
-}
-
-[data-baseweb="popover"] > div {
-    background-color: #1e293b !important;
-    color: #f3f4f6 !important;
-}
-
-/* PHASE 3.1: BOLD HEADER IMPROVEMENTS - MOVED TO SECTION 2 */
-
-/* ========================================
-   PHASE 3.2: RESULTS TABLE FIX (CORRECTED)
-   ======================================== */
-
-/* === Target the actual DataFrame wrapper === */
-[data-testid="stDataFrame"],
-[data-testid="stDataFrame"] > div,
-.stDataFrame {
-    background-color: #1e293b !important;
-    border-radius: 12px !important;
-    padding: 1.5rem !important;
-    border: 2px solid #374151 !important;
-    margin-top: 2rem !important;
-    margin-bottom: 2rem !important;
-}
-
-/* === Force dark background on the white table === */
-[data-testid="stDataFrame"] table,
-[data-testid="stDataFrame"] tbody,
-[data-testid="stDataFrame"] thead {
-    background-color: #0f172a !important;
-}
-
-/* === Header cells === */
-[data-testid="stDataFrame"] th {
-    background: linear-gradient(135deg, #3b82f6 0%, #10b981 100%) !important;
-    color: #ffffff !important;
-    font-weight: 700 !important;
-    font-size: 1.05rem !important;
-    text-transform: uppercase !important;
-    padding: 1rem 1.25rem !important;
-    border: none !important;
-}
-
-/* === All data cells - override white background === */
-[data-testid="stDataFrame"] td {
-    background-color: transparent !important;
-    color: #f3f4f6 !important;
-    font-size: 0.95rem !important;
-    padding: 0.85rem 1.25rem !important;
-    border-bottom: 1px solid #374151 !important;
-}
-
-/* === Zebra striping - target rows directly === */
-[data-testid="stDataFrame"] tbody tr:nth-child(even) {
-    background-color: #1e293b !important;
-}
-
-[data-testid="stDataFrame"] tbody tr:nth-child(odd) {
-    background-color: #0f172a !important;
-}
-
-/* === Make ALL cells in even rows darker === */
-[data-testid="stDataFrame"] tbody tr:nth-child(even) td {
-    background-color: #1e293b !important;
-}
-
-[data-testid="stDataFrame"] tbody tr:nth-child(odd) td {
-    background-color: #0f172a !important;
-}
-
-/* === Hover effect === */
-[data-testid="stDataFrame"] tbody tr:hover td {
-    background-color: #334155 !important;
-}
-
-/* === First column (channel names) - make blue === */
-[data-testid="stDataFrame"] tbody tr td:nth-child(2) {
-    color: #60a5fa !important;
-    font-weight: 600 !important;
-}
-
-/* ========================================
-   PHASE 3.2: TABLE HEADER ENHANCEMENT
-   ======================================== */
-
-/* Target dataframe header cells */
-[data-testid="stDataFrame"] [data-testid="stDataFrameResizableContainer"] thead th,
-[data-testid="stDataFrame"] thead th,
-div[data-testid="stDataFrame"] table thead th {
-    background: linear-gradient(135deg, #3b82f6 0%, #10b981 100%) !important;
-    color: #ffffff !important;
-    font-weight: 700 !important;
-    font-size: 0.95rem !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.5px !important;
-    padding: 0.75rem 1rem !important;
-}
-
-/* Make the header row stick when scrolling */
-[data-testid="stDataFrame"] thead {
-    position: sticky !important;
-    top: 0 !important;
-    z-index: 10 !important;
-}
-
-/* ========================================
-   PHASE 3.3: RADIO BUTTON STYLING
-   (For feedback reasons, language selection, etc.)
-   ======================================== */
-
-/* === Radio container - clean, minimal styling === */
+/* Radio container */
 [data-testid="stRadio"] {
     background: transparent !important;
-    padding: 0.5rem 0 !important;
+    padding: var(--space-sm) 0 !important;
     border: none !important;
-    margin-bottom: 1rem !important;
+    margin-bottom: var(--space-md) !important;
     box-shadow: none !important;
 }
 
-/* === Radio group wrapper - allow wrapping === */
+/* Radio group wrapper - horizontal with wrapping */
 [data-testid="stRadio"] [role="radiogroup"] {
     display: flex !important;
     flex-direction: row !important;
     flex-wrap: wrap !important;
-    gap: 0.5rem !important;
+    gap: var(--space-sm) !important;
     width: 100% !important;
 }
 
-/* === Style each radio option as a compact pill/chip === */
+/* Radio option pills */
 [role="radiogroup"] > label {
     flex: 0 1 auto !important;
     min-width: auto !important;
@@ -815,18 +537,18 @@ div[data-testid="stDataFrame"] table thead th {
     padding: 0.6rem 1.25rem !important;
     margin: 0 !important;
 
-    /* Compact card appearance */
-    background-color: #1e293b !important;
-    border: 1px solid #475569 !important;
-    border-radius: 8px !important;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2) !important;
+    /* Pill appearance */
+    background-color: var(--bg-medium) !important;
+    border: 1px solid var(--border-light) !important;
+    border-radius: var(--radius-md) !important;
+    box-shadow: var(--shadow-sm) !important;
 
     cursor: pointer !important;
-    transition: all 0.2s ease !important;
+    transition: var(--transition-fast) !important;
 
-    /* Text styling */
-    font-size: 0.95rem !important;
-    font-weight: 500 !important;
+    /* Text */
+    font-size: var(--font-size-base) !important;
+    font-weight: var(--font-weight-medium) !important;
     color: #e5e7eb !important;
 
     /* Center content */
@@ -835,91 +557,264 @@ div[data-testid="stDataFrame"] table thead th {
     justify-content: center !important;
 }
 
-/* Hover effect */
+/* Radio option hover */
 [role="radiogroup"] > label:hover {
-    background-color: #334155 !important;
-    border-color: #60a5fa !important;
+    background-color: var(--bg-hover) !important;
+    border-color: var(--accent-blue-light) !important;
     transform: none !important;
     box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3) !important;
 }
 
-/* === SELECTED option === */
+/* Radio option SELECTED */
 [role="radiogroup"] > label:has(input[type="radio"]:checked),
 [role="radiogroup"] > label:has(input:checked) {
-    background: linear-gradient(135deg, #3b82f6 0%, #10b981 100%) !important;
-    border-color: #60a5fa !important;
+    background: var(--gradient-brand) !important;
+    border-color: var(--accent-blue-light) !important;
     border-width: 2px !important;
-    color: #ffffff !important;
-    font-weight: 600 !important;
+    color: var(--text-emphasis) !important;
+    font-weight: var(--font-weight-semibold) !important;
     transform: none !important;
-    box-shadow: 0 2px 10px rgba(59, 130, 246, 0.4) !important;
+    box-shadow: var(--shadow-accent) !important;
 }
 
 /* Text inside selected option */
 [role="radiogroup"] > label:has(input:checked) span {
-    color: #ffffff !important;
-    font-weight: 600 !important;
+    color: var(--text-emphasis) !important;
+    font-weight: var(--font-weight-semibold) !important;
 }
 
-/* Radio circle */
+/* Radio circle input */
 [role="radiogroup"] input[type="radio"] {
     width: 18px !important;
     height: 18px !important;
-    margin-right: 0.5rem !important;
+    margin-right: var(--space-sm) !important;
     flex-shrink: 0 !important;
 }
 
-/* Radio label text */
+/* Radio group label */
 [data-testid="stRadio"] > label:first-child {
-    font-size: 1rem !important;
-    font-weight: 500 !important;
-    color: #f3f4f6 !important;
-    margin-bottom: 0.75rem !important;
+    font-size: var(--font-size-md) !important;
+    font-weight: var(--font-weight-medium) !important;
+    color: var(--text-primary) !important;
+    margin-bottom: var(--space-sm) !important;
     display: block !important;
 }
 
-/* === Search Keywords Input Enhancements === */
-[data-testid="stTextInput"]:first-of-type input,
-input[aria-label*="Search Keywords"] {
-    font-size: 1.15rem !important;
-    padding: 1rem 1.25rem !important;
-    background-color: #1e293b !important;
-    border: 2px solid #60a5fa !important;
-    border-radius: 10px !important;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
-    transition: all 0.3s ease !important;
+/* Radio label text visibility */
+[data-testid="stRadio"] label,
+[data-testid="stRadio"] div label,
+[data-testid="stRadio"] span,
+.stRadio label,
+.stRadio > div > label,
+[role="radiogroup"] label {
+    color: var(--text-primary) !important;
+    font-weight: var(--font-weight-medium) !important;
 }
 
-[data-testid="stTextInput"]:first-of-type input:focus {
-    border-color: #3b82f6 !important;
-    box-shadow: 0 0 0 5px rgba(59, 130, 246, 0.3) !important;
-    outline: none !important;
+/* --- 4.5 DataFrames / Tables --- */
+
+/* Table container */
+[data-testid="stDataFrame"],
+[data-testid="stDataFrame"] > div,
+.stDataFrame {
+    background-color: var(--bg-medium) !important;
+    border-radius: var(--radius-xl) !important;
+    padding: var(--space-lg) !important;
+    border: 2px solid var(--border-default) !important;
+    margin-top: var(--space-xl) !important;
+    margin-bottom: var(--space-xl) !important;
 }
 
-[data-testid="stTextInput"]:first-of-type label {
-    font-size: 1.1rem !important;
-    font-weight: 600 !important;
-    color: #f3f4f6 !important;
-    margin-bottom: 0.75rem !important;
+/* Table structure */
+[data-testid="stDataFrame"] table,
+[data-testid="stDataFrame"] tbody,
+[data-testid="stDataFrame"] thead {
+    background-color: var(--bg-darkest) !important;
 }
 
-/* Pulse animation */
+/* Table header cells */
+[data-testid="stDataFrame"] th,
+[data-testid="stDataFrame"] [data-testid="stDataFrameResizableContainer"] thead th,
+div[data-testid="stDataFrame"] table thead th {
+    background: var(--gradient-brand) !important;
+    color: var(--text-emphasis) !important;
+    font-weight: var(--font-weight-bold) !important;
+    font-size: var(--font-size-base) !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    padding: var(--space-sm) var(--space-md) !important;
+    border: none !important;
+}
+
+/* Sticky header */
+[data-testid="stDataFrame"] thead {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: var(--z-sticky) !important;
+}
+
+/* Table data cells */
+[data-testid="stDataFrame"] td {
+    background-color: transparent !important;
+    color: var(--text-primary) !important;
+    font-size: var(--font-size-base) !important;
+    padding: 0.85rem 1.25rem !important;
+    border-bottom: 1px solid var(--border-default) !important;
+}
+
+/* Zebra striping */
+[data-testid="stDataFrame"] tbody tr:nth-child(even),
+[data-testid="stDataFrame"] tbody tr:nth-child(even) td {
+    background-color: var(--bg-medium) !important;
+}
+
+[data-testid="stDataFrame"] tbody tr:nth-child(odd),
+[data-testid="stDataFrame"] tbody tr:nth-child(odd) td {
+    background-color: var(--bg-darkest) !important;
+}
+
+/* Row hover */
+[data-testid="stDataFrame"] tbody tr:hover td {
+    background-color: var(--bg-hover) !important;
+}
+
+/* Channel name column (2nd column) */
+[data-testid="stDataFrame"] tbody tr td:nth-child(2) {
+    color: var(--accent-blue-light) !important;
+    font-weight: var(--font-weight-semibold) !important;
+}
+
+/* --- 4.6 Tooltips --- */
+
+/* Tooltip icon */
+button[data-testid="stTooltipIcon"],
+.stTooltipIcon,
+[data-testid="stTooltipIcon"] svg {
+    color: var(--accent-blue-light) !important;
+    fill: var(--accent-blue-light) !important;
+    opacity: 0.9 !important;
+}
+
+button[data-testid="stTooltipIcon"]:hover {
+    color: var(--accent-blue-lighter) !important;
+    fill: var(--accent-blue-lighter) !important;
+    opacity: 1 !important;
+}
+
+/* Tooltip container */
+[data-testid="stTooltipContent"],
+div[data-baseweb="tooltip"],
+[data-baseweb="popover"],
+[data-baseweb="popover"] > div {
+    background-color: var(--bg-medium) !important;
+    border: 1px solid var(--accent-blue-light) !important;
+    border-radius: var(--radius-md) !important;
+    padding: var(--space-sm) !important;
+    box-shadow: var(--shadow-lg) !important;
+}
+
+/* Tooltip text */
+[data-testid="stTooltipContent"] *,
+div[data-baseweb="tooltip"] *,
+[role="tooltip"],
+[role="tooltip"] *,
+[data-testid="stTooltipContent"] p,
+[data-testid="stTooltipContent"] span,
+div[data-baseweb="tooltip"] p,
+div[data-baseweb="tooltip"] span {
+    color: var(--text-primary) !important;
+    background-color: transparent !important;
+    font-size: var(--font-size-sm) !important;
+    line-height: 1.4 !important;
+}
+
+/* Tooltip arrow */
+[data-testid="stTooltipContent"]::before,
+div[data-baseweb="tooltip"]::before {
+    border-color: var(--bg-medium) transparent transparent transparent !important;
+}
+
+/* ============================================================================
+   END SECTION 4: COMPONENTS
+   ============================================================================ */
+
+
+/* ============================================================================
+   SECTION 5: UTILITIES
+   ============================================================================
+   Reusable utility styles: animations, transitions, global effects.
+   ============================================================================ */
+
+/* --- 5.1 Global Transitions --- */
+/* Smooth transitions for all interactive elements */
+button,
+input,
+select,
+textarea,
+[role="button"],
+[data-baseweb="select"] {
+    transition: var(--transition-normal) !important;
+}
+
+/* --- 5.2 Animations --- */
+
+/* Pulse animation for search input border */
 @keyframes pulse-border {
-    0%, 100% { border-color: #60a5fa; }
-    50% { border-color: #3b82f6; }
+    0%, 100% {
+        border-color: var(--accent-blue-light);
+    }
+    50% {
+        border-color: var(--accent-blue);
+    }
 }
 
+/* Apply pulse to empty search input */
 [data-testid="stTextInput"]:first-of-type input:not(:focus):placeholder-shown {
     animation: pulse-border 3s ease-in-out infinite !important;
 }
 
-/* Radio option spacing - defined in PHASE 3.3 above */
+/* Subtle fade-in for content */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
 
-/* ========================================
-   PHASE 3.4: MOBILE RESPONSIVENESS
-   ======================================== */
+/* --- 5.3 Focus States --- */
+/* Consistent focus outline for accessibility */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+[role="button"]:focus-visible {
+    outline: 2px solid var(--accent-blue-light) !important;
+    outline-offset: 2px !important;
+}
 
-/* === Tablets and smaller (max-width: 768px) === */
+/* --- 5.4 Selection Highlight --- */
+/* Custom text selection color */
+::selection {
+    background-color: var(--accent-blue) !important;
+    color: var(--text-emphasis) !important;
+}
+
+/* ============================================================================
+   END SECTION 5: UTILITIES
+   ============================================================================ */
+
+
+/* ============================================================================
+   SECTION 6: RESPONSIVE
+   ============================================================================
+   Media queries for different screen sizes and devices.
+   Mobile-first approach with progressive enhancement.
+   ============================================================================ */
+
+/* --- 6.1 Tablets and Smaller (max-width: 768px) --- */
 @media screen and (max-width: 768px) {
     
     /* Main title - smaller on mobile */
@@ -1018,7 +913,7 @@ input[aria-label*="Search Keywords"] {
     }
 }
 
-/* === Small phones (max-width: 480px) === */
+/* --- 6.2 Small Phones (max-width: 480px) --- */
 @media screen and (max-width: 480px) {
     
     /* Even smaller title on very small screens */
@@ -1058,7 +953,7 @@ input[aria-label*="Search Keywords"] {
     }
 }
 
-/* === Landscape mode on phones (max-height: 500px) === */
+/* --- 6.3 Landscape Mode on Phones --- */
 @media screen and (max-height: 500px) and (orientation: landscape) {
     
     /* Reduce vertical spacing in landscape */
@@ -1083,9 +978,8 @@ input[aria-label*="Search Keywords"] {
     }
 }
 
-/* === Ensure touch-friendly spacing everywhere === */
+/* --- 6.4 Touch Devices (hover: none, pointer: coarse) --- */
 @media (hover: none) and (pointer: coarse) {
-    /* This targets touch devices specifically */
     
     /* All interactive elements get minimum touch target */
     button,
@@ -1105,11 +999,7 @@ input[aria-label*="Search Keywords"] {
     }
 }
 
-/* ========================================
-   PHASE 3.4.1: FIX INPUT BORDER CLIPPING ON MOBILE
-   ======================================== */
-
-/* Ensure text inputs have enough space and don't get clipped */
+/* --- 6.5 Input Border Clipping Fix (Tablets) --- */
 @media screen and (max-width: 768px) {
     
     /* Add padding to containers to prevent border clipping */
@@ -1150,47 +1040,19 @@ input[aria-label*="Search Keywords"] {
     }
 }
 
-/* Also fix for small phones */
+/* --- 6.6 Input Border Clipping Fix (Small Phones) --- */
 @media screen and (max-width: 480px) {
-    
+
     [data-testid="stTextInput"] {
         padding: 0.35rem 0 !important;
         margin-bottom: 1.5rem !important;
     }
-    
+
     [data-testid="stTextInput"] input {
         margin: 0.4rem 0 !important;
     }
 }
 
-/* PHASE 3.5: LOGO & TITLE POLISH - MOVED TO SECTION 3 */
-
-/* === Smooth transitions everywhere === */
-/* NOTE: Will be moved to Section 5: Utilities */
-button, input, select, [role="button"], [data-baseweb="select"] {
-    transition: all 0.25s ease !important;
-}
-
-/* === Consistent border radius === */
-/* NOTE: Will be consolidated with component styles in Section 4 */
-button, input, select, textarea,
-.stButton button,
-[data-baseweb="select"],
-[data-testid="stTextInput"] input,
-[data-testid="stNumberInput"] input {
-    border-radius: 10px !important;
-}
-
-/* === Polish +/- buttons with gradient === */
-/* NOTE: Will be moved to Section 4: Components */
-button[data-testid="baseButton-secondary"] {
-    background: linear-gradient(135deg, #3b82f6 0%, #10b981 100%) !important;
-    border: none !important;
-    color: #ffffff !important;
-    font-weight: 600 !important;
-}
-
-button[data-testid="baseButton-secondary"]:hover {
-    background: linear-gradient(135deg, #60a5fa 0%, #34d399 100%) !important;
-    transform: scale(1.05) !important;
-}
+/* ============================================================================
+   END SECTION 6: RESPONSIVE
+   ============================================================================ */

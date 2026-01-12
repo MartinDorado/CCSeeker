@@ -8,6 +8,7 @@ and separation of concerns.
 Modules:
 - query_utils: Query validation, URL parsing, channel ID resolution
 - relevance: Keyword relevance scoring for channels
+- youtube_api: YouTube Data API wrapper functions
 
 These modules are Streamlit-agnostic and can be unit tested independently.
 """
@@ -22,6 +23,28 @@ from .query_utils import (
 
 from .relevance import calculate_keyword_relevance
 
+from .youtube_api import (
+    # Result types
+    SearchResult,
+    ChannelStatsResult,
+    VideoDetailsResult,
+    # Functions
+    search_channels_hybrid,
+    search_channels_multi_term,
+    get_channel_stats,
+    get_video_details,
+)
+
+from .gemini_api import (
+    # Result types
+    OutreachDraft,
+    SummaryResult,
+    # Functions
+    generate_ai_relevance_score,
+    generate_summary,
+    generate_outreach_drafts,
+)
+
 __all__ = [
     # Constants
     "MAX_SEARCH_TERMS",
@@ -32,4 +55,20 @@ __all__ = [
     "strip_outer_quotes",
     # Relevance
     "calculate_keyword_relevance",
+    # YouTube API result types
+    "SearchResult",
+    "ChannelStatsResult",
+    "VideoDetailsResult",
+    # YouTube API functions
+    "search_channels_hybrid",
+    "search_channels_multi_term",
+    "get_channel_stats",
+    "get_video_details",
+    # Gemini API result types
+    "OutreachDraft",
+    "SummaryResult",
+    # Gemini API functions
+    "generate_ai_relevance_score",
+    "generate_summary",
+    "generate_outreach_drafts",
 ]

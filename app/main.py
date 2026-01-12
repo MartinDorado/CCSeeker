@@ -48,6 +48,20 @@ try:
         resolve_channel_id,
         strip_outer_quotes,
         calculate_keyword_relevance,
+        # YouTube API (Phase 2)
+        SearchResult,
+        ChannelStatsResult,
+        VideoDetailsResult,
+        search_channels_hybrid as _search_channels_hybrid_core,
+        search_channels_multi_term as _search_channels_multi_term_core,
+        get_channel_stats as _get_channel_stats_core,
+        get_video_details as _get_video_details_core,
+        # Gemini API (Phase 2)
+        OutreachDraft,
+        SummaryResult,
+        generate_ai_relevance_score as _generate_ai_relevance_score_core,
+        generate_summary as _generate_summary_core,
+        generate_outreach_drafts as _generate_outreach_drafts_core,
     )
 except ImportError:
     from core import (
@@ -57,6 +71,20 @@ except ImportError:
         resolve_channel_id,
         strip_outer_quotes,
         calculate_keyword_relevance,
+        # YouTube API (Phase 2)
+        SearchResult,
+        ChannelStatsResult,
+        VideoDetailsResult,
+        search_channels_hybrid as _search_channels_hybrid_core,
+        search_channels_multi_term as _search_channels_multi_term_core,
+        get_channel_stats as _get_channel_stats_core,
+        get_video_details as _get_video_details_core,
+        # Gemini API (Phase 2)
+        OutreachDraft,
+        SummaryResult,
+        generate_ai_relevance_score as _generate_ai_relevance_score_core,
+        generate_summary as _generate_summary_core,
+        generate_outreach_drafts as _generate_outreach_drafts_core,
     )
 
 import math
@@ -309,124 +337,48 @@ def get_gemini_model(temperature: float | None = None):
         cfg["generation_config"] = {"temperature": float(temperature)}
     return genai.GenerativeModel('gemini-2.0-flash-lite', **cfg)
 
-# ============================================================================    
+# ============================================================================
 #---- CORE LOGIC - YOUTUBE API WRAPPERS + AI GENERATION (Gemini)
 # ============================================================================
+# NOTE: Core YouTube API functions are now in core/youtube_api.py
+# These wrappers add Streamlit-specific functionality (caching, warnings, spinners)
 
-@st.cache_data(show_spinner=False, ttl=259200) # 3 days
+
+def _get_api_tracker():
+    """Get API call tracker callback if debug mode is enabled."""
+    if st.session_state.get('debug_mode', False):
+        return debug_tracker.track_api_call
+    return None
+
+
+@st.cache_data(show_spinner=False, ttl=259200)  # 3 days
 def search_channels_hybrid(query: str, region_code: str, max_videos: int = MAX_VIDEOS_PER_TERM, max_channels: int = MAX_SEARCH_RESULTS):
     """
-    Hybrid search: Find channels by their VIDEO content (primary) + channel names (secondary).
-    
+    Hybrid search: Find channels by VIDEO content (primary) + channel names (secondary).
+
     Returns: List[dict] with keys 'channel_id', 'channel_title', 'match_score'
 
     Notes:
-        - Uses YouTube Data API client from `get_youtube()`.
-        - On API errors, returns partial results and emits Streamlit warnings.
-        - Results cached for ~3 days via `st.cache_data(ttl=259200)`.
+        - Delegates to core.youtube_api.search_channels_hybrid
+        - Handles warnings via st.warning
+        - Results cached for ~3 days via @st.cache_data(ttl=259200)
     """
     youtube = get_youtube()
-    all_channels = {}  # {channel_id: {'title': str, 'video_matches': int, 'name_match': bool}}
-    
-    # === PART A: Search by video content (primary source) ===
-    video_search_params = {
-        'q': query,
-        'part': 'snippet',
-        'type': 'video',
-        'maxResults': 50,
-        'order': 'relevance',
-        'regionCode': region_code if region_code else None
-    }
-    
-    fetched_videos = 0
-    next_page_token = None
-    
-    while fetched_videos < max_videos:
-        if next_page_token:
-            video_search_params['pageToken'] = next_page_token
-        
-        try:
-            video_response = youtube.search().list(**video_search_params).execute()
-            if st.session_state.get('debug_mode', False):
-                debug_tracker.track_api_call('youtube_search')
-        except HttpError as e:
-            st.warning(f"Video search error for '{query}': {e}")
-            break
-        
-        items = video_response.get('items', [])
-        if not items:
-            break
-        
-        for item in items:
-            channel_id = item['snippet'].get('channelId')
-            channel_title = item['snippet'].get('channelTitle', 'Unknown')
-            
-            if channel_id:
-                if channel_id not in all_channels:
-                    all_channels[channel_id] = {
-                        'title': channel_title,
-                        'video_matches': 0,
-                        'name_match': False
-                    }
-                all_channels[channel_id]['video_matches'] += 1
-        
-        fetched_videos += len(items)
-        next_page_token = video_response.get('nextPageToken')
-        if not next_page_token:
-            break
-    
-    # === PART B: Search by channel name (secondary source) ===
-    channel_search_params = {
-        'q': query,
-        'part': 'id,snippet',
-        'type': 'channel',
-        'maxResults': min(50, max_channels)
-    }
-    if region_code:
-        channel_search_params['regionCode'] = region_code
-    
-    try:
-        channel_response = youtube.search().list(**channel_search_params).execute()
-        if st.session_state.get('debug_mode', False):
-            debug_tracker.track_api_call('youtube_search')
-        
-        for item in channel_response.get('items', []):
-            channel_id = item.get('id', {}).get('channelId')
-            channel_title = item.get('snippet', {}).get('title', 'Unknown')
-            
-            if channel_id:
-                if channel_id not in all_channels:
-                    all_channels[channel_id] = {
-                        'title': channel_title,
-                        'video_matches': 0,
-                        'name_match': True
-                    }
-                else:
-                    # Already found via videos, mark as also having name match
-                    all_channels[channel_id]['name_match'] = True
-    
-    except HttpError as e:
-        # Partial failure: return video results with warning
-        st.warning(f"⚠️ Channel name search failed for '{query}': {e}. Showing video-based results only.")
-    
-    # === PART C: Calculate match scores and sort ===
-    # Scoring: video_matches (primary) + name_match bonus (secondary)
-    ranked_channels = []
-    for channel_id, data in all_channels.items():
-        match_score = data['video_matches'] * 10  # Video matches are worth 10 points each
-        if data['name_match']:
-            match_score += 5  # Name match bonus
-        
-        ranked_channels.append({
-            'channel_id': channel_id,
-            'channel_title': data['title'],
-            'match_score': match_score
-        })
-    
-    # Sort by match_score descending
-    ranked_channels.sort(key=lambda x: x['match_score'], reverse=True)
-    
-    return ranked_channels
+    result = _search_channels_hybrid_core(
+        youtube_service=youtube,
+        query=query,
+        region_code=region_code,
+        max_videos=max_videos,
+        max_channels=max_channels,
+        on_api_call=_get_api_tracker(),
+    )
+
+    # Display any warnings that occurred
+    for warning in result.warnings:
+        st.warning(warning)
+
+    return result.channels
+
 
 def search_channels_multi_term(
     query: str,
@@ -436,26 +388,30 @@ def search_channels_multi_term(
 ):
     """
     Handle comma-separated queries as OR logic.
-    Example: "manga, anime" → search both terms, merge results
-    
+    Example: "manga, anime" -> search both terms, merge results
+
     Returns: List[dict] with deduplicated channels sorted by relevance
+
+    Notes:
+        - Adds Streamlit UI feedback (spinners, info messages)
+        - Records pre_cap_channel_count in session state
     """
     # Split by comma and clean
     terms = [t.strip() for t in query.split(',') if t.strip()]
-    
+
     if len(terms) == 0:
         return []
-    
-    # ✅ SAFETY NET: Enforce 2-term maximum
+
+    # Enforce 2-term maximum with warning
     if len(terms) > 2:
         st.warning(
-            f"⚠ Search limited to 2 terms (received {len(terms)}). "
+            f"Search limited to 2 terms (received {len(terms)}). "
             f"Using: **{', '.join(terms[:2])}**"
         )
         terms = terms[:2]
 
     if len(terms) == 1:
-        # Single term: use hybrid search directly, but still record pre-cap count and apply cap
+        # Single term: use hybrid search directly
         results_single = search_channels_hybrid(terms[0], region_code, max_videos_per_term)
         try:
             st.session_state['pre_cap_channel_count'] = len(results_single)
@@ -464,16 +420,16 @@ def search_channels_multi_term(
         if max_channels is not None:
             results_single = results_single[:max_channels]
         return results_single
-    
+
     # Multiple terms: search each, then merge
-    st.info(f"🔍 Searching {len(terms)} topics: {', '.join(terms)}")
-    
+    st.info(f"Searching {len(terms)} topics: {', '.join(terms)}")
+
     all_channels = {}  # {channel_id: {'title': str, 'total_score': int}}
-    
+
     for term in terms:
         with st.spinner(f"Searching for '{term}'..."):
             results = search_channels_hybrid(term, region_code, max_videos_per_term)
-        
+
         for channel in results:
             channel_id = channel['channel_id']
             if channel_id not in all_channels:
@@ -481,15 +437,14 @@ def search_channels_multi_term(
                     'title': channel['channel_title'],
                     'total_score': 0
                 }
-            # Accumulate scores across all terms
             all_channels[channel_id]['total_score'] += channel['match_score']
-    
+
     # Convert back to list format and sort
     merged = [
         {
             'channel_id': ch_id,
             'channel_title': data['title'],
-            'match_score': data['total_score']  # ✅ Include the match score!
+            'match_score': data['total_score']
         }
         for ch_id, data in sorted(
             all_channels.items(),
@@ -497,245 +452,93 @@ def search_channels_multi_term(
             reverse=True
         )
     ]
-    
-    # Record the true pre-cap count for logging downstream
+
+    # Record the true pre-cap count for logging
     try:
         st.session_state['pre_cap_channel_count'] = len(merged)
     except Exception:
         pass
-    
+
     if max_channels is not None:
-        # Limit number of channels returned to control quota usage
         merged = merged[:max_channels]
-    
+
     return merged
 
 
 def get_channel_stats(youtube_service, channel_ids):
-    stats_data = []
-    for i in range(0, len(channel_ids), 50):
-        chunk = channel_ids[i:i + 50]
-        request = youtube_service.channels().list(
-            part="snippet,statistics,contentDetails", 
-            id=",".join(chunk)
-        )
-        response = request.execute()
-        if st.session_state.get('debug_mode', False):
-            debug_tracker.track_api_call('youtube_channel')
-        
-        for item in response.get("items", []):
-            content_details = item.get('contentDetails', {})
-            related_playlists = content_details.get('relatedPlaylists', {})
-            uploads_id = related_playlists.get('uploads')
-            snippet = item.get("snippet", {})
-            statistics = item.get("statistics", {})
-            
-            if uploads_id:
-                # Calculate channel age in days (for internal ranking, not displayed yet)
-                published_at = snippet.get("publishedAt")
-                channel_age_days = None
-                if published_at:
-                    try:
-                        from datetime import datetime
-                        import dateutil.parser
-                        created_date = dateutil.parser.parse(published_at)
-                        channel_age_days = (datetime.now(created_date.tzinfo) - created_date).days
-                    except Exception:
-                        channel_age_days = None  # Graceful fallback
-                
-                # Calculate derived metrics
-                videos_count = int(statistics.get("videoCount", 0))
-                total_views = int(statistics.get("viewCount", 0))
-                avg_views_per_video = round(total_views / videos_count, 0) if videos_count > 0 else 0
-                
-                stats_data.append({
-                    "channel_id": item["id"],
-                    "country": snippet.get("country", "N/A"),
-                    "subscribers": int(statistics.get("subscriberCount", 0)),
-                    "views": total_views,
-                    "videos": videos_count,
-                    "uploads_playlist_id": uploads_id,
-                    "avg_views_per_video": avg_views_per_video,        
-                    "channel_age_days": channel_age_days,              
-                })
-                    
-    return stats_data
+    """
+    Fetch detailed statistics for a list of channel IDs.
+
+    Delegates to core.youtube_api.get_channel_stats with debug tracking.
+    """
+    result = _get_channel_stats_core(
+        youtube_service=youtube_service,
+        channel_ids=channel_ids,
+        on_api_call=_get_api_tracker(),
+    )
+    return result.stats
+
 
 def get_video_details(youtube_service, channel_data, max_videos_per_channel):
-    all_video_details = []
-    for channel in channel_data:
-        playlist_id = channel["uploads_playlist_id"]
-        try:
-            # paginate through playlist items up to the requested limit
-            video_ids = []
-            next_page_token = None
-            fetched = 0
-            while fetched < max_videos_per_channel:
-                page_size = min(50, max_videos_per_channel - fetched)
-                request = youtube_service.playlistItems().list(
-                    part="snippet", playlistId=playlist_id, maxResults=page_size,
-                    pageToken=next_page_token
-                )
-                response = request.execute()
-                debug_tracker.track_api_call('youtube_playlist')
-                items = response.get("items", [])
-                for it in items:
-                    vid = (it.get("snippet", {}).get("resourceId", {}) or {}).get("videoId")
-                    if vid:
-                        video_ids.append(vid)
-                fetched += len(items)
-                next_page_token = response.get("nextPageToken")
-                if not next_page_token or not items:
-                    break
-        except HttpError:
-            st.warning(f"Could not fetch videos for '{channel.get('channel_title','(unknown)')}': Playlist not found or private.")
-            continue
-        if not video_ids: continue
-        video_request = youtube_service.videos().list(part="snippet,statistics", id=",".join(video_ids))
-        video_response = video_request.execute()
-        for item in video_response.get("items", []):
-            all_video_details.append({
-                "channel_id": channel["channel_id"], "video_id": item["id"],
-                "video_title": item["snippet"]["title"], "published_at": item["snippet"]["publishedAt"],
-                "video_views": int(item["statistics"].get("viewCount", 0)),
-                "video_likes": int(item["statistics"].get("likeCount", 0)),
-                "video_comments": int(item["statistics"].get("commentCount", 0)),
-                "video_tags": item["snippet"].get("tags", []),
-            })
-    return all_video_details
+    """
+    Fetch video details for multiple channels.
+
+    Delegates to core.youtube_api.get_video_details with debug tracking.
+    Displays warnings for failed channels via st.warning.
+    """
+    result = _get_video_details_core(
+        youtube_service=youtube_service,
+        channel_data=channel_data,
+        max_videos_per_channel=max_videos_per_channel,
+        on_api_call=_get_api_tracker(),
+    )
+
+    # Display any warnings that occurred
+    for warning in result.warnings:
+        st.warning(warning)
+
+    return result.videos
 
 # NOTE: calculate_keyword_relevance is now imported from core.relevance
+# NOTE: Gemini AI functions are now in core/gemini_api.py
+# These wrappers add Streamlit-specific functionality (debug tracking, session state)
+
 
 def generate_ai_relevance_score(model, channel_data: dict, query: str) -> float:
     """
+    Wrapper for core.gemini_api.generate_ai_relevance_score.
+
     Uses a Gemini model to score channel relevance based on video titles.
-
-    Args:
-        model: An initialized Gemini model instance.
-        channel_data: A dict with 'channel_title' and a list of 'video_titles'.
-        query: The user's original search query.
-
-    Returns:
-        A relevance score between 0.0 and 1.0, or 0.0 on failure.
+    Returns a relevance score between 0.0 and 1.0, or 0.0 on failure.
     """
-    if not channel_data.get("video_titles"):
-        return 0.0
+    return _generate_ai_relevance_score_core(model, channel_data, query)
 
-    # Create a concise summary of video titles
-    titles_str = "\n- ".join(channel_data["video_titles"][:10]) # Use up to 10 titles
 
-    prompt = f"""
-    Act as a YouTube content analyst. Your task is to evaluate how relevant a channel's content is to a given search query.
-
-    **Search Query:** "{query}"
-    **Channel Name:** "{channel_data['channel_title']}"
-
-    **Recent Video Titles:**
-    - {titles_str}
-
-    **Instructions:**
-    Based ONLY on the video titles provided, rate the channel's relevance to the search query on a scale from 0 to 10, where 0 is completely irrelevant and 10 is a perfect match.
-    Your response MUST be a single integer (e.g., 8). Do not provide any explanation.
-
-    **Relevance Score (0-10):**
-    """
-    try:
-        response = model.generate_content(prompt)
-        # Extract the first integer found in the response text
-        match = re.search(r'\d+', response.text)
-        if match:
-            score = int(match.group(0))
-            return min(10, max(0, score)) / 10.0  # Normalize to 0.0-1.0
-        return 0.0
-    except Exception:
-        # On API error or parsing failure, return a neutral score
-        return 0.0
-
-# --- Gemini AI Integration ---
 def generate_summary(df_results, query):
-    """Formats the data and calls the Gemini API to generate a summary.
-    
-    Detects search mode (keywords vs channel-as-seed) and provides appropriate context.
     """
-    try:
-        # Track Gemini usage
-        if st.session_state.get('debug_mode', False):
-            try:
-                import debug_tracker
-                debug_tracker.track_api_call('gemini_summary')
-                
-                # Verify
-                count = st.session_state.debug_data.get('gemini_summary_calls', 0)
-                print(f"DEBUG: gemini_summary_calls now = {count}")
-            except Exception as e:
-                print(f"ERROR tracking summary call: {e}")               
+    Generate a summary of the top YouTube channels using Gemini.
 
-        model = get_gemini_model()
+    Wrapper that adds Streamlit debug tracking and session state access.
+    """
+    model = get_gemini_model()
 
-        top_5_df = df_results.head(5)
-        
-        # Detect search mode by checking for similarity_score column
-        is_seed_based = 'similarity_score' in df_results.columns
-        
-        data_string = ""
-        for _, row in top_5_df.iterrows():
-            data_string += f"- Channel: {row['channel_title']}\n"
-            data_string += f"  - Subscribers: {row['subscribers']:,}\n"
-            data_string += f"  - Country: {row['country']}\n"
-            
-            if is_seed_based:
-                # Seed-based mode: show BOTH similarity and relevance
-                similarity_score = row.get('similarity_score', 'N/A')
-                relevance_score = row.get('relevance_score', 'N/A')
-                
-                # Extract match reasons from similarity dict if available
-                if 'similarity' in row and isinstance(row['similarity'], dict):
-                    reasons = row['similarity'].get('match_reasons', [])
-                    reasons_text = ', '.join(reasons[:2]) if reasons else 'See detailed analysis'
-                else:
-                    reasons_text = 'N/A'
-                
-                data_string += f"  - Similarity Score: {similarity_score}/100\n"
-                data_string += f"  - Why Similar: {reasons_text}\n"
-                data_string += f"  - Topic Focus (Relevance): {relevance_score}\n"
-            else:
-                # Keyword mode: show relevance score
-                data_string += f"  - Relevance Score: {row['relevance_score']}\n"
-            
-            data_string += f"  - Avg. Engagement Rate: {row['engagement_rate']}\n\n"
+    # Get seed channel name if in seed-based mode
+    seed_channel_name = None
+    if 'similarity_score' in df_results.columns:
+        seed_channel_name = st.session_state.get('seed_profile', {}).get('channel_name', 'the seed channel')
 
-        # Adjust prompt based on search mode
-        if is_seed_based:
-            seed_name = st.session_state.get('seed_profile', {}).get('channel_name', 'the seed channel')
-            prompt = f"""
-You are an expert marketing analyst. Provide a concise summary of the top YouTube channels similar to "{seed_name}".
+    result = _generate_summary_core(
+        model=model,
+        df_results=df_results,
+        query=query,
+        seed_channel_name=seed_channel_name,
+        on_api_call=_get_api_tracker(),
+    )
 
-These channels were found using similarity analysis based on content topics, tags, audience size, and engagement patterns.
+    if result.error:
+        return result.error
+    return result.text
 
-For each channel, consider:
-- **Similarity Score (0-100)**: Overall match to the seed channel
-- **Topic Focus (Relevance %)**: How focused they are on the auto-generated keywords from the seed
-- **Engagement Rate**: How interactive their audience is
-
-Base your analysis ONLY on the data below and highlight 2–3 standout matches and why they're good fits for collaboration.
-
-Data:
-{data_string}
-"""
-        else:
-            prompt = f"""
-You are an expert marketing analyst. Provide a concise summary of the top YouTube channels for the query "{query}".
-
-Base your analysis ONLY on the data below and highlight 2–3 standout channels and why.
-
-Data:
-{data_string}
-"""
-
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        return f"An error occurred while generating the summary: {e}"
 
 def generate_outreach_drafts(
     top_channels_df: pd.DataFrame,
@@ -743,102 +546,30 @@ def generate_outreach_drafts(
     limit: int = 3,
     temperature: float = 0.7,
     retries: int = 2,
-    language: str = "en",   # <- NEW: "en" or "es"
+    language: str = "en",
 ) -> list[dict]:
     """
     Generate short, friendly outreach email drafts for the top N channels using Gemini.
 
-    Parameters
-    ----------
-    top_channels_df : pd.DataFrame
-        Must contain a 'channel_title' column (string-like).
-    original_query : str
-        The original search query to reference for authenticity.
-    limit : int
-        Number of channels to process (default 3).
-    temperature : float
-        Sampling temperature for Gemini (0.0-1.0 usually).
-    retries : int
-        How many times to retry a failed API call (default 2).
-    language : str
-        "en" for English or "es" for Spanish (default "en").
+    Wrapper that adds Streamlit debug tracking.
 
-    Returns
-    -------
-    List[dict]: [{'channel_title': str, 'draft_text': str}, ...]
+    Returns:
+        List[dict]: [{'channel_title': str, 'draft_text': str}, ...]
     """
-    results: list[dict] = []
-
-    if top_channels_df is None or top_channels_df.empty:
-        return results
-    if 'channel_title' not in top_channels_df.columns:
-        return results
-
     model = get_gemini_model(temperature=temperature)
 
-    df = (
-        top_channels_df[['channel_title']]
-        .dropna(subset=['channel_title'])
-        .copy()
+    drafts = _generate_outreach_drafts_core(
+        model=model,
+        top_channels_df=top_channels_df,
+        original_query=original_query,
+        limit=limit,
+        retries=retries,
+        language=language,
+        on_api_call=_get_api_tracker(),
     )
-    df['channel_title'] = df['channel_title'].astype(str).str.strip()
-    df = df[df['channel_title'] != ""].drop_duplicates(subset=['channel_title'])
-    df = df.head(max(0, int(limit)))
 
-    oq = (original_query or "").strip() or "my audience’s interests"
-
-    # Language instruction
-    lang = (language or "en").lower()
-    if lang.startswith("es"):
-        lang_line = "Write the email in Spanish. Usa un español claro, neutro y profesional."
-    else:
-        lang_line = "Write the email in English in a clear, professional yet friendly tone."
-
-    for _, row in df.iterrows():
-        channel_name = row['channel_title']
-
-         # Track each Gemini call
-        if st.session_state.get('debug_mode', False):
-            debug_tracker.track_api_call('gemini_outreach')
-
-        prompt = f"""
-Act as a marketing professional. Your task is to write a short, friendly, and professional outreach email to a YouTube creator.
-
-**Instructions:**
-- The tone should be respectful and concise.
-- Mention the creator's channel name specifically.
-- Reference the topic of my original search, which was "{oq}".
-- The goal is to express interest in a potential collaboration.
-- Do not use overly corporate language.
-- {lang_line}
-
-**Creator Channel Name:** {channel_name}
-
-**Email Draft:**
-"""
-
-        draft_text = ""
-        last_err = None
-        for attempt in range(retries + 1):
-            try:
-                resp = model.generate_content(prompt)
-                draft_text = (getattr(resp, "text", None) or str(resp)).strip()
-                if draft_text.startswith("```"):
-                    draft_text = draft_text.strip("`").strip()
-                break
-            except Exception as e:
-                last_err = e
-                continue
-
-        if not draft_text and last_err:
-            draft_text = f"(Error generating draft for '{channel_name}': {type(last_err).__name__}: {last_err})"
-
-        results.append({
-            "channel_title": channel_name,
-            "draft_text": draft_text
-        })
-
-    return results
+    # Convert OutreachDraft objects to dicts for backward compatibility
+    return [{'channel_title': d.channel_title, 'draft_text': d.draft_text} for d in drafts]
 
 # ============================================================================
 #---MAIN PIPELINE: run_search()

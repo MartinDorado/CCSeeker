@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -m py_compile:*)"
+      "Bash(python -m py_compile:*)",
+      "Bash(cat:*)",
+      "Bash(wc:*)",
+      "Bash(du:*)",
+      "Bash(python:*)",
+      "Bash(pip install:*)"
     ]
   }
 }

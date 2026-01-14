@@ -98,33 +98,41 @@ except ImportError:
 import math
 import time
 
+# Cache layer imports (Phase 4)
+try:
+    from .cache import CacheFunctionsAdapter
+except ImportError:
+    from cache import CacheFunctionsAdapter
+
 # ============================================================================
 # --- TABLE OF CONTENTS ---
 # ============================================================================
-# LINES 1-100      | IMPORTS & CONFIGURATION
-#                   - Module imports (core modules, seed_topics_v2, similarity_engine)
-#                   - Constants (cache TTLs, thresholds)
+# LINES 1-110      | IMPORTS & CONFIGURATION
+#                   - Module imports (core modules, seed_topics_v2, similarity_engine, cache)
+#                   - Constants (thresholds, API config)
 #                   - Environment setup (API keys from .env)
 #
-# LINES 100-200    | HELPER FUNCTIONS (UI-specific)
+# LINES 110-200    | HELPER FUNCTIONS (UI-specific)
 #                  - render_term_counter() - Visual query validation
 #
-# LINES 200-330    | CACHING LAYER (Streamlit cache wrappers)
-#                  - get_channel_stats_cached() - 7-day TTL
-#                  - get_video_details_cached() - delegates to smart_cache.py
-#                  - search_channels_multi_term_cached() - 3-day TTL
-#
-# LINES 330-580    | API CLIENT SETUP & WRAPPERS
+# LINES 200-270    | API CLIENT SETUP
 #                  - get_youtube() - Initialize YouTube API client
 #                  - get_gemini_model() - Initialize Gemini client
-#                  - Wrapper functions for core API functions (add Streamlit-specific behavior)
+#                  - _get_api_tracker() - Debug mode callback
 #
-# LINES 580-740    | MAIN PIPELINE: run_search()
+# LINES 270-350    | API WRAPPERS (Streamlit-specific)
+#                  - get_channel_stats() - Wrapper with debug tracking
+#                  - get_video_details() - Wrapper with debug tracking
+#                  - generate_ai_relevance_score() - Gemini wrapper
+#                  - generate_summary() - Gemini wrapper
+#                  - generate_outreach_drafts() - Gemini wrapper
+#
+# LINES 350-530    | MAIN PIPELINE: run_search()
 #                  - Thin UI wrapper around core.pipeline.run_search_pipeline()
 #                  - Handles progress display, warnings, session_state updates
 #                  - All business logic is in core/pipeline.py
 #
-# LINES 740-END    | STREAMLIT UI SETUP
+# LINES 530-END    | STREAMLIT UI SETUP
 #                  - inject_css() - Load custom theme
 #                  - Input form
 #                  - Seed analysis handler
@@ -132,12 +140,9 @@ import time
 #                  - Result display
 #                  - Global features
 #
-# NOTE: Core business logic has been extracted to app/core/:
-#       - query_utils.py: Query validation, URL parsing
-#       - relevance.py: Keyword relevance scoring
-#       - youtube_api.py: YouTube API wrappers
-#       - gemini_api.py: Gemini AI wrappers
-#       - pipeline.py: Search pipeline orchestration
+# NOTE: Core business logic has been extracted to:
+#       - app/core/: query_utils.py, relevance.py, youtube_api.py, gemini_api.py, pipeline.py
+#       - app/cache/: cache_layer.py (Streamlit cache wrappers)
 
 
 # === SESSION STATE KEYS ===
@@ -256,68 +261,9 @@ def render_term_counter(current_query: str) -> None:
 
 
 # ============================================================================
-# CACHING LAYER - with accurate tracking
-# ============================================================================
-
-@st.cache_data(ttl=604800) # 7 days
-def get_channel_stats_cached(channel_ids_tuple):
-    # Normalize order to maximize cache hits and avoid duplicate fetches
-    channel_ids = tuple(sorted(set(channel_ids_tuple)))
-    if not channel_ids:
-        return []
-    youtube = get_youtube()
-    return get_channel_stats(youtube, list(channel_ids))
-
-def get_video_details_cached(channel_ids_tuple, max_videos= MAX_VIDEOS_PER_CHANNEL):
-    """
-    Wrapper using smart per-channel caching (see smart_cache.py).
-    Tracking happens inside smart_cache.py.
-    """
-    from smart_cache import get_video_details_smart
-    
-    youtube = get_youtube()
-
-    # Normalize order to improve cache hits downstream and deduplicate
-    channel_ids_norm = tuple(sorted(set(channel_ids_tuple)))
-    if not channel_ids_norm:
-        return []
-    
-    # Get channel stats to get uploads playlist IDs
-    stats = get_channel_stats_cached(channel_ids_norm)
-    channel_data_full = []
-    
-    for stat in stats:
-        channel_data_full.append({
-            'channel_id': stat['channel_id'],
-            'uploads_playlist_id': stat['uploads_playlist_id']
-        })
-    
-    # Smart caching handles tracking internally
-    return get_video_details_smart(youtube, channel_data_full, max_videos)
-
-
-@st.cache_data(ttl=259200) # 3 days
-def search_channels_multi_term_cached(query, region_code, max_videos= MAX_VIDEOS_PER_TERM, cache_bust: str = "v2-no-early-cap"):
-    """Cached wrapper for multi-term search.
-
-    cache_bust: change this string to invalidate prior cached results
-    when search logic changes (e.g., removed early cap).
-    """
-    # Normalize query terms for a stable cache key (order-agnostic)
-    terms = [t.strip() for t in (query or "").split(',') if t.strip()]
-    if not terms:
-        return []
-    canonical_terms = sorted(set(terms), key=str.lower)
-    canonical_query = ", ".join(canonical_terms)
-
-    # cache_bust is unused in logic; only to affect cache key
-    _ = cache_bust
-    return search_channels_multi_term(canonical_query, region_code, max_videos)
-
-
-# ============================================================================
 # --- API Functions ---
 # ============================================================================
+# NOTE: Caching layer has been moved to cache/cache_layer.py (Phase 4)
 
 @st.cache_resource(show_spinner=False)
 def get_youtube():
@@ -348,120 +294,6 @@ def _get_api_tracker():
     if st.session_state.get('debug_mode', False):
         return debug_tracker.track_api_call
     return None
-
-
-@st.cache_data(show_spinner=False, ttl=259200)  # 3 days
-def search_channels_hybrid(query: str, region_code: str, max_videos: int = MAX_VIDEOS_PER_TERM, max_channels: int = MAX_SEARCH_RESULTS):
-    """
-    Hybrid search: Find channels by VIDEO content (primary) + channel names (secondary).
-
-    Returns: List[dict] with keys 'channel_id', 'channel_title', 'match_score'
-
-    Notes:
-        - Delegates to core.youtube_api.search_channels_hybrid
-        - Handles warnings via st.warning
-        - Results cached for ~3 days via @st.cache_data(ttl=259200)
-    """
-    youtube = get_youtube()
-    result = _search_channels_hybrid_core(
-        youtube_service=youtube,
-        query=query,
-        region_code=region_code,
-        max_videos=max_videos,
-        max_channels=max_channels,
-        on_api_call=_get_api_tracker(),
-    )
-
-    # Display any warnings that occurred
-    for warning in result.warnings:
-        st.warning(warning)
-
-    return result.channels
-
-
-def search_channels_multi_term(
-    query: str,
-    region_code: str,
-    max_videos_per_term: int = MAX_VIDEOS_PER_TERM,
-    max_channels: int | None = None,
-):
-    """
-    Handle comma-separated queries as OR logic.
-    Example: "manga, anime" -> search both terms, merge results
-
-    Returns: List[dict] with deduplicated channels sorted by relevance
-
-    Notes:
-        - Adds Streamlit UI feedback (spinners, info messages)
-        - Records pre_cap_channel_count in session state
-    """
-    # Split by comma and clean
-    terms = [t.strip() for t in query.split(',') if t.strip()]
-
-    if len(terms) == 0:
-        return []
-
-    # Enforce 2-term maximum with warning
-    if len(terms) > 2:
-        st.warning(
-            f"Search limited to 2 terms (received {len(terms)}). "
-            f"Using: **{', '.join(terms[:2])}**"
-        )
-        terms = terms[:2]
-
-    if len(terms) == 1:
-        # Single term: use hybrid search directly
-        results_single = search_channels_hybrid(terms[0], region_code, max_videos_per_term)
-        try:
-            st.session_state['pre_cap_channel_count'] = len(results_single)
-        except Exception:
-            pass
-        if max_channels is not None:
-            results_single = results_single[:max_channels]
-        return results_single
-
-    # Multiple terms: search each, then merge
-    st.info(f"Searching {len(terms)} topics: {', '.join(terms)}")
-
-    all_channels = {}  # {channel_id: {'title': str, 'total_score': int}}
-
-    for term in terms:
-        with st.spinner(f"Searching for '{term}'..."):
-            results = search_channels_hybrid(term, region_code, max_videos_per_term)
-
-        for channel in results:
-            channel_id = channel['channel_id']
-            if channel_id not in all_channels:
-                all_channels[channel_id] = {
-                    'title': channel['channel_title'],
-                    'total_score': 0
-                }
-            all_channels[channel_id]['total_score'] += channel['match_score']
-
-    # Convert back to list format and sort
-    merged = [
-        {
-            'channel_id': ch_id,
-            'channel_title': data['title'],
-            'match_score': data['total_score']
-        }
-        for ch_id, data in sorted(
-            all_channels.items(),
-            key=lambda x: x[1]['total_score'],
-            reverse=True
-        )
-    ]
-
-    # Record the true pre-cap count for logging
-    try:
-        st.session_state['pre_cap_channel_count'] = len(merged)
-    except Exception:
-        pass
-
-    if max_channels is not None:
-        merged = merged[:max_channels]
-
-    return merged
 
 
 def get_channel_stats(youtube_service, channel_ids):
@@ -574,19 +406,6 @@ def generate_outreach_drafts(
 #---MAIN PIPELINE: run_search()
 # ============================================================================
 
-class _CacheFunctionsAdapter:
-    """Adapter to pass cache functions to the pipeline."""
-
-    def get_channel_stats_cached(self, channel_ids: tuple) -> list[dict]:
-        return get_channel_stats_cached(channel_ids)
-
-    def get_video_details_cached(self, channel_ids: tuple, max_videos: int) -> list[dict]:
-        return get_video_details_cached(channel_ids, max_videos)
-
-    def search_channels_cached(self, query: str, region: str, max_videos: int) -> list[dict]:
-        return search_channels_multi_term_cached(query, region, max_videos, cache_bust="mt-search-v2")
-
-
 def run_search(
     youtube,
     final_query: str,
@@ -671,7 +490,7 @@ def run_search(
         config=config,
         gemini_model=gemini_model,
         similarity_engine=similarity_engine if seed_profile else None,
-        cache_functions=_CacheFunctionsAdapter(),
+        cache_functions=CacheFunctionsAdapter(),
         on_progress=on_progress,
         on_api_call=_get_api_tracker(),
     )

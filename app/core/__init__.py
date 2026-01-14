@@ -9,6 +9,8 @@ Modules:
 - query_utils: Query validation, URL parsing, channel ID resolution
 - relevance: Keyword relevance scoring for channels
 - youtube_api: YouTube Data API wrapper functions
+- gemini_api: Gemini AI API wrapper functions
+- pipeline: Search pipeline orchestration
 
 These modules are Streamlit-agnostic and can be unit tested independently.
 """
@@ -45,6 +47,14 @@ from .gemini_api import (
     generate_outreach_drafts,
 )
 
+from .pipeline import (
+    # Result types
+    PipelineResult,
+    PipelineConfig,
+    # Functions
+    run_search_pipeline,
+)
+
 __all__ = [
     # Constants
     "MAX_SEARCH_TERMS",
@@ -71,4 +81,8 @@ __all__ = [
     "generate_ai_relevance_score",
     "generate_summary",
     "generate_outreach_drafts",
+    # Pipeline
+    "PipelineResult",
+    "PipelineConfig",
+    "run_search_pipeline",
 ]

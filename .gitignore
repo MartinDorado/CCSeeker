@@ -21,3 +21,6 @@ ENV/
 
 .quota_cache.json
 .feedback_data.json
+
+# Claude Code temporary directories
+tmpclaude-*/

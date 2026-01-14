@@ -97,6 +97,7 @@ except ImportError:
 
 import math
 import time
+from typing import Callable
 
 # Cache layer imports (Phase 4)
 try:
@@ -107,42 +108,89 @@ except ImportError:
 # ============================================================================
 # --- TABLE OF CONTENTS ---
 # ============================================================================
-# LINES 1-110      | IMPORTS & CONFIGURATION
-#                   - Module imports (core modules, seed_topics_v2, similarity_engine, cache)
-#                   - Constants (thresholds, API config)
-#                   - Environment setup (API keys from .env)
 #
-# LINES 110-200    | HELPER FUNCTIONS (UI-specific)
-#                  - render_term_counter() - Visual query validation
+# SECTION 1: IMPORTS & CONFIGURATION (Lines 1-220)
+# ────────────────────────────────────────────────────────────────────────────
+#   - Standard library imports
+#   - Third-party imports (streamlit, pandas, google APIs)
+#   - Local module imports (core, cache, seed_topics_v2, similarity_engine)
+#   - Configuration constants (search params, cache TTLs, similarity weights)
+#   - API key loading (_get_secret)
 #
-# LINES 200-270    | API CLIENT SETUP
-#                  - get_youtube() - Initialize YouTube API client
-#                  - get_gemini_model() - Initialize Gemini client
-#                  - _get_api_tracker() - Debug mode callback
+# SECTION 2: UI HELPER FUNCTIONS (Lines 220-280)
+# ────────────────────────────────────────────────────────────────────────────
+#   - render_term_counter() - Visual query term counter
 #
-# LINES 270-350    | API WRAPPERS (Streamlit-specific)
-#                  - get_channel_stats() - Wrapper with debug tracking
-#                  - get_video_details() - Wrapper with debug tracking
-#                  - generate_ai_relevance_score() - Gemini wrapper
-#                  - generate_summary() - Gemini wrapper
-#                  - generate_outreach_drafts() - Gemini wrapper
+# SECTION 3: API CLIENT SETUP (Lines 280-310)
+# ────────────────────────────────────────────────────────────────────────────
+#   - get_youtube() - YouTube Data API client (cached)
+#   - get_gemini_model() - Gemini AI model initialization
+#   - _get_api_tracker() - Debug mode callback for API tracking
 #
-# LINES 350-530    | MAIN PIPELINE: run_search()
-#                  - Thin UI wrapper around core.pipeline.run_search_pipeline()
-#                  - Handles progress display, warnings, session_state updates
-#                  - All business logic is in core/pipeline.py
+# SECTION 4: API WRAPPERS (Lines 310-410)
+# ────────────────────────────────────────────────────────────────────────────
+#   - get_channel_stats() - Channel statistics with debug tracking
+#   - get_video_details() - Video details with warning display
+#   - generate_ai_relevance_score() - Gemini relevance scoring
+#   - generate_summary() - Gemini summary generation
+#   - generate_outreach_drafts() - Gemini outreach email drafts
 #
-# LINES 530-END    | STREAMLIT UI SETUP
-#                  - inject_css() - Load custom theme
-#                  - Input form
-#                  - Seed analysis handler
-#                  - Seed profile display
-#                  - Result display
-#                  - Global features
+# SECTION 5: MAIN PIPELINE (Lines 410-550)
+# ────────────────────────────────────────────────────────────────────────────
+#   - run_search() - UI wrapper around core.pipeline.run_search_pipeline()
+#     Handles: progress display, warnings, session_state updates
 #
-# NOTE: Core business logic has been extracted to:
-#       - app/core/: query_utils.py, relevance.py, youtube_api.py, gemini_api.py, pipeline.py
-#       - app/cache/: cache_layer.py (Streamlit cache wrappers)
+# SECTION 6: STREAMLIT UI - PAGE SETUP (Lines 550-650)
+# ────────────────────────────────────────────────────────────────────────────
+#   - Page configuration (st.set_page_config)
+#   - Debug tracking initialization
+#   - CSS injection (inject_css)
+#   - Header with logo
+#   - Debug mode toggle (sidebar)
+#
+# SECTION 7: STREAMLIT UI - SEARCH INPUT (Lines 650-810)
+# ────────────────────────────────────────────────────────────────────────────
+#   - Search method selector (Keywords / Channel-as-Seed)
+#   - Search form with filters
+#   - Main execution logic on form submit
+#
+# SECTION 8: STREAMLIT UI - SEED PROFILE (Lines 810-1050)
+# ────────────────────────────────────────────────────────────────────────────
+#   - Seed channel profile display
+#   - Topic extraction display
+#   - Filtering criteria for seed mode
+#   - Query editor
+#   - "Find Similar Channels" button and handler
+#
+# SECTION 9: STREAMLIT UI - RESULTS DISPLAY (Lines 1050-1220)
+# ────────────────────────────────────────────────────────────────────────────
+#   - Results dataframe with column config
+#   - Column definitions expander
+#   - AI summary display
+#   - User feedback section
+#
+# SECTION 10: STREAMLIT UI - MATCH ANALYSIS (Lines 1220-1390)
+# ────────────────────────────────────────────────────────────────────────────
+#   - Detailed match analysis for seed-based search
+#   - Single channel view
+#   - Comparison view (two channels side-by-side)
+#   - Tag overlap comparison
+#
+# SECTION 11: STREAMLIT UI - OUTREACH & DEBUG (Lines 1390-END)
+# ────────────────────────────────────────────────────────────────────────────
+#   - Outreach drafts generation
+#   - Debug panel (sidebar)
+#
+# ============================================================================
+# ARCHITECTURE NOTE:
+# Core business logic has been extracted to separate modules:
+#   - app/core/query_utils.py    - Query validation, URL parsing
+#   - app/core/relevance.py      - Relevance scoring
+#   - app/core/youtube_api.py    - YouTube API wrappers (pure)
+#   - app/core/gemini_api.py     - Gemini AI functions (pure)
+#   - app/core/pipeline.py       - Search pipeline orchestration
+#   - app/cache/cache_layer.py   - Streamlit cache wrappers
+# ============================================================================
 
 
 # === SESSION STATE KEYS ===
@@ -194,9 +242,7 @@ SIMILARITY_WEIGHTS = {
 
 # For implementation details, see similarity_engine.py lines 137-260
 
-# ============================================================================
-# --- Securely Load API Keys ---
-# ============================================================================
+# --- Secure API Key Loading ---
 
 
 load_dotenv()  # Load .env for local dev
@@ -218,10 +264,8 @@ YOUTUBE_API_KEY = _get_secret("YOUTUBE_API_KEY")
 GEMINI_API_KEY = _get_secret("GEMINI_API_KEY")
 
 # ============================================================================
-# Helper query functions
+# SECTION 2: UI HELPER FUNCTIONS
 # ============================================================================
-# NOTE: validate_and_truncate_query, extract_identifier_from_url, resolve_channel_id,
-# and strip_outer_quotes are now imported from core.query_utils
 
 
 def render_term_counter(current_query: str) -> None:
@@ -261,19 +305,35 @@ def render_term_counter(current_query: str) -> None:
 
 
 # ============================================================================
-# --- API Functions ---
+# SECTION 3: API CLIENT SETUP
 # ============================================================================
-# NOTE: Caching layer has been moved to cache/cache_layer.py (Phase 4)
 
 @st.cache_resource(show_spinner=False)
-def get_youtube():
-    """Create and cache a YouTube Data API client using the env API key."""
+def get_youtube() -> "googleapiclient.discovery.Resource":
+    """Create and cache a YouTube Data API client using the env API key.
+
+    Returns:
+        googleapiclient.discovery.Resource: Authenticated YouTube API client.
+
+    Raises:
+        ValueError: If YOUTUBE_API_KEY is not configured.
+    """
     if not YOUTUBE_API_KEY:
         raise ValueError("YOUTUBE_API_KEY is not configured")
     return build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, developerKey=YOUTUBE_API_KEY)
 
-def get_gemini_model(temperature: float | None = None):
-    """Configure and return a Gemini model for content generation."""
+def get_gemini_model(temperature: float | None = None) -> "genai.GenerativeModel":
+    """Configure and return a Gemini model for content generation.
+
+    Args:
+        temperature: Optional generation temperature (0.0-1.0). Higher = more creative.
+
+    Returns:
+        genai.GenerativeModel: Configured Gemini model instance.
+
+    Raises:
+        ValueError: If GEMINI_API_KEY is not configured.
+    """
     if not GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY is not configured")
     genai.configure(api_key=GEMINI_API_KEY)
@@ -283,24 +343,36 @@ def get_gemini_model(temperature: float | None = None):
     return genai.GenerativeModel('gemini-2.0-flash-lite', **cfg)
 
 # ============================================================================
-#---- CORE LOGIC - YOUTUBE API WRAPPERS + AI GENERATION (Gemini)
+# SECTION 4: API WRAPPERS (Streamlit-specific)
 # ============================================================================
-# NOTE: Core YouTube API functions are now in core/youtube_api.py
-# These wrappers add Streamlit-specific functionality (caching, warnings, spinners)
+# These wrappers add Streamlit-specific functionality (debug tracking, warnings)
 
 
-def _get_api_tracker():
-    """Get API call tracker callback if debug mode is enabled."""
+def _get_api_tracker() -> Callable[[str], None] | None:
+    """Get API call tracker callback if debug mode is enabled.
+
+    Returns:
+        Callable or None: The debug_tracker.track_api_call function if debug
+        mode is enabled, otherwise None.
+    """
     if st.session_state.get('debug_mode', False):
         return debug_tracker.track_api_call
     return None
 
 
-def get_channel_stats(youtube_service, channel_ids):
-    """
-    Fetch detailed statistics for a list of channel IDs.
+def get_channel_stats(
+    youtube_service: "googleapiclient.discovery.Resource",
+    channel_ids: list[str],
+) -> list[dict]:
+    """Fetch detailed statistics for a list of channel IDs.
 
-    Delegates to core.youtube_api.get_channel_stats with debug tracking.
+    Args:
+        youtube_service: Authenticated YouTube API client.
+        channel_ids: List of YouTube channel IDs to fetch stats for.
+
+    Returns:
+        List of dicts containing channel statistics (channel_id, subscriber_count,
+        uploads_playlist_id, country, etc.).
     """
     result = _get_channel_stats_core(
         youtube_service=youtube_service,
@@ -310,12 +382,21 @@ def get_channel_stats(youtube_service, channel_ids):
     return result.stats
 
 
-def get_video_details(youtube_service, channel_data, max_videos_per_channel):
-    """
-    Fetch video details for multiple channels.
+def get_video_details(
+    youtube_service: "googleapiclient.discovery.Resource",
+    channel_data: list[dict],
+    max_videos_per_channel: int,
+) -> list[dict]:
+    """Fetch video details for multiple channels.
 
-    Delegates to core.youtube_api.get_video_details with debug tracking.
-    Displays warnings for failed channels via st.warning.
+    Args:
+        youtube_service: Authenticated YouTube API client.
+        channel_data: List of dicts with 'channel_id' and 'uploads_playlist_id'.
+        max_videos_per_channel: Maximum videos to fetch per channel.
+
+    Returns:
+        List of video detail dicts (channel_id, video_id, video_title, views, etc.).
+        Also displays any warnings via st.warning.
     """
     result = _get_video_details_core(
         youtube_service=youtube_service,
@@ -335,21 +416,33 @@ def get_video_details(youtube_service, channel_data, max_videos_per_channel):
 # These wrappers add Streamlit-specific functionality (debug tracking, session state)
 
 
-def generate_ai_relevance_score(model, channel_data: dict, query: str) -> float:
-    """
-    Wrapper for core.gemini_api.generate_ai_relevance_score.
+def generate_ai_relevance_score(
+    model: "genai.GenerativeModel",
+    channel_data: dict,
+    query: str,
+) -> float:
+    """Score channel relevance using Gemini AI based on video titles.
 
-    Uses a Gemini model to score channel relevance based on video titles.
-    Returns a relevance score between 0.0 and 1.0, or 0.0 on failure.
+    Args:
+        model: Configured Gemini model instance.
+        channel_data: Dict with 'channel_title' and 'video_titles' keys.
+        query: Search query to score relevance against.
+
+    Returns:
+        Relevance score between 0.0 and 1.0, or 0.0 on failure.
     """
     return _generate_ai_relevance_score_core(model, channel_data, query)
 
 
-def generate_summary(df_results, query):
-    """
-    Generate a summary of the top YouTube channels using Gemini.
+def generate_summary(df_results: pd.DataFrame, query: str) -> str:
+    """Generate an AI summary of the top YouTube channels using Gemini.
 
-    Wrapper that adds Streamlit debug tracking and session state access.
+    Args:
+        df_results: DataFrame with search results (must have channel data columns).
+        query: Original search query for context.
+
+    Returns:
+        Summary text from Gemini, or error message if generation failed.
     """
     model = get_gemini_model()
 
@@ -403,17 +496,17 @@ def generate_outreach_drafts(
     return [{'channel_title': d.channel_title, 'draft_text': d.draft_text} for d in drafts]
 
 # ============================================================================
-#---MAIN PIPELINE: run_search()
+# SECTION 5: MAIN PIPELINE
 # ============================================================================
 
 def run_search(
-    youtube,
+    youtube: "googleapiclient.discovery.Resource",
     final_query: str,
     region_input: str,
     min_subs_input: int,
     months_ago_input: int,
     country_filter_input: str,
-):
+) -> None:
     """
     Execute the end-to-end search pipeline: validate -> search -> stats -> filter -> analyze -> rank -> render.
 
@@ -545,7 +638,7 @@ def run_search(
 
 
 # ============================================================================
-# --- Streamlit User Interface ---
+# SECTION 6: STREAMLIT UI - PAGE SETUP
 # ============================================================================
 
 st.set_page_config(
@@ -567,7 +660,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-def inject_css(path: str):
+def inject_css(path: str) -> None:
+    """Inject custom CSS into the Streamlit app.
+
+    Args:
+        path: Path to the CSS file to inject.
+    """
     p = Path(path)
     if not p.exists():
         st.warning(f"CSS not found: {path}")
@@ -591,7 +689,7 @@ with col_title:
     st.title("CCSeeker")
     st.markdown("*Discover Niche YouTube Creators*")  # Slogan in italic
 
-# === DEBUG MODE TOGGLE (in sidebar) ===
+# Debug mode toggle (sidebar)
 with st.sidebar:
     st.markdown("---")  # Visual separator
     
@@ -605,7 +703,10 @@ with st.sidebar:
     # Update session state
     st.session_state.debug_mode = debug_enabled
 
-# The search method selector is outside the form to allow instant UI updates.
+# ============================================================================
+# SECTION 7: STREAMLIT UI - SEARCH INPUT
+# ============================================================================
+
 st.header("1. Search Method")
 # Custom button-based selector for better layout control
 st.markdown("#### Choose your search method:")
@@ -743,7 +844,7 @@ if search_method:
         button_label = "Analyse Seed" if search_method == "Channel-as-Seed" else "Find Creators"
         submitted = st.form_submit_button(button_label)
 
-# --- Main Execution Logic ---
+# Form submission handler
 if submitted:
     # New search: clear previous outreach/session caches
     st.session_state.pop('top_channels_for_outreach', None)
@@ -810,7 +911,7 @@ if submitted:
             )
 
 # ============================================================================
-# === SEED PROFILE REVIEW (NEW) ===
+# SECTION 8: STREAMLIT UI - SEED PROFILE
 # ============================================================================
 
 if st.session_state.get('seed_profile'):
@@ -1044,7 +1145,9 @@ if st.session_state.get('seed_profile'):
             )
 
 
-# Keep the results table visible across reruns
+# ============================================================================
+# SECTION 9: STREAMLIT UI - RESULTS DISPLAY
+# ============================================================================
 if 'display_df' in st.session_state:
     st.subheader("📊 Search Results")
     
@@ -1210,7 +1313,7 @@ if 'display_df' in st.session_state:
                 st.rerun()
 
 # ============================================================================
-# === ENHANCED MATCH EXPLANATIONS ===
+# SECTION 10: STREAMLIT UI - MATCH ANALYSIS
 # ============================================================================
 if 'similarity_score' in st.session_state.get('display_df', pd.DataFrame()).columns:
     
@@ -1381,7 +1484,9 @@ if 'similarity_score' in st.session_state.get('display_df', pd.DataFrame()).colu
                             st.caption("_(none)_")
 
 
-# === Global Outreach Section (works across reruns) ===
+# ============================================================================
+# SECTION 11: STREAMLIT UI - OUTREACH & DEBUG
+# ============================================================================
 if 'top_channels_for_outreach' in st.session_state and not st.session_state['top_channels_for_outreach'].empty:
     st.write("")  # spacer
 
@@ -1413,9 +1518,7 @@ if 'top_channels_for_outreach' in st.session_state and not st.session_state['top
                 except Exception as e:
                     st.error(f"Unexpected error while generating drafts: {type(e).__name__}: {e}")
 
-# ============================================================================
-# === RENDER DEBUG PANEL AT THE END (AFTER ALL TRACKING) ===
-# ============================================================================
+# Debug panel (at end to capture all tracking data)
 
 # This ensures the debug panel shows updated counters after search completes
 if st.session_state.get('debug_mode', False):

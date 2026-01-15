@@ -775,22 +775,14 @@ if search_method:
             seed_url_input = st.text_input("YouTube Channel URL or name (the 'seed')", "https://www.youtube.com/@YourFavoriteChannel")
             query_input = ""  # keep defined
 
-            # Set defaults for advanced options (will be shown in Search Options expander later)
-            target_language_code = "auto"
-            ignore_words_input = ""
-            
             with st.expander("How does Channel-as-Seed work?"):
                 st.markdown("""
                     This method discovers new channels based on a single example channel you provide.
                     1.  **Analyze:** It fetches the latest videos from the URL you enter.
                     2.  **Learn:** It extracts the most common topics and keywords from that channel's video titles and tags.
                     3.  **Discover:** It then uses those learned keywords to launch a new, highly specific search to find other channels with similar content.
-                    4.  **Rank & Analyze:** Finally, it ranks the results by similarity to your seed channel based on a blend between an algorithmic score and an AI score. Giving 80% weight to the algorithmic score and 20% to the AI's score. The algorithmic score is based on similarity on topics, audience size, engagement patterns, and upload frequency.    
+                    4.  **Rank & Analyze:** Finally, it ranks the results by similarity to your seed channel based on a blend between an algorithmic score and an AI score. Giving 80% weight to the algorithmic score and 20% to the AI's score. The algorithmic score is based on similarity on topics, audience size, engagement patterns, and upload frequency.
                 """)
-            
-            # Initialize defaults for seed-specific options (will be shown in Search Options later)
-            target_language_code = "auto"
-            ignore_words_input = ""
 
         # For Keywords mode: show all filters in the form
         if search_method == "Keywords":
@@ -869,20 +861,12 @@ if submitted:
                 st.info(f"Using Channel ID: {seed_channel_id}")
 
             if seed_channel_id:
-                # Apply user-provided penalties (banned words)
-                penalties = set(
-                    w.strip().lower() 
-                    for w in (ignore_words_input or "").split(",") 
-                    if w.strip()
-                )
-
                 # NEW: Analyze seed channel to extract complete profile
                 with st.spinner("🔍 Analyzing seed channel..."):
                     seed_profile = seedmod.analyze_seed_channel_v2(
                         youtube,
                         seed_channel_id,
                         max_videos=50,
-                        user_banned_words=penalties,
                         gemini_api_key=GEMINI_API_KEY
                     )
                 
@@ -1040,42 +1024,6 @@ if st.session_state.get('seed_profile'):
     # Use the editable query (or default if not yet edited)
     built_query = st.session_state.get('editable_seed_query', default_query)
 
-    # Advanced options (moved from search method section)
-    with st.expander("⚙️ Advanced Analysis Options"):
-        st.markdown("*Fine-tune how the seed channel is analyzed*")
-        
-        col_adv1, col_adv2 = st.columns(2)
-        
-        with col_adv1:
-            output_lang_label = st.selectbox(
-                "Translate topics into",
-                [
-                    "Original (auto)",
-                    "English",
-                    "Español",
-                    "Português",
-                    "Français",
-                    "Deutsch",
-                ],
-                help="The seed analysis stays in the original language, but final topic keywords can be translated for broader search results."
-            )
-            _lang_map = {
-                "Original (auto)": "auto",
-                "English": "en",
-                "Español": "es",
-                "Português": "pt",
-                "Français": "fr",
-                "Deutsch": "de",
-            }
-            target_language_code = _lang_map.get(output_lang_label, "auto")
-        
-        with col_adv2:
-            ignore_words_input = st.text_input(
-                "Ignore words (comma-separated)",
-                value="",
-                help="Words to exclude from topic extraction (e.g., brand names, common filler words). Useful for cleaning up noisy results."
-            )
-    
     # Query editor section
     col_query, col_reset = st.columns([4, 1])
 
@@ -1100,14 +1048,7 @@ if st.session_state.get('seed_profile'):
     with col_reset:
         st.write("")  # Spacer for alignment
         st.write("")  # Spacer for alignment
-        # Re-calculate default_query for reset button
-        search_terms = profile['primary_keywords'][:2]
-        if len(search_terms) < 2:
-            remaining_slots = 2 - len(search_terms)
-            search_terms += profile['common_tags'][:remaining_slots]
-        quoted_terms = [f'"{term}"' if ' ' in term else term for term in search_terms]
-        default_query = ", ".join(quoted_terms[:2])
-        
+
         if st.button("🔄 Reset", help="Reset to AI-generated default", key="reset_query"):
             st.session_state['editable_seed_query'] = default_query
             st.rerun()

@@ -450,9 +450,23 @@ def run_search_pipeline(
         df_full = pd.merge(df_videos, channels_to_analyze, on='channel_id')
 
         # Filter by upload recency (if specified)
+        # Filters out channels whose most recent video is older than the cutoff
         if config.months_ago > 0:
             date_cutoff = pd.Timestamp.now(tz='UTC') - pd.DateOffset(months=config.months_ago)
-            df_full = df_full[df_full['published_at'] >= date_cutoff]
+            most_recent_per_channel = df_full.groupby('channel_id')['published_at'].max()
+            active_channel_ids = most_recent_per_channel[most_recent_per_channel >= date_cutoff].index
+            channels_before = df_full['channel_id'].nunique()
+            df_full = df_full[df_full['channel_id'].isin(active_channel_ids)]
+            channels_after = df_full['channel_id'].nunique()
+            inactive_count = channels_before - channels_after
+            if inactive_count > 0:
+                search_log.append(
+                    f"📅 Recency filter: {inactive_count} channels excluded (no uploads in {config.months_ago} months)"
+                )
+            else:
+                search_log.append(
+                    f"📅 Recency filter applied ({config.months_ago} months): all {channels_after} channels have recent uploads"
+                )
 
         # Calculate average engagement per channel
         avg_engagement = df_full.groupby('channel_id')['engagement_rate'].mean().reset_index()

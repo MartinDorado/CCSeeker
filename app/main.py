@@ -830,7 +830,7 @@ if search_method:
             with c3:
                 months_ago_input = st.number_input(
                     "Published within last (months)",
-                    value=18, min_value=0, step=1,
+                    value=8, min_value=0, step=1,
                     help="Only show channels with uploads in the last X months. Set to 0 to ignore upload recency."
                 )
         else:
@@ -1012,7 +1012,7 @@ if st.session_state.get('seed_profile'):
     with c3:
         months_ago_input = st.number_input(
             "Published within last (months)",
-            value=18, min_value=0, step=1,
+            value=8, min_value=0, step=1,
             help="Only show channels with uploads in the last X months. Set to 0 to ignore upload recency.",
             key="seed_months_ago"
         )

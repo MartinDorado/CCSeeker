@@ -128,22 +128,20 @@ def extract_bigrams(tokens: list[str], stopwords: set) -> list[str]:
 # PENALTY SYSTEM (replaces looks_contextual)
 # ============================================================================
 
-def calculate_term_penalty(term: str, user_banned: set = None) -> float:
+def calculate_term_penalty(term: str) -> float:
     """
     Calculate penalty score for a term (0.0 = perfect, 1.0 = remove)
-    
-    Uses soft penalties instead of hard blocking
+
+    Applies soft penalties for:
+    - Years/dates (2024): 0.5 penalty
+    - Numbers (ep5): 0.3 penalty
+    - Month names: 0.4 penalty
+    - Promotional words (like, share, subscribe): 0.3 penalty
+    - Event-specific terms (webinar, festival): 0.5 penalty
     """
-    if user_banned is None:
-        user_banned = set()
-    
     tokens = set(term.lower().split())
     penalty = 0.0
-    
-    # User-defined banned words (heavy penalty)
-    if tokens & user_banned:
-        penalty += 0.9
-    
+
     # Numbers or years (medium penalty)
     if any(t.isdigit() and len(t) == 4 for t in tokens):  # "2024"
         penalty += 0.5
@@ -173,7 +171,6 @@ def analyze_seed_channel_v2(
     youtube_service,
     channel_id: str,
     max_videos: int = 50,
-    user_banned_words: Optional[set] = None,
     gemini_api_key: Optional[str] = None
 ) -> dict:
     """
@@ -198,10 +195,7 @@ def analyze_seed_channel_v2(
         'description_summary': str
     }
     """
-    
-    if user_banned_words is None:
-        user_banned_words = set()
-    
+
     st.info(f"🔍 Analyzing seed channel: {channel_id}")
     
     # ========================================================================
@@ -438,7 +432,7 @@ def analyze_seed_channel_v2(
     # Tags (highest weight - most accurate signal)
     for term, doc_freq in tag_docs.items():
         if doc_freq >= min_doc_freq:
-            penalty = calculate_term_penalty(term, user_banned_words)
+            penalty = calculate_term_penalty(term)
             score = doc_freq * 2.0 * (1.0 - penalty)  # Tags worth 2x
             if score > 0:
                 scored_terms.append((term, score, 'tag'))
@@ -446,7 +440,7 @@ def analyze_seed_channel_v2(
     # Title bigrams (high weight - specific topics)
     for term, doc_freq in title_bigram_docs.items():
         if doc_freq >= min_doc_freq:
-            penalty = calculate_term_penalty(term, user_banned_words)
+            penalty = calculate_term_penalty(term)
             score = doc_freq * 1.6 * (1.0 - penalty)
             if score > 0:
                 scored_terms.append((term, score, 'bigram'))
@@ -454,7 +448,7 @@ def analyze_seed_channel_v2(
     # Title unigrams (medium weight)
     for term, doc_freq in title_unigram_docs.items():
         if doc_freq >= min_doc_freq:
-            penalty = calculate_term_penalty(term, user_banned_words)
+            penalty = calculate_term_penalty(term)
             score = doc_freq * 1.0 * (1.0 - penalty)
             if score > 0:
                 scored_terms.append((term, score, 'unigram'))
@@ -462,7 +456,7 @@ def analyze_seed_channel_v2(
     # Description tokens (low weight - noisy)
     for term, doc_freq in desc_docs.items():
         if doc_freq >= max(2, math.ceil(0.15 * 10)):  # Lower threshold for descriptions
-            penalty = calculate_term_penalty(term, user_banned_words)
+            penalty = calculate_term_penalty(term)
             score = doc_freq * 0.5 * (1.0 - penalty)
             if score > 0:
                 scored_terms.append((term, score, 'description'))

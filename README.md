@@ -98,6 +98,8 @@ Results table shows relevance scores, subscriber counts, engagement rates, and m
   ![Seed Similarity Score](docs/screenshots/screenshot_seed_similarity_score.jpg)
 </details>
 
+---
+
 <details>
 <summary><strong>📊 Debug & Monitoring System</strong></summary>
 
@@ -132,7 +134,7 @@ Toggle debug mode to see:
 
 </details>
 
----
+
 <details>
 <summary><strong>📐 Scoring Methodology</strong></summary>
 
@@ -189,7 +191,8 @@ Measures how similar a candidate channel is to your seed channel.
 - **<30**: Weak match - different content focus
 
 </details>
----
+
+
 <details>
 <summary><strong>🚀 Tech Stack</strong></summary>
 
@@ -225,7 +228,8 @@ Measures how similar a candidate channel is to your seed channel.
 - Saves API quota - no point fetching 10 videos from a 500-sub channel if minimum is 10K
 
 </details>
----
+
+
 <details>
 <summary><strong>🧪 Testing</strong></summary>
 
@@ -257,7 +261,8 @@ pytest tests/ -v
 All tests use mocked API clients - no actual API calls needed.
 
 </details>
----
+
+
 <details>
 <summary><strong>📦 Installation</strong></summary>
 
@@ -301,7 +306,8 @@ streamlit run app/main.py
 App opens at `http://localhost:8501`
 
 </details>
----
+
+
 <details>
 <summary><strong>📖 Usage</strong></summary>
 
@@ -360,7 +366,7 @@ Results ranked by similarity score (0-100) with match reasons.
 </details>
 </details>
 
----
+
 <details>
 <summary><strong>🗂️ Project Structure</strong></summary>
 
@@ -416,7 +422,8 @@ CCSeeker/
 | `track_api_call()` | debug_tracker.py | API usage tracking |
 
 </details>
----
+
+
 <details>
 <summary><strong>📊 API Quotas & Costs</strong></summary>
 
@@ -439,7 +446,6 @@ Enable debug mode to see real-time usage.
 
 </details>
 
----
 
 <details>
 <summary><strong>🔒 Security & Best Practices</strong></summary>
@@ -454,7 +460,6 @@ Enable debug mode to see real-time usage.
 
 </details>
 
----
 <details>
 <summary><strong>🚧 Known Limitations</strong></summary>
 
@@ -464,13 +469,13 @@ Enable debug mode to see real-time usage.
 - **No Historical Data**: Can't analyze deleted videos or past performance
 
 </details>
----
+
 <details>
 <summary><strong>📄 License</strong></summary>
 
 This project is licensed under the Apache License 2.0 - see [LICENSE](LICENSE) for details.
 </details>
----
+
 <details>
 <summary><strong>👤 Author</strong></summary>
 
@@ -478,7 +483,7 @@ This project is licensed under the Apache License 2.0 - see [LICENSE](LICENSE) f
 - LinkedIn: [linkedin.com/in/martin-dorado](https://www.linkedin.com/in/martin-dorado/)
 - GitHub: [@MartinDorado](https://github.com/MartinDorado)
 </details>
----
+
 <details>
 <summary><strong>📚 Additional Resources</strong></summary>
 

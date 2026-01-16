@@ -196,12 +196,13 @@ def analyze_seed_channel_v2(
     }
     """
 
-    st.info(f"🔍 Analyzing seed channel: {channel_id}")
-    
+    # Use st.status for consolidated progress display
+    status = st.status("🔍 Analyzing seed channel...", expanded=True)
+
     # ========================================================================
     # STEP 1: Get channel metadata
     # ========================================================================
-    
+
     try:
         channel_response = youtube_service.channels().list(
             part="snippet,statistics,contentDetails",
@@ -211,7 +212,8 @@ def analyze_seed_channel_v2(
         debug_tracker.track_api_call('youtube_channel')
 
         if not channel_response.get('items'):
-            st.error("Channel not found")
+            status.update(label="❌ Channel not found", state="error")
+            st.error("Channel not found. The channel may be private, deleted, or the URL format may be incorrect.")
             return None
         
         channel = channel_response['items'][0]
@@ -220,6 +222,7 @@ def analyze_seed_channel_v2(
         content_details = channel['contentDetails']
         
     except Exception as e:
+        status.update(label="❌ Failed to fetch channel", state="error")
         st.error(f"Failed to fetch channel: {e}")
         return None
     
@@ -236,8 +239,8 @@ def analyze_seed_channel_v2(
     # Build channel name stopwords (don't extract brand name as topic)
     name_tokens = set(re.findall(r'\b[a-záéíóúñü]+\b', channel_name.lower()))
     name_tokens |= {"oficial", "official", "canal", "channel"}
-    
-    st.info(f"📊 Channel: {channel_name} | {subscriber_count:,} subs | {video_count} videos")
+
+    status.write(f"📺 **{channel_name}** ({subscriber_count:,} subscribers, {video_count} videos)")
     
     # ========================================================================
     # STEP 2: Get recent videos (titles, tags, descriptions)
@@ -258,11 +261,13 @@ def analyze_seed_channel_v2(
         ]
         
     except Exception as e:
+        status.update(label="❌ Failed to fetch videos", state="error")
         st.error(f"Failed to fetch videos: {e}")
         return None
-    
+
     if not video_ids:
-        st.error("No videos found in channel")
+        status.update(label="❌ No videos found", state="error")
+        st.error("No videos found in channel. This channel may be empty or have all videos set to private.")
         return None
     
     # Fetch detailed video info (to get tags, descriptions, stats)
@@ -277,6 +282,7 @@ def analyze_seed_channel_v2(
         videos = videos_response.get('items', [])
         
     except Exception as e:
+        status.update(label="❌ Failed to fetch video details", state="error")
         st.error(f"Failed to fetch video details: {e}")
         return None
     
@@ -326,8 +332,9 @@ def analyze_seed_channel_v2(
     sample_titles = [v['snippet']['title'] for v in videos]
     detected_language = detect_language(sample_titles)
     stopwords = get_stopwords(detected_language)
-    
-    st.info(f"🌍 Detected language: {detected_language.upper()}")
+
+    status.write(f"🌍 Language detected: **{detected_language.upper()}**")
+    status.write(f"🎬 Analyzing {len(videos)} videos...")
     
     # ========================================================================
     # STEP 5: Topic extraction from titles
@@ -516,11 +523,11 @@ Answer in the same language as the channel ({detected_language}).
             
             response = model.generate_content(summary_prompt)
             description_summary = response.text.strip()
-            
-            st.success("✨ Gemini enhanced analysis")
-            
+
+            status.write("✨ AI-enhanced analysis complete")
+
         except Exception as e:
-            st.warning(f"Gemini analysis skipped: {e}")
+            status.write(f"⚠️ AI analysis skipped: {e}")
     
     # ========================================================================
     # STEP 12: Calculate subscriber tier
@@ -558,7 +565,12 @@ Answer in the same language as the channel ({detected_language}).
         'recent_titles': sample_titles[:20],
         'description_summary': description_summary
     }
-    
-    st.success(f"✅ Analysis complete! Found {len(primary_keywords)} top phrases, {len(common_tags)} common tags and {len(secondary_keywords)} top keywords.")
-    
+
+    # Update status to complete state
+    status.update(
+        label=f"✅ Analysis complete: {len(primary_keywords)} phrases, {len(common_tags)} tags, {len(secondary_keywords)} keywords",
+        state="complete",
+        expanded=False
+    )
+
     return profile

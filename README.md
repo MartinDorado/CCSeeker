@@ -190,8 +190,9 @@ Measures how similar a candidate channel is to your seed channel.
 
 </details>
 ---
+<details>
+<summary><strong>🚀 Tech Stack</strong></summary>
 
-## 🚀 Tech Stack
 
 | Technology | Purpose | Why This Choice |
 |------------|---------|-----------------|
@@ -223,9 +224,10 @@ Measures how similar a candidate channel is to your seed channel.
 - Apply subscriber/country filters BEFORE analyzing videos
 - Saves API quota - no point fetching 10 videos from a 500-sub channel if minimum is 10K
 
+</details>
 ---
-
-## 🧪 Testing
+<details>
+<summary><strong>🧪 Testing</strong></summary>
 
 CCSeeker has a comprehensive test suite covering core business logic.
 
@@ -254,6 +256,7 @@ pytest tests/ -v
 
 All tests use mocked API clients - no actual API calls needed.
 
+</details>
 ---
 <details>
 <summary><strong>📦 Installation</strong></summary>
@@ -299,8 +302,8 @@ App opens at `http://localhost:8501`
 
 </details>
 ---
-
-## 📖 Usage
+<details>
+<summary><strong> 📖 Usage</strong></summary>
 
 <details>
 <summary><strong>Quick Start: Keyword Search</strong></summary>
@@ -355,10 +358,11 @@ Results ranked by similarity score (0-100) with match reasons.
 - Get personalized email templates for TOP 3.
 
 </details>
+</details>
 
 ---
-
-## 🗂️ Project Structure
+<details>
+<summary><strong>🗂️ Project Structure</strong></summary>
 
 ```
 CCSeeker/
@@ -411,6 +415,7 @@ CCSeeker/
 | `get_channel_stats_cached()` | cache/cache_layer.py | Cached channel data |
 | `track_api_call()` | debug_tracker.py | API usage tracking |
 
+</details>
 ---
 <details>
 <summary><strong>📊 API Quotas & Costs</strong></summary>
@@ -460,22 +465,22 @@ Enable debug mode to see real-time usage.
 
 </details>
 ---
-
-## 📄 License
+<details>
+<summary><strong> 📄 License </strong></summary>
 
 This project is licensed under the Apache License 2.0 - see [LICENSE](LICENSE) for details.
-
+</details>
 ---
-
-## 👤 Author
+<details>
+<summary><strong>👤 Author </strong></summary>
 
 **Martín Dorado**
 - LinkedIn: [linkedin.com/in/martin-dorado](https://www.linkedin.com/in/martin-dorado/)
 - GitHub: [@MartinDorado](https://github.com/MartinDorado)
-
+</details>
 ---
-
-## 📚 Additional Resources
+<details>
+<summary><strong>📚 Additional Resources </strong></summary>
 
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Deep dive into system design, scoring algorithms, and caching
 - **[CLAUDE.md](CLAUDE.md)** - Quick reference for AI assistants and developers

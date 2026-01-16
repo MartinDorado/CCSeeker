@@ -596,9 +596,32 @@ def run_search(
     for warning in result.warnings:
         st.warning(warning)
 
-    # Handle errors
+    # Handle errors with contextual guidance
     if result.error:
         st.error(f"Search error: {result.error}")
+
+        # Provide actionable suggestions based on error type
+        if "did not return any channels" in result.error.lower():
+            st.markdown("""
+**Suggestions:**
+- Try broader or different search terms
+- Check spelling of keywords
+- Remove quotes from search terms if present
+""")
+        elif "filtering criteria" in result.error.lower() or "subscriber" in result.error.lower():
+            st.markdown("""
+**Suggestions:**
+- Lower the minimum subscriber threshold
+- Remove the country filter (set to "Global")
+- Try a shorter recency period
+""")
+        elif "no channels in the similar size range" in result.error.lower():
+            st.markdown("""
+**Suggestions:**
+- Your seed channel may be unusually large or small
+- Try disabling the subscriber range filter
+- Consider using keyword search instead
+""")
         return
 
     # Show raw channels in expander (if available)
@@ -846,7 +869,8 @@ if submitted:
     st.session_state['feedback_submitted'] = False
     st.session_state['show_reason_selector'] = False
     if not YOUTUBE_API_KEY:
-        st.error("Please ensure your YOUTUBE_API_KEY is set in your .env file.")
+        st.error("YouTube API key not configured.")
+        st.markdown("**Setup:** Create a `.env` file with `YOUTUBE_API_KEY=your_key`. Get a free API key at [Google Cloud Console](https://console.cloud.google.com/apis/credentials).")
     else:
         youtube = get_youtube()
         final_query = ""
@@ -855,10 +879,14 @@ if submitted:
             with st.spinner("Resolving channel..."):
                 seed_channel_id = resolve_channel_id(youtube, seed_url_input)
             if not seed_channel_id:
-                st.error("Could not resolve a channel ID from the provided input. Use a full channel URL, @handle, or a UC… ID.")
+                st.error("Could not resolve a channel ID from the provided input.")
+                st.markdown("""
+**Try one of these formats:**
+- Full URL: `youtube.com/@ChannelName` or `youtube.com/channel/UC...`
+- Handle: `@ChannelName`
+- Channel ID: `UC...` (starts with UC)
+""")
                 final_query = None
-            else:
-                st.info(f"Using Channel ID: {seed_channel_id}")
 
             if seed_channel_id:
                 # NEW: Analyze seed channel to extract complete profile
@@ -1120,7 +1148,7 @@ if 'display_df' in st.session_state:
     with st.expander("📖 Column Definitions", expanded=False):
         if 'column_explanations' in st.session_state:
             explanations = st.session_state['column_explanations']
-            
+
             for col_key, col_name in [
                 ("similarity_score", "**Similarity Score**"),
                 ("relevance_score", "**Relevance Score**"),
@@ -1131,6 +1159,47 @@ if 'display_df' in st.session_state:
             ]:
                 if col_key in explanations:
                     st.markdown(f"{col_name}: {explanations[col_key]}")
+
+    # Score interpretation guide
+    with st.expander("📊 Understanding Scores", expanded=False):
+        # Determine which score type to show based on search mode
+        if 'similarity_score' in st.session_state.get('display_df', pd.DataFrame()).columns:
+            st.markdown("""
+**Similarity Score** (Seed Mode)
+
+| Score | Interpretation |
+|-------|----------------|
+| **70-100** | Excellent match - very similar content, audience, and style |
+| **50-69** | Good match - significant topic overlap |
+| **30-49** | Moderate - some shared interests |
+| **< 30** | Weak match - tangentially related |
+
+*Score is 80% algorithmic (tags, keywords, size, engagement, frequency) + 20% AI semantic analysis.*
+""")
+        else:
+            st.markdown("""
+**Relevance Score** (Keyword Mode)
+
+| Score | Interpretation |
+|-------|----------------|
+| **50%+** | Highly focused - channel specializes in your topic |
+| **25-49%** | Good focus - topic is a major part of their content |
+| **10-24%** | Moderate - topic appears regularly |
+| **< 10%** | Low focus - topic is occasional |
+
+*Score is 80% keyword matching (titles weighted 2x, tags 1x) + 20% AI semantic analysis.*
+""")
+
+        st.markdown("""
+**Engagement Rate Benchmarks**
+
+| Rate | Interpretation |
+|------|----------------|
+| **> 5%** | Exceptional - highly engaged audience |
+| **2-5%** | Good - active community |
+| **1-2%** | Average for most niches |
+| **< 1%** | Below average engagement |
+""")
     
     # === AI SUMMARY (Display after results table) ===
     if 'ai_summary' in st.session_state:
@@ -1437,7 +1506,8 @@ if 'top_channels_for_outreach' in st.session_state and not st.session_state['top
 
     if st.button("Generate Outreach Drafts", key="btn_outreach"):
         if not GEMINI_API_KEY:
-            st.error("Please ensure your GEMINI_API_KEY is set in your .env file to generate outreach drafts.")
+            st.error("Gemini API key not configured.")
+            st.markdown("**Setup:** Add `GEMINI_API_KEY=your_key` to your `.env` file. Get a free API key at [Google AI Studio](https://aistudio.google.com/apikey).")
         else:
             with st.spinner("Generating outreach drafts..."):
                 try:

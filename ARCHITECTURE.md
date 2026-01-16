@@ -9,625 +9,631 @@ CCSeeker is a YouTube creator discovery tool that solves a specific problem: fin
 - Provide two distinct search modes for different user scenarios
 - Make internal workings transparent through debug tooling
 - Fail gracefully when APIs are unavailable or quota is exhausted
+- Separate pure business logic from UI for testability
 
 **Tech Stack:**
 - **Streamlit**: UI framework with built-in state management and caching
 - **YouTube Data API v3**: Channel and video metadata retrieval
-- **Google Gemini AI**: Optional topic extraction and content generation
+- **Google Gemini AI**: Topic extraction, relevance scoring, and content generation
 - **Pandas**: Data transformation and filtering
-- **Custom caching layer**: Per-channel video storage
+- **pytest**: Unit testing with mocked API clients
 
 ---
 
-## Architecture: Top-Down View
+## Architecture: Layered Design
 
 ```
-User Input (Keyword OR Seed URL)
-         ↓
-   Search Mode Router
-         ↓
-    ┌────┴────┐
-    ↓         ↓
-Keyword    Seed Analysis
-Search     (extract topics)
-    ↓         ↓
-    └────┬────┘
-         ↓
-   YouTube API Search
-         ↓
-   Filter & Rank Pipeline
-         ↓
-   Display Results + Optional AI Features
+┌─────────────────────────────────────────────────────────────────┐
+│                        PRESENTATION LAYER                        │
+│                         (app/main.py)                           │
+│    Streamlit UI, user interactions, session state, rendering    │
+└─────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         CACHE LAYER                              │
+│                        (app/cache/)                              │
+│      Streamlit @cache_data wrappers, TTL management             │
+└─────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                          CORE LAYER                              │
+│                         (app/core/)                              │
+│   Pure business logic: pipeline, APIs, relevance, validation    │
+│              (Streamlit-agnostic, unit testable)                │
+└─────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                       EXTERNAL SERVICES                          │
+│              YouTube Data API v3  │  Google Gemini AI           │
+└─────────────────────────────────────────────────────────────────┘
 ```
-## Design Evolution
 
-**Initial Constraints:**
-- First production application 
-- Uncertain scope during development (started as keyword search, evolved to include AI-powered seed analysis)
-- Rapid as possible prototyping with AI assistance to validate product-market fit.
+### Layer Responsibilities
 
-
-**Architectural Decision: Monolithic Structure**
-
-The main application file (~2000 lines) consolidates UI, business logic, and orchestration in a single module. This was a deliberate choice to:
-
-1. **Maintain coherent data flow** - Streamlit's reactive model makes state management across modules complex
-2. **Minimize integration points** - Fewer files = fewer places for API quota tracking to break
-3. **Enable rapid iteration** - Changes to search logic often require UI adjustments; co-location speeds this up
-
-**Trade-offs Accepted:**
-- Harder for external contributors to navigate (mitigated by section comments and docstrings)
-- Some functions are far from ideal length 
-- Testing requires more setup due to tight coupling
-
-## 🔧 Post-Launch Refactoring Roadmap
-
-This project started life as an MVP, optimized for getting a working tool into my hands
-as fast as possible. As a result, a lot of logic currently lives inside the Streamlit app
-(`main.py`), and most testing has been manual.
-
-The refactoring plan is intentionally incremental and test-first:
-
-1. **Stabilize current behaviour**
-   - Document a manual QA checklist for both search modes (keywords + seed).
-   - Add a few tiny smoke tests for pure functions (e.g. similarity scoring).
-
-2. **Add unit tests for core logic**
-   - Cover `similarity_engine.py` (Jaccard similarity, scoring breakdown).
-   - Cover parts of `seed_topics_v2.py` (topic extraction, penalty system).
-   - Add small tests for cache-key generation and tag handling in `smart_cache.py`.
-
-3. **Split main.py into smaller modules (no behaviour changes)**
-   - `config.py` – constants and configuration notes.
-   - `youtube_client.py` / `gemini_client.py` – external API clients and helpers.
-   - `search_pipeline.py` – `run_search` and related search/relevance logic.
-   - `ui_seed.py`, `ui_results.py` – seed profile panel and results/analysis UI.
-
-4. **Gradually increase test coverage**
-   - Add tests around the search pipeline with mocked YouTube/Gemini clients.
-   - Add regression tests for edge cases (no results, quota errors, missing data).
+| Layer | Location | Responsibility |
+|-------|----------|----------------|
+| **Presentation** | `app/main.py` | UI rendering, user input, session state, progress display |
+| **Cache** | `app/cache/` | Streamlit caching wrappers, TTL configuration |
+| **Core** | `app/core/` | Pure business logic, API wrappers, pipeline orchestration |
+| **Utilities** | `app/*.py` | Seed analysis, similarity scoring, debug tracking |
 
 ---
 
-## Mode 1: Keyword Search
+## Project Structure
 
-**Entry Point:** `run_search()` in `main.py`
-
-### Flow
-
-**1. Query Validation & Multi-Term Handling**
-
-```python
-def search_channels_multi_term(query: str, region_code: str, 
-                               max_videos_per_term: int = 100):
-    """
-    Handle comma-separated queries with OR logic.
-    Example: "manga, anime" → search both, merge results
-    """
-    terms = [t.strip() for t in query.split(',') if t.strip()]
-    
-    # Safety: enforce 2-term maximum
-    if len(terms) > 2:
-        terms = terms[:2]  # Auto-truncate
 ```
-
-User enters "manga, anime, gaming" → System auto-truncates to "manga, anime" and warns user.
-
-**2. Hybrid Search Strategy**
-
-```python
-def search_channels_hybrid(query: str, region_code: str):
-    """
-    Two-phase search:
-    A) Primary: Find channels by VIDEO content
-    B) Secondary: Find channels by NAME
-    C) Combine and rank by match score
-    """
+CCSeeker/
+├── app/
+│   ├── core/                     # Pure business logic (Streamlit-agnostic)
+│   │   ├── __init__.py           # Public API exports (~30 functions/classes)
+│   │   ├── query_utils.py        # Query validation, URL parsing, channel ID resolution
+│   │   ├── relevance.py          # Keyword relevance scoring
+│   │   ├── youtube_api.py        # YouTube Data API wrappers
+│   │   ├── gemini_api.py         # Gemini AI API wrappers
+│   │   └── pipeline.py           # Search pipeline orchestration
+│   │
+│   ├── cache/                    # Centralized caching layer
+│   │   ├── __init__.py           # Cache exports and TTL constants
+│   │   └── cache_layer.py        # Streamlit @cache_data wrappers
+│   │
+│   ├── main.py                   # Streamlit UI (~1467 lines)
+│   ├── seed_topics_v2.py         # Seed channel topic extraction
+│   ├── similarity_engine.py      # Multi-factor similarity scoring
+│   ├── debug_tracker.py          # API usage tracking, quota monitoring
+│   ├── feedback_tracker.py       # User feedback collection
+│   └── smart_cache.py            # Per-channel video caching (24h TTL)
+│
+├── tests/                        # Unit test suite
+│   ├── test_query_utils.py       # Query validation tests
+│   ├── test_relevance.py         # Relevance scoring tests
+│   ├── test_youtube_api.py       # YouTube API wrapper tests
+│   ├── test_gemini_api.py        # Gemini API wrapper tests
+│   └── test_pipeline.py          # Pipeline integration tests
+│
+├── docs/                         # Documentation assets
+├── .streamlit/config.toml        # Streamlit configuration
+├── requirements.txt              # Python dependencies
+└── README.md                     # User guide
 ```
-
-**Phase A - Video Content Search:**
-```python
-# Search for videos matching query
-video_response = youtube.search().list(
-    q=query,
-    type='video',
-    maxResults=50, #Is 50 for being able to fetch a nextPageToken. MAX_VIDEOS_PER_TERM = 100
-    order='relevance'
-).execute()
-
-# Extract channels from videos
-for item in video_response['items']:
-    channel_id = item['snippet']['channelId']
-    all_channels[channel_id]['video_matches'] += 1
-```
-
-**Phase B - Channel Name Search:**
-```python
-# Search for channels by name
-channel_response = youtube.search().list(
-    q=query,
-    type='channel',
-    maxResults=50
-).execute()
-
-# Mark channels found by name
-for item in channel_response['items']:
-    channel_id = item['id']['channelId']
-    all_channels[channel_id]['name_match'] = True
-```
-
-**Phase C - Scoring & Sorting:**
-```python
-# Calculate match scores
-for channel_id, data in all_channels.items():
-    match_score = data['video_matches'] * 10  # Video matches = 10 pts each
-    if data['name_match']:
-        match_score += 5  # Name match bonus = 5 pts
-    
-    ranked_channels.append({
-        'channel_id': channel_id,
-        'match_score': match_score
-    })
-
-# Sort by relevance (match_score descending)
-ranked_channels.sort(key=lambda x: x['match_score'], reverse=True)
-```
-
-**Why this approach?** A channel with 8 relevant videos (80 pts) outranks one that merely has the keyword in its name (5 pts).
-
-**3. Channel Statistics Fetch**
-
-```python
-def get_channel_stats(youtube_service, channel_ids):
-    """
-    Fetch comprehensive metadata for channels.
-    API call: channels.list() - costs 1 unit per 50 channels
-    """
-    for item in response['items']:
-        # Calculate derived metrics
-        videos_count = int(statistics.get("videoCount", 0))
-        total_views = int(statistics.get("viewCount", 0))
-        avg_views = total_views / videos_count if videos_count > 0 else 0
-        
-        # Calculate channel age
-        published_at = snippet.get("publishedAt")
-        channel_age_days = (datetime.now() - parse(published_at)).days
-        
-        stats_data.append({
-            "channel_id": item["id"],
-            "country": snippet.get("country", "N/A"),
-            "subscribers": int(statistics.get("subscriberCount", 0)),
-            "views": total_views,
-            "videos": videos_count,
-            "uploads_playlist_id": uploads_id,
-            "avg_views_per_video": avg_views,
-            "channel_age_days": channel_age_days
-        })
-```
-
-**4. Filter Pipeline (BEFORE video fetching)**
-
-```python
-# Step 3: Apply filters FIRST (saves API quota)
-filtered_channels = enriched_channel_data[
-    enriched_channel_data['subscribers'] >= min_subs_input
-].copy()
-
-# Optional: strict country filter
-if country_filter_input:
-    filtered_channels = filtered_channels[
-        filtered_channels['country'] == country_filter_input.upper()
-    ]
-```
-
-**Design decision:** Filter by subscribers/country BEFORE fetching videos. No point analyzing a 500-subscriber channel if minimum is 10K.
-
-**5. Quality Selection & Deep Analysis**
-
-```python
-# Step 4: Cap at 50 channels, require minimum relevance
-MIN_MATCH_SCORE = 10
-quality_channels = filtered_channels[
-    filtered_channels['match_score'] >= MIN_MATCH_SCORE
-].head(50)
-
-# Step 5: Fetch 10 videos per channel for relevance analysis
-video_data = get_video_details_cached(
-    channel_ids_tuple, 
-    max_videos=10  # Deep analysis depth
-)
-```
-
-**6. Relevance Scoring**
-
-```python
-def calculate_keyword_relevance(df, query):
-    """
-    Compute % of channel's videos that mention query terms.
-    
-    Returns: relevance_score (0.0 to 1.0)
-    """
-    # Match query terms against video titles + tags
-    pattern = '(?:' + '|'.join(escaped_terms) + ')'
-    df['is_relevant'] = df['combined_text'].str.contains(
-        pattern, case=False
-    )
-    
-    # Average across channel's videos
-    relevance = df.groupby('channel_id')['is_relevant'].mean()
-```
-
-Example: Channel with 7/10 recent videos about "manga" → relevance_score = 0.70 (70%)
 
 ---
 
-## Mode 2: Seed-Based Search
+## Core Layer Design (`app/core/`)
 
-**Entry Point:** User pastes channel URL → `analyze_seed_channel_v2()` → similarity ranking
+The core layer contains pure business logic extracted from the original monolithic `main.py`. These modules are:
 
-### Seed Analysis Pipeline
+- **Streamlit-agnostic**: No `st.*` calls, no session state access
+- **Testable**: Can be unit tested with mocked dependencies
+- **Callback-based**: Progress and warnings communicated via callbacks
 
-**1. Extract Seed Profile**
+### Module Overview
+
+| Module | Lines | Key Exports |
+|--------|-------|-------------|
+| `query_utils.py` | 199 | `validate_and_truncate_query()`, `extract_identifier_from_url()`, `resolve_channel_id()` |
+| `relevance.py` | 115 | `calculate_keyword_relevance()` |
+| `youtube_api.py` | 483 | `SearchResult`, `ChannelStatsResult`, `VideoDetailsResult`, `search_channels_hybrid()`, `get_channel_stats()`, `get_video_details()` |
+| `gemini_api.py` | 290 | `OutreachDraft`, `SummaryResult`, `generate_ai_relevance_score()`, `generate_summary()`, `generate_outreach_drafts()` |
+| `pipeline.py` | 753 | `PipelineResult`, `PipelineConfig`, `run_search_pipeline()` |
+
+### Design Patterns
+
+**1. Structured Results (Dataclasses)**
+```python
+@dataclass
+class PipelineResult:
+    channels_df: pd.DataFrame
+    display_columns: list[str]
+    column_explanations: dict[str, str]
+    search_log: list[str]
+    timings: dict[str, float]
+    warnings: list[str]
+    error: str | None = None
+    ai_summary: str | None = None
+```
+
+**2. Callback Pattern for Progress**
+```python
+def run_search_pipeline(
+    youtube_service,
+    query: str,
+    config: PipelineConfig,
+    on_progress: Callable[[str, float], None] | None = None,  # UI updates
+    on_api_call: Callable[[str], None] | None = None,         # Tracking
+) -> PipelineResult:
+```
+
+**3. Protocol for Dependency Injection**
+```python
+class CacheFunctions(Protocol):
+    def get_channel_stats_cached(self, channel_ids: tuple) -> list[dict]: ...
+    def get_video_details_cached(self, channel_ids: tuple, max_videos: int) -> list[dict]: ...
+    def search_channels_cached(self, query: str, region: str, max_videos: int) -> list[dict]: ...
+```
+
+---
+
+## Search Pipeline Flow
+
+### Keyword Mode
+
+```
+User Input: "manga, anime"
+         │
+         ▼
+┌─────────────────────────────────────────┐
+│ STEP 1: Query Validation                │
+│ • Truncate to max 2 terms               │
+│ • Strip quotes, normalize               │
+└─────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────┐
+│ STEP 2: Hybrid Search                   │
+│ A) Video search → extract channel IDs   │
+│ B) Channel name search → bonus matches  │
+│ C) Score: video_matches*10 + name*5     │
+└─────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────┐
+│ STEP 3: Fetch Channel Statistics        │
+│ • Subscribers, views, country           │
+│ • Channel age, uploads playlist ID      │
+└─────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────┐
+│ STEP 4: Apply Filters                   │
+│ • Minimum subscribers                   │
+│ • Country filter                        │
+│ • Match score threshold                 │
+│ • Cap at 50 channels                    │
+└─────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────┐
+│ STEP 5: Deep Analysis                   │
+│ • Fetch 10 videos per channel           │
+│ • Calculate engagement rates            │
+│ • Apply recency filter                  │
+└─────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────┐
+│ STEP 6: Relevance Scoring               │
+│ A) Algorithmic: keyword match in        │
+│    titles (2x weight) + tags (1x)       │
+│ B) AI: Gemini semantic analysis         │
+│ C) Blend: 80% algorithmic + 20% AI      │
+└─────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────┐
+│ STEP 7: AI Summary (optional)           │
+│ • Generate overview of top 5 channels   │
+└─────────────────────────────────────────┘
+         │
+         ▼
+        Results
+```
+
+### Seed Mode (Additional Steps)
+
+```
+User Input: youtube.com/@channel
+         │
+         ▼
+┌─────────────────────────────────────────┐
+│ SEED ANALYSIS (seed_topics_v2.py)       │
+│ 1. Detect language (EN/ES stopwords)    │
+│ 2. Extract bigrams from titles          │
+│ 3. Extract tags from videos             │
+│ 4. Apply penalty system for noise       │
+│ 5. Gemini refinement (optional)         │
+│                                         │
+│ Output: seed_profile dict               │
+│ • primary_keywords (phrases)            │
+│ • secondary_keywords (words)            │
+│ • common_tags                           │
+│ • engagement_rate, upload_frequency     │
+└─────────────────────────────────────────┘
+         │
+         ▼
+      [Search Pipeline Steps 1-5]
+         │
+         ▼
+┌─────────────────────────────────────────┐
+│ SIMILARITY SCORING                      │
+│ (similarity_engine.py)                  │
+│                                         │
+│ For each candidate channel:             │
+│ ┌─────────────────────────────────────┐ │
+│ │ Tag Overlap (30 pts)                │ │
+│ │ Jaccard(candidate_tags, seed_tags)  │ │
+│ ├─────────────────────────────────────┤ │
+│ │ Keyword Overlap (30 pts)            │ │
+│ │ Jaccard(candidate_kw, seed_kw)      │ │
+│ ├─────────────────────────────────────┤ │
+│ │ Subscriber Similarity (15 pts)      │ │
+│ │ min(ratio, inverse_ratio)           │ │
+│ ├─────────────────────────────────────┤ │
+│ │ Engagement Similarity (17 pts)      │ │
+│ │ 17 - (diff * 170)                   │ │
+│ ├─────────────────────────────────────┤ │
+│ │ Upload Frequency (8 pts)            │ │
+│ │ min(ratio, inverse_ratio) * 8       │ │
+│ └─────────────────────────────────────┘ │
+│                                         │
+│ Algorithmic Score: 0-100 points         │
+└─────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────┐
+│ GEMINI "VIBE" ANALYSIS                  │
+│ (Top 10 channels only)                  │
+│                                         │
+│ Evaluates:                              │
+│ • Topic overlap                         │
+│ • Content style                         │
+│ • Target audience                       │
+│ • Production approach                   │
+│                                         │
+│ Returns: gemini_score (0-10)            │
+└─────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────┐
+│ FINAL BLENDED SCORE                     │
+│                                         │
+│ final = 0.8 * algorithmic + 0.2 * AI    │
+└─────────────────────────────────────────┘
+```
+
+---
+
+## Scoring Algorithms
+
+### Keyword Mode: Relevance Score
+
+The relevance score measures how well a channel's content matches the search query.
 
 ```python
-def analyze_seed_channel_v2(youtube_service, channel_id, 
-                            max_videos=50, user_banned_words=None):
+def calculate_keyword_relevance(df: pd.DataFrame, query: str) -> pd.DataFrame:
     """
-    Build comprehensive profile from seed channel:
-    - Primary keywords (multi-word phrases from titles)
-    - Secondary keywords (single words)
-    - Common tags (from video metadata)
-    - Engagement rate, upload frequency, subscriber tier
+    1. Parse query into terms (comma-separated)
+    2. For each video:
+       - title_match = query term found in title (weight: 2.0)
+       - tags_match = query term found in tags (weight: 1.0)
+       - video_score = (2.0 * title_match + 1.0 * tags_match) / 3.0
+    3. Channel relevance = mean(video_scores)
+
+    Returns: 0.0 to 1.0
     """
 ```
 
-**Step A - Language Detection:**
+**AI Enhancement:**
 ```python
-def detect_language(texts: list[str]) -> str:
-    """Count EN vs ES stopword hits"""
-    return 'es' if es_hits > en_hits else 'en'
+# Gemini evaluates video titles semantically
+ai_score = generate_ai_relevance_score(model, channel_data, query)  # 0.0-1.0
 
-stopwords = get_stopwords(detected_language)
+# Blend: 80% keyword matching + 20% AI
+final_relevance = 0.8 * algorithmic_relevance + 0.2 * ai_score
 ```
 
-**Step B - Topic Extraction:**
-```python
-# Extract bigrams (2-word phrases)
-for video in videos:
-    tokens = tokenize(title, stopwords)  # Remove stopwords
-    bigrams = extract_bigrams(tokens)    # "healthy" + "vegan" → "healthy vegan"
+### Seed Mode: Similarity Score
 
-# Count document frequency (how many videos mention each term)
-min_doc_freq = ceil(0.20 * n_videos)  # Must appear in 20% of videos
+The similarity score compares a candidate channel to the seed channel across multiple factors.
 
-# Score with penalty system
-for term, doc_freq in tag_docs.items():
-    penalty = calculate_term_penalty(term, user_banned_words)
-    score = doc_freq * 2.0 * (1.0 - penalty)  # Tags = 2x weight
-```
-
-**Penalty System** (replaces hard blocking):
-```python
-def calculate_term_penalty(term: str, user_banned: set) -> float:
-    """
-    Returns 0.0 (perfect) to 1.0 (remove)
-    
-    - User-banned words: +0.9
-    - Years (2024): +0.5
-    - Numbers (ep5): +0.3
-    - Months (January): +0.4
-    - Promo words (subscribe): +0.3
-    """
-```
-
-**Output:**
-```python
-seed_profile = {
-    'channel_name': str,
-    'subscriber_count': int,
-    'language': 'en' | 'es',
-    'upload_frequency': float,  # videos/month
-    'avg_engagement_rate': float,
-    
-    'primary_keywords': [str],    # Top 5 phrases
-    'secondary_keywords': [str],  # Top 10 words
-    'common_tags': [str],         # Top 15 tags
-    'recent_titles': [str]
-}
-```
-
-**2. Similarity Scoring**
-
-```python
-def calculate_similarity_score(candidate: dict, 
-                               seed_profile: dict) -> dict:
-    """
-    Multi-factor scoring (100 points total)
-    
-    Returns: {
-        'total_score': float,
-        'match_reasons': [str],
-        'breakdown': dict  # if debug=True
-    }
-    """
-```
-
-**The Algorithm:**
-
-```python
-# Factor 1: Tag Overlap (30 points)
-candidate_tags = set(candidate['tags'])
-seed_tags = set(seed_profile['common_tags'])
-tag_overlap = jaccard_similarity(candidate_tags, seed_tags)
-score += tag_overlap * 30
-
-# Factor 2: Keyword Match (30 points)
-candidate_kw = set(candidate['keywords'])
-seed_kw = set(seed_profile['primary_keywords'] + 
-              seed_profile['secondary_keywords'])
-keyword_overlap = jaccard_similarity(candidate_kw, seed_kw)
-score += keyword_overlap * 30
-
-# Factor 3: Subscriber Similarity (15 points)
-ratio = min(candidate_subs / seed_subs, seed_subs / candidate_subs)
-score += ratio * 15
-
-# Factor 4: Engagement Rate (17 points)
-engagement_diff = abs(candidate_engagement - seed_engagement)
-score += max(0, 17 - (engagement_diff * 170))
-
-# Factor 5: Upload Frequency (8 points)
-freq_ratio = min(candidate_freq / seed_freq, seed_freq / candidate_freq)
-score += freq_ratio * 8
-```
+| Factor | Points | Calculation | Signal Quality |
+|--------|--------|-------------|----------------|
+| **Tag Overlap** | 30 | Jaccard similarity on video tags | High - creators consciously choose tags |
+| **Keyword Overlap** | 30 | Jaccard similarity on title keywords | High - reflects content focus |
+| **Subscriber Tier** | 15 | min(candidate/seed, seed/candidate) | Medium - prevents size mismatch |
+| **Engagement Rate** | 17 | 17 - (abs_diff * 170) | Medium - audience quality indicator |
+| **Upload Frequency** | 8 | ratio * 8 | Low - nice-to-have |
 
 **Jaccard Similarity:**
 ```python
 def jaccard_similarity(set1: set, set2: set) -> float:
-    """
-    J(A, B) = |A ∩ B| / |A ∪ B|
-    
-    Example:
-    A = {manga, anime, review}
-    B = {manga, anime, shonen}
-    Intersection = 2, Union = 4
-    Score = 0.5
-    """
-    return len(set1 & set2) / len(set1 | set2)
+    """J(A, B) = |A ∩ B| / |A ∪ B|"""
+    return len(set1 & set2) / len(set1 | set2) if (set1 | set2) else 0.0
 ```
 
-**Why these weights?**
-- **Tags (30%)**: Most reliable - creators consciously choose these
-- **Keywords (30%)**: Content focus indicator from titles
-- **Subscriber tier (15%)**: Prevents 10M channel matching with 10K
-- **Engagement (17%)**: Audience quality matters
-- **Upload frequency (8%)**: Nice-to-have, not critical
+**Gemini "Vibe" Analysis (top 10 channels):**
+```python
+# Evaluates content similarity beyond keyword matching
+gemini_result = gemini_similarity_analysis(candidate, seed_profile, api_key)
+# Returns: gemini_score (0-10), gemini_reason
+
+# Final blend
+final_similarity = 0.8 * algorithmic_score + 0.2 * (gemini_score * 10)
+```
 
 ---
 
 ## Caching Architecture
 
-**Problem:** Popular channels appear in multiple searches. Traditional per-search caching duplicates video fetches.
+### Cache TTLs
 
-**Solution:** Per-channel caching with 24-hour TTL
+| Data Type | TTL | Rationale |
+|-----------|-----|-----------|
+| Channel stats | 7 days | Subscriber counts change slowly |
+| Search results | 3 days | Moderate freshness needed |
+| Video details | 24 hours | New uploads appear daily |
+
+### Per-Channel Video Caching
 
 ```python
-class ChannelVideoCache:
-    @staticmethod
-    @st.cache_data(ttl=86400)  # 24 hours
-    def get_channel_videos(channel_id: str, 
-                          uploads_playlist_id: str,
-                          max_videos: int,
-                          _youtube_service):
-        """
-        Cache individual channel's videos independently.
-        
-        Key insight: Channel content doesn't change hourly,
-        but search queries do.
-        """
+# Problem: Popular channels appear in multiple searches
+# Solution: Cache by channel_id, not by search query
+
+@st.cache_data(ttl=86400)  # 24 hours
+def get_channel_videos(channel_id: str, max_videos: int):
+    """Cache individual channel's videos independently"""
+    pass
+
+# Search 1: "manga" → Fetches channels A, B, C videos
+# Search 2: "anime" → Cache HIT for B, C; only fetch D
 ```
 
-**How it works:**
+### Cache Key Strategy
 
-```
-Search 1: "manga" → Finds channels A, B, C
-  ├─ Fetch A's videos → Cache[A] = [...videos]
-  ├─ Fetch B's videos → Cache[B] = [...videos]
-  └─ Fetch C's videos → Cache[C] = [...videos]
-
-Search 2: "anime" → Finds channels B, C, D
-  ├─ Cache HIT for B → 2 API calls saved
-  ├─ Cache HIT for C → 2 API calls saved
-  └─ Fetch D's videos → Cache[D] = [...videos]
-```
-
-**Cache key strategy:**
 ```python
+# Include max_videos in key (seed uses 50, keyword uses 10)
 def _make_cache_key(channel_id: str, max_videos: int) -> str:
     return f"ch_vids_{channel_id}_{max_videos}"
 ```
 
-Why include `max_videos`? Seed analysis uses 50 videos, keyword search uses 10. Different cache entries.
+### CacheFunctionsAdapter
+
+The pipeline accepts a `CacheFunctions` protocol for dependency injection:
+
+```python
+class CacheFunctionsAdapter:
+    """Adapter connecting core pipeline to Streamlit cache layer"""
+
+    def get_channel_stats_cached(self, channel_ids: tuple) -> list[dict]:
+        return cache_layer.get_channel_stats_cached(channel_ids)
+
+    def get_video_details_cached(self, channel_ids: tuple, max_videos: int) -> list[dict]:
+        return cache_layer.get_video_details_cached(channel_ids, max_videos)
+```
 
 ---
 
 ## Debug & Monitoring System
-
-**Purpose:** Make API usage visible to help users stay within quotas.
 
 ### API Call Tracking
 
 ```python
 def track_api_call(api_name: str):
     """
-    Increment counter for specific API.
-    
     Tracked operations:
-    - youtube_search
-    - youtube_channel
-    - youtube_video
-    - youtube_playlist
+    - youtube_search (100 units)
+    - youtube_channel (1 unit)
+    - youtube_video (1 unit)
+    - youtube_playlist (1 unit)
     - gemini_summary
     - gemini_outreach
     - gemini_similarity
     """
-    st.session_state.debug_data[f'{api_name}_calls'] += 1
 ```
 
-**Called from:**
-```python
-# In search function
-response = youtube.search().list(...).execute()
-debug_tracker.track_api_call('youtube_search')  # Log the call
-
-# In seed analysis
-response = model.generate_content(prompt)
-debug_tracker.track_api_call('gemini_summary')
-```
-
-### Quota Calculation
+### Quota Monitoring
 
 ```python
-def calculate_youtube_quota_used():
+def calculate_youtube_quota_used() -> int:
     """
     YouTube API quota costs:
     - search: 100 units
-    - channels: 1 unit
-    - videos: 1 unit
-    - playlistItems: 1 unit
-    
+    - channels/videos/playlists: 1 unit each
+
     Daily limit: 10,000 units (free tier)
     """
-    total = 0
-    total += data['youtube_search_calls'] * 100
-    total += data['youtube_channel_calls'] * 1
-    total += data['youtube_video_calls'] * 1
-    total += data['youtube_playlist_calls'] * 1
-    return total
+    return (
+        data['youtube_search_calls'] * 100 +
+        data['youtube_channel_calls'] * 1 +
+        data['youtube_video_calls'] * 1 +
+        data['youtube_playlist_calls'] * 1
+    )
 ```
 
 ### Performance Timing
 
-```python
-@time_operation('search')
-def run_search(...):
-    # Function executes
-    # Timing recorded automatically
-```
-
-Tracks:
-- Search time
+The debug sidebar displays timing for each pipeline step:
+- Search
 - Channel stats fetch
 - Video details fetch
+- AI relevance scoring
 - Similarity calculation
 - AI generation
 - **Total time**
 
+Plus bottleneck identification: shows which step consumed the most time.
+
+### Daily Quota Persistence
+
+```python
+# Quota tracking persists across browser refreshes
+daily_quota = {
+    'date': '2024-01-15',
+    'youtube_units': 1500,
+    'youtube_calls': 25,
+    'gemini_calls': 10,
+    'gemini_cost_usd': 0.0012
+}
+# Stored in .daily_quota.json, resets at midnight PT
+```
+
 ---
 
-## Data Flow: Complete Picture
+## Testing Architecture
 
+### Test Strategy
+
+All core modules are tested with mocked API clients - no actual API calls needed.
+
+```python
+@pytest.fixture
+def mock_youtube():
+    """Create mock YouTube API with reasonable defaults"""
+    youtube = Mock()
+    youtube.search().list().execute.return_value = {...}
+    youtube.channels().list().execute.return_value = {...}
+    return youtube
 ```
-1. USER INPUT
-   Keywords: "manga, anime" OR Seed URL: youtube.com/@channel
 
-2. SEARCH PHASE
-   ├─ Keyword → Hybrid search (video + name)
-   └─ Seed → Extract profile → Generate keywords
-   
-3. API CALLS (with caching)
-   ├─ Search API (100 units each)
-   ├─ Channels API (1 unit per 50)
-   └─ Videos API (1 unit per channel) ← CACHED
+### Test Coverage
 
-4. FILTER PIPELINE
-   ├─ Subscriber threshold
-   ├─ Country filter
-   ├─ Match score minimum (10)
-   └─ Cap at 50 channels
+| Module | Tests | Coverage Focus |
+|--------|-------|----------------|
+| `test_query_utils.py` | 21 | Query validation, URL parsing, edge cases |
+| `test_relevance.py` | 13 | Keyword matching, weights, empty inputs |
+| `test_youtube_api.py` | ~20 | Search results, channel stats, error handling |
+| `test_gemini_api.py` | ~15 | AI scoring, summary generation, API failures |
+| `test_pipeline.py` | ~25 | Full pipeline, filters, early exits, callbacks |
 
-5. DEEP ANALYSIS
-   ├─ Fetch 10 videos per channel
-   ├─ Calculate relevance score
-   ├─ Calculate engagement rate
-   └─ [Optional] Similarity ranking
+### Running Tests
 
-6. AI ENHANCEMENT (optional)
-   ├─ Generate summary (Gemini)
-   └─ Create outreach emails (Gemini)
+```bash
+# All tests
+pytest tests/
 
-7. DISPLAY
-   ├─ Results table
-   ├─ Match explanations
-   └─ Debug metrics (if enabled)
+# Specific module
+pytest tests/test_pipeline.py
+
+# Verbose output
+pytest tests/ -v
+
+# With coverage
+pytest tests/ --cov=app/core
 ```
+
+---
+
+## Seed Topic Extraction (`seed_topics_v2.py`)
+
+### Language Detection
+
+```python
+def detect_language(texts: list[str]) -> str:
+    """
+    Count stopword hits: EN vs ES
+    Returns: 'en' or 'es'
+
+    Note: Other languages fall back to English stopwords,
+    which may affect topic extraction quality.
+    """
+```
+
+### Penalty System
+
+Soft penalties replace hard blocking to allow context-dependent terms:
+
+| Pattern | Penalty | Rationale |
+|---------|---------|-----------|
+| Years (2024) | 0.5 | Time-sensitive but sometimes relevant |
+| Numbers (ep5) | 0.3 | Episode numbers are common noise |
+| Months | 0.4 | Seasonal content markers |
+| Promo words (subscribe) | 0.3 | Call-to-action noise |
+| Event words (webinar) | 0.5 | One-time event content |
+
+```python
+def calculate_term_penalty(term: str) -> float:
+    """Returns 0.0 (perfect) to 1.0 (remove)"""
+    penalty = 0.0
+    if has_year: penalty += 0.5
+    if has_number: penalty += 0.3
+    if is_month: penalty += 0.4
+    return min(penalty, 1.0)
+
+# Applied to scoring
+score = doc_freq * weight * (1.0 - penalty)
+```
+
+### Topic Scoring Weights
+
+| Source | Weight | Rationale |
+|--------|--------|-----------|
+| Tags | 2.0x | Most accurate signal - creator-chosen |
+| Bigrams (title phrases) | 1.6x | Strong content indicator |
+| Unigrams (title words) | 1.0x | Baseline signal |
+| Description tokens | 0.5x | Noisy, low weight |
+
+---
+
+## API Quotas & Costs
+
+### YouTube Data API
+
+| Operation | Cost | Notes |
+|-----------|------|-------|
+| `search().list()` | 100 units | Most expensive |
+| `channels().list()` | 1 unit | Batch up to 50 |
+| `videos().list()` | 1 unit | Batch up to 50 |
+| `playlistItems().list()` | 1 unit | Per request |
+
+**Daily limit:** 10,000 units (free tier)
+
+**Typical search cost:**
+- 2 search calls × 100 = 200 units
+- 1 channel stats call = 1 unit
+- 50 video detail calls = 50 units
+- **Total: ~250 units per search**
+
+### Gemini AI
+
+| Tier | Rate Limits | Cost |
+|------|-------------|------|
+| Free | 15 RPM, 1M tokens/min | $0 |
+| Paid | Higher limits | ~$0.0001/1K tokens |
 
 ---
 
 ## Key Design Decisions
 
-**1. Two Search Modes**
-- **Why:** Different user needs. Sometimes you know the niche ("vegan cooking"), sometimes you have an example channel but don't know what terms to search.
+### 1. Layered Architecture
+**Why:** Separates testable business logic from Streamlit-specific code. Core functions can be reused outside Streamlit (CLI, API, etc.).
 
-**2. Hybrid Search (video + name)**
-- **Why:** Channel names are often vague ("JohnSmith"). Video content is more descriptive.
+### 2. Callback Pattern
+**Why:** Allows core functions to report progress without depending on `st.progress()`. Tests can verify callbacks were called correctly.
 
-**3. Filter Before Fetching Videos**
-- **Why:** Saves API quota. No point analyzing channels that don't meet minimum criteria.
+### 3. Structured Results (Dataclasses)
+**Why:** Type safety, IDE support, clear contracts between layers. Errors and warnings are part of the result, not exceptions.
 
-**4. Per-Channel Caching**
-- **Why:** Popular channels appear in multiple searches. Cache their videos once, reuse across searches.
+### 4. Blended Scoring (80% Algorithmic + 20% AI)
+**Why:** Algorithmic scoring is deterministic and fast. AI adds semantic understanding but is slower and costs money. Blend gets benefits of both.
 
-**5. Conservative Caps**
-- **Why:** Free API tier has limits. Cap at 50 channels, 10 videos each = predictable quota usage.
+### 5. Filter Before Fetch
+**Why:** No point fetching videos for channels that don't meet subscriber threshold. Saves API quota.
 
-**6. Soft Penalties vs Hard Blocks**
-- **Why:** "2024" might be noise in titles, but "2024 trends" could be relevant. Penalties allow context.
+### 6. Per-Channel Caching
+**Why:** Same channel appears across different searches. Cache by channel ID, not search query, maximizes cache hits.
 
----
-
-## Technology Choices
-
-**Streamlit:**
-- Built-in caching (`@st.cache_data`)
-- Session state management
-- Rapid UI iteration
-- Tradeoff: Limited control over page layout
-
-**YouTube API:**
-- Direct access to metadata
-- No scraping (ToS compliant)
-- Tradeoff: Quota limits (10K units/day free)
-
-**Gemini AI:**
-- Free tier (15 RPM, 1M tokens/min)
-- Quality topic extraction
-- Tradeoff: Rate limits, requires API key
-
-**Pandas:**
-- Fast filtering/sorting
-- Natural for tabular results
-- Tradeoff: Memory usage for large datasets
+### 7. Soft Penalties vs Hard Blocks
+**Why:** "2024" in a title might be noise ("2024 best movies") or relevant ("2024 predictions"). Penalties allow context rather than binary exclusion.
 
 ---
 
-## File Structure
+## Known Limitations
 
-```
-app/
-├── app_seed_gemini_hardened.py  # Main UI & search orchestration
-├── seed_topics_v2.py            # Seed channel analysis
-├── similarity_engine.py         # Similarity scoring algorithms
-├── smart_cache.py               # Per-channel caching layer
-└── debug_tracker.py             # Monitoring & quota tracking
-```
+- **Language Support:** Stopwords and month detection only implemented for English and Spanish. Other languages fall back to English, affecting topic extraction quality.
+- **YouTube API Quota:** 10K units/day limits search volume. Heavy users may hit quota mid-day.
+- **Cache Staleness:** 24hr TTL for videos may show outdated data for rapidly changing channels.
+- **Tag Dependency:** Similarity scoring works best when channels use descriptive tags. Channels without tags still score on keywords, subscribers, engagement, and upload frequency (70 points max).
 
-**Function responsibility:**
-- `run_search()`: Pipeline coordinator
-- `search_channels_hybrid()`: YouTube search logic
-- `analyze_seed_channel_v2()`: Topic extraction
-- `calculate_similarity_score()`: Ranking algorithm
-- `get_channel_videos()`: Cached video fetcher
+---
+
+## Future Considerations
+
+- Add support for additional languages (French, German, Portuguese stopwords)
+- Implement cache warming for frequently searched niches
+- Add webhook support for background processing
+- Consider pagination for results beyond 50 channels
 
 ---
 

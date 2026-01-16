@@ -41,7 +41,7 @@ The system ranks results using a blend of algorithmic scoring (80%) and AI seman
 ### 🧠 Dual Search Modes
 
 <details>
-<summary><strong>Keyword Search Mode</strong></summary>
+<summary><strong>🔑 Keyword Search Mode</strong></summary>
 
 ![Keyword Search Interface](docs/screenshots/screenshot_keyword_search.jpg)
 
@@ -75,7 +75,7 @@ Results table shows relevance scores, subscriber counts, engagement rates, and m
 </details>
 
 <details>
-<summary><strong>Channel-as-Seed Mode</strong></summary>
+<summary><strong>📺 Channel-as-Seed Mode</strong></summary>
 
 ![Channel-as-Seed Interface](docs/screenshots/screenshot_seed_mode.jpg)
 
@@ -98,10 +98,10 @@ Results table shows relevance scores, subscriber counts, engagement rates, and m
   ![Seed Similarity Score](docs/screenshots/screenshot_seed_similarity_score.jpg)
 </details>
 
-### 📊 Debug & Monitoring System
-
 <details>
-<summary><strong>Real-Time API Tracking</strong></summary>
+<summary><strong>📊 Debug & Monitoring System</strong></summary>
+
+### Real-Time API Tracking
 
 ### Debug Panel
 *Collapsible sidebar provides transparency into API usage and performance metrics*
@@ -303,10 +303,10 @@ App opens at `http://localhost:8501`
 </details>
 ---
 <details>
-<summary><strong> 📖 Usage</strong></summary>
+<summary><strong>📖 Usage</strong></summary>
 
 <details>
-<summary><strong>Quick Start: Keyword Search</strong></summary>
+<summary><strong>⚡ Quick Start: Keyword Search</strong></summary>
 
 1. Select **🔑 Keywords** mode
 2. Enter 1-2 search terms (e.g., "manga, anime")
@@ -327,7 +327,7 @@ Results show:
 </details>
 
 <details>
-<summary><strong>Quick Start: Channel-as-Seed</strong></summary>>
+<summary><strong>⚡ Quick Start: Channel-as-Seed</strong></summary>
 
 1. Select **📺 Channel-as-Seed** mode
 2. Paste YouTube channel URL
@@ -340,7 +340,7 @@ Results ranked by similarity score (0-100) with match reasons.
 
 </details>
 <details>
-<summary><strong>AI Features</strong></summary>
+<summary><strong>🤖 AI Features</strong></summary>
 
 
 **Seed Channel Summary** (Channel-as-Seed mode)
@@ -466,13 +466,13 @@ Enable debug mode to see real-time usage.
 </details>
 ---
 <details>
-<summary><strong> 📄 License </strong></summary>
+<summary><strong>📄 License</strong></summary>
 
 This project is licensed under the Apache License 2.0 - see [LICENSE](LICENSE) for details.
 </details>
 ---
 <details>
-<summary><strong>👤 Author </strong></summary>
+<summary><strong>👤 Author</strong></summary>
 
 **Martín Dorado**
 - LinkedIn: [linkedin.com/in/martin-dorado](https://www.linkedin.com/in/martin-dorado/)
@@ -480,7 +480,7 @@ This project is licensed under the Apache License 2.0 - see [LICENSE](LICENSE) f
 </details>
 ---
 <details>
-<summary><strong>📚 Additional Resources </strong></summary>
+<summary><strong>📚 Additional Resources</strong></summary>
 
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Deep dive into system design, scoring algorithms, and caching
 - **[CLAUDE.md](CLAUDE.md)** - Quick reference for AI assistants and developers

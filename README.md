@@ -8,8 +8,8 @@
 
 *AI-powered creator discovery tool with intelligent search and similarity ranking*
 
-[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.36+-red.svg)](https://streamlit.io/)
+[![Python](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/downloads/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.49.0-red.svg)](https://streamlit.io/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 
 [Features](#-features) • [Demo](#-demo) • [Installation](#-installation) • [Tech Stack](#-tech-stack) • [Architecture](ARCHITECTURE.md)
@@ -22,8 +22,8 @@
 
 Digital marketers spend hours manually searching for niche content creators on YouTube:
 - **Time-intensive**: Manual channel discovery takes 4-6 hours per campaign
-- **Limited tools**: Existing solutions are expensive ($50-200/month) or lack depth
-- **Knowledge gap**: Finding creators when you don't know the exact terminology of the niche is difficult 
+- **Limited tools**: Existing solutions are expensive or lack depth
+- **Knowledge gap**: Finding creators when you don't know the exact terminology of the niche is difficult
 
 ## 💡 The Solution
 
@@ -32,7 +32,7 @@ CCSeeker automates niche creator discovery with two intelligent search approache
 1. **🔑 Keyword Search** - Search by topic using hybrid video + channel name matching
 2. **📺 Channel-as-Seed** - Find similar creators by analyzing an example channel's content
 
-The system ranks results by relevance/similarity, tracks API usage to stay within free quotas, and optionally generates AI-powered summaries and outreach emails.
+The system ranks results using a blend of algorithmic scoring (80%) and AI semantic analysis (20%), tracks API usage to stay within free quotas, and generates AI-powered summaries and outreach emails.
 
 ---
 
@@ -65,14 +65,12 @@ Results table shows relevance scores, subscriber counts, engagement rates, and m
 
 ![Search Results](docs/screenshots/screenshot_keywords_display_df.jpg)
 
-### 🤖 AI-Powered Features (Optional)
+### 🤖 AI-Powered Features
 
 - **Channel Summaries**: Auto-generated overviews using Google Gemini
 ![Channel Summaries](docs/screenshots/screenshot_keywords_ai_summary.jpg)
 - **Outreach Emails**: Personalized drafts in English or Spanish
 ![Outreach Emails](docs/screenshots/screenshot_keywords_ai_outreach_emails.jpg)
-
-</details
 
 </details>
 
@@ -85,13 +83,13 @@ Results table shows relevance scores, subscriber counts, engagement rates, and m
   - Analyzes 50 recent videos
   - Detects content language (EN/ES)
   - Calculates engagement patterns and upload frequency
-  ![Seed Channel Profile](docs/screenshots/screenshot_seed_channel_profile.jpg) 
+  ![Seed Channel Profile](docs/screenshots/screenshot_seed_channel_profile.jpg)
 
 - **Topic Extraction**: Identifies niche keywords from video titles and tags
   ![Seed Topic Extraction & AI channel summary](docs/screenshots/screenshot_seed_topic_extraction_and_ai_channel_summary.jpg)
   ![Filtering + Search Options](docs/screenshots/screenshot_seed_filtering_and_search_options.jpg)
 
-- **Optional AI enhancement**: Gemini can analyze top 10 matches for "vibe" similarity
+- **AI enhancement**: Gemini analyzes top 10 matches for "vibe" similarity
 ![Seed AI Generated Summary](docs/screenshots/screenshot_seed_ai_generated_summary.jpg)
 
 - **Seed detailed match analysis**: Deep dive into why channels match the seed.
@@ -99,10 +97,13 @@ Results table shows relevance scores, subscriber counts, engagement rates, and m
 
 - **Multi-signal similarity scoring** (100-point scale):
   - Tag overlap (30%) - Jaccard similarity
-  - Keyword matching (30%)
+  - Keyword matching (30%) - Title keywords (bigrams + unigrams)
   - Subscriber tier (15%) - prevents 10M vs 10K mismatches
   - Engagement rate (17%)
   - Upload frequency (8%)
+
+  Final score = 80% algorithmic + 20% AI semantic analysis
+
   ![Seed Similarity Score](docs/screenshots/screenshot_seed_similarity_score.jpg)
 </details>
 
@@ -146,66 +147,80 @@ Toggle debug mode to see:
 
 | Technology | Purpose | Why This Choice |
 |------------|---------|-----------------|
-| **Python 3.10+** | Core language | Rich ecosystem for data processing |
-| **Streamlit** | Web UI framework | Built-in caching, state management, rapid iteration |
+| **Python 3.11** | Core language | Rich ecosystem for data processing |
+| **Streamlit 1.49** | Web UI framework | Built-in caching, state management, rapid iteration |
 | **YouTube Data API v3** | Channel/video data | Official API, ToS-compliant (no scraping) |
 | **Google Gemini AI** | Topic extraction & content generation | Free tier (15 RPM, 1M tokens/min) |
 | **Pandas** | Data processing | Efficient filtering and transformations |
-| **Custom caching layer** | API optimization | Per-channel caching reduces redundant fetches |
+| **pytest** | Unit testing | Industry standard, easy mocking |
 
 ### Key Design Decisions
+
+**Layered Architecture**
+- Core business logic separated from UI in `app/core/`
+- Pure functions that are Streamlit-agnostic and unit testable
+- Cache layer wraps core functions with Streamlit caching
+
+**Blended Scoring (80% Algorithmic + 20% AI)**
+- Algorithmic scoring is deterministic and fast
+- AI adds semantic understanding for nuanced matching
+- Blend gets benefits of both approaches
 
 **Per-Channel Caching**
 - Traditional approach: Cache entire search results → duplicates videos from popular channels
 - CCSeeker approach: Cache each channel's videos independently (24hr TTL)
 - Benefit: Popular channels appear in multiple searches → reuse cached data
 
-**Two Search Modes**
-- **Keywords**: When you know the niche ("vegan cooking")
-- **Seed**: When you have an example, don't know niche's terminology, and just want to find simmilar channels.  
-
 **Filter Before Fetching Videos**
 - Apply subscriber/country filters BEFORE analyzing videos
 - Saves API quota - no point fetching 10 videos from a 500-sub channel if minimum is 10K
 
-## 🧪 Testing & QA
+---
 
-At this stage, CCSeeker does **not** include automated unit or integration tests.
+## 🧪 Testing
 
-During development, all testing has been done **manually**, focusing on:
+CCSeeker has a comprehensive test suite covering core business logic.
 
-- Both search modes (🔑 Keywords and 📺 Channel-as-Seed)
-- Typical user flows: running searches, applying filters, generating summaries and outreach emails
-- Handling of missing/invalid API keys and exhausted YouTube quota
-- Basic error handling in the Streamlit UI
+### Running Tests
 
-Because the app started as a fast MVP and evolved organically, most logic is currently
-tightly coupled to the Streamlit UI, which makes it harder to introduce automated tests
-without some refactoring (see `ARCHITECTURE.md` for details on this trade-off).
+```bash
+# Run all tests
+pytest tests/
 
-### Future Testing Roadmap
+# Run specific module
+pytest tests/test_pipeline.py
 
-Planned improvements:
+# Run with verbose output
+pytest tests/ -v
+```
 
-1. **Extract testable core logic** (e.g., similarity scoring, keyword relevance, seed-topic extraction) into smaller, pure functions.
-2. **Add unit tests** for these core modules (e.g. `similarity_engine.py`, `seed_topics_v2.py`, `smart_cache.py`).
-3. **Introduce integration tests** for the main search pipeline (from user input to final DataFrame).
+### Test Coverage
+
+| Module | Tests | Coverage |
+|--------|-------|----------|
+| `test_query_utils.py` | 21 | Query validation, URL parsing, edge cases |
+| `test_relevance.py` | 13 | Keyword matching, weights, empty inputs |
+| `test_youtube_api.py` | ~20 | Search results, channel stats, error handling |
+| `test_gemini_api.py` | ~15 | AI scoring, summary generation, API failures |
+| `test_pipeline.py` | ~25 | Full pipeline, filters, early exits, callbacks |
+
+All tests use mocked API clients - no actual API calls needed.
 
 ---
 
 ## 📦 Installation
 
 ### Prerequisites
-- Python 3.10 or higher
+- Python 3.11
 - [YouTube Data API v3 key](https://console.cloud.google.com/apis/credentials)
-- [Google Gemini API key](https://makersuite.google.com/app/apikey) (optional)
+- [Google Gemini API key](https://aistudio.google.com/apikey)
 
 ### Setup
 
 ```bash
 # Clone repository
 git clone https://github.com/MartinDorado/CCSeeker.git
-cd ccseeker
+cd CCSeeker
 
 # Create virtual environment
 python -m venv .venv
@@ -223,7 +238,7 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edit .env and add your keys:
 # YOUTUBE_API_KEY=your_youtube_key_here
-# GEMINI_API_KEY=your_gemini_key_here  # optional
+# GEMINI_API_KEY=your_gemini_key_here
 ```
 
 ### Run
@@ -242,15 +257,15 @@ App opens at `http://localhost:8501`
 
 1. Select **🔑 Keywords** mode
 2. Enter 1-2 search terms (e.g., "manga, anime")
-3. Relevant in: Country (default: Global) 
+3. Relevant in: Country (default: Global)
 3. Set filters:
    - Minimum subscribers (default: 1,000)
    - Channel's origin country (default: Global)
-   - Recent activity (default: 18 months)
+   - Recent activity (default: 8 months)
 4. Click **Find Creators**
 
 Results show:
-- Relevance score 
+- Relevance score (80% keyword match + 20% AI)
 - Subscriber count
 - Average views per video
 - Engagement rate
@@ -267,7 +282,7 @@ Results show:
 
 Results ranked by similarity score (0-100) with match reasons.
 
-### Optional: AI Features
+### AI Features
 
 **Generate Summary** (after search completes)
 - Scroll to AI Generated Summary section
@@ -276,7 +291,7 @@ Results ranked by similarity score (0-100) with match reasons.
 **Create Outreach Emails**
 - Select language (English/Español)
 - Click **Generate Outreach Drafts**
-- Get personalized email templates for TOP 3. 
+- Get personalized email templates for TOP 3.
 
 ---
 
@@ -285,94 +300,55 @@ Results ranked by similarity score (0-100) with match reasons.
 ```
 CCSeeker/
 ├── app/
-│   ├── main.py                      # Main UI & search orchestration
-│   ├── seed_topics_v2.py            # Seed channel analysis engine
+│   ├── core/                        # Pure business logic (Streamlit-agnostic)
+│   │   ├── query_utils.py           # Query validation, URL parsing
+│   │   ├── relevance.py             # Keyword relevance scoring
+│   │   ├── youtube_api.py           # YouTube API wrappers
+│   │   ├── gemini_api.py            # Gemini AI wrappers
+│   │   └── pipeline.py              # Search pipeline orchestration
+│   │
+│   ├── cache/                       # Caching layer
+│   │   └── cache_layer.py           # Streamlit cache wrappers
+│   │
+│   ├── main.py                      # Main UI & integration
+│   ├── seed_topics_v2.py            # Seed channel analysis
 │   ├── similarity_engine.py         # Multi-factor similarity scoring
-│   ├── smart_cache.py               # Per-channel caching layer
-│   ├── debug_tracker.py             # API tracking & performance monitoring
-│   └── theme_ccseeker_dark.css      # Custom dark theme
+│   ├── debug_tracker.py             # API tracking & performance
+│   ├── feedback_tracker.py          # User feedback collection
+│   └── smart_cache.py               # Per-channel video caching
+│
+├── tests/                           # Unit test suite
+│   ├── test_query_utils.py
+│   ├── test_relevance.py
+│   ├── test_youtube_api.py
+│   ├── test_gemini_api.py
+│   └── test_pipeline.py
+│
 ├── docs/
-|   |── appicons/                    # App icons (192x192, 512x512)
-|   |── screenshots/                 # Multiple screenshots from the app
-|                    
-├── .streamlit/                       # Streamlit config
-├── requirements.txt                  # Python dependencies
-├── ARCHITECTURE.md                   # Technical deep dive
-└── README.md                         # This file
+│   ├── appicons/                    # App icons
+│   └── screenshots/                 # App screenshots
+│
+├── .streamlit/                      # Streamlit config
+├── requirements.txt                 # Python dependencies
+├── ARCHITECTURE.md                  # Technical deep dive
+├── CLAUDE.md                        # AI assistant guide
+└── README.md                        # This file
 ```
 
 **Key Functions:**
 
-| Function | Purpose | File |
-|----------|---------|------|
-| `run_search()` | Pipeline coordinator - calls all other functions | app_seed_gemini_hardened.py |
-| `search_channels_hybrid()` | YouTube hybrid search (video + channel name) | app_seed_gemini_hardened.py |
-| `analyze_seed_channel_v2()` | Extract topics from seed channel | seed_topics_v2.py |
-| `calculate_similarity_score()` | Multi-factor similarity algorithm | similarity_engine.py |
-| `get_channel_videos()` | Cached video fetcher | smart_cache.py |
-| `track_api_call()` | Debug mode API tracking | debug_tracker.py |
-
-
----
-
-## 🔧 Configuration
-
-Key constants in `app/main.py`:
-
-```python
-MAX_SEARCH_TERMS = 2              # Maximum comma-separated terms
-MAX_SEARCH_RESULTS = 50           # Channels returned per search
-MAX_VIDEOS_PER_CHANNEL = 10       # Videos analyzed for relevance
-MAX_VIDEOS_PER_SEED = 50          # Videos analyzed for seed profile
-MIN_RELEVANCE_SCORE = 0.15        # 15% keyword match required
-
-# Cache TTLs (in seconds)
-CACHE_TTL_CHANNEL_STATS = 604800   # 1 week - used in get_channel_stats_cached()
-CACHE_TTL_VIDEO_DETAILS = 259200   # 3 days - used in get_video_details_cached()
-CACHE_TTL_SEARCH_RESULTS = 259200  # 3 days - used in search_channels_multi_term_cached()
-
-# Filtering Thresholds
-MIN_RELEVANCE_SCORE = 0.15         # 15% keyword match required
-DEFAULT_MIN_SUBSCRIBERS = 10000
-DEFAULT_MONTHS_RECENT = 18
-
-```
-
-**Similarity Weights** (in `similarity_engine.py`):
-```python
-# Total: 100 points
-tag_overlap: 30        # Video tags Jaccard similarity
-keyword_match: 30      # Title/description keyword presence
-subscriber_tier: 15    # Subscriber count ratio
-engagement_rate: 17    # (Likes + comments) / views
-upload_frequency: 8    # Videos per month comparison
-```
+| Function | File | Purpose |
+|----------|------|---------|
+| `run_search_pipeline()` | core/pipeline.py | Main search orchestration |
+| `search_channels_hybrid()` | core/youtube_api.py | YouTube hybrid search |
+| `calculate_keyword_relevance()` | core/relevance.py | Keyword matching algorithm |
+| `generate_ai_relevance_score()` | core/gemini_api.py | AI semantic scoring |
+| `analyze_seed_channel_v2()` | seed_topics_v2.py | Seed channel topic extraction |
+| `calculate_similarity_score()` | similarity_engine.py | Multi-factor similarity |
+| `get_channel_stats_cached()` | cache/cache_layer.py | Cached channel data |
+| `track_api_call()` | debug_tracker.py | API usage tracking |
 
 ---
-
-## ⚠️ Beta status & known limitations
-
-This is an early **beta** version of CCSeeker. It’s stable enough for real use,
-but you should expect some rough edges.
-
-Current limitations / known issues:
-
-- **No automated tests yet** – all QA is manual. The main flows (keyword search
-  and channel-as-seed search) are tested by hand before each deploy.
-- **API quotas:** The app is limited by the YouTube Data API daily quota.
-  Heavy use may cause some searches to fail until the quota resets.
-- **AI timeouts / failures:** Gemini may occasionally time out or return an
-  error. When that happens, the search results still appear, but AI summaries
-  and outreach suggestions may be missing for that run.
-- **Performance:** On free Streamlit Cloud hardware, searches with a large
-  number of channels/videos can feel slow, especially with similarity scoring
-  enabled.
-- **Layout:** The UI is optimised for desktop/laptop screens. On small screens
-  you may need to scroll horizontally to see all columns.
-
-If you run into bugs, confusing behaviour, or have ideas for improvements,
-please open an issue in this repo or contact me.
-
 
 ## 📊 API Quotas & Costs
 
@@ -384,16 +360,13 @@ please open an issue in this repo or contact me.
   - Videos: 1 unit
   - Playlists: 1 unit
 
-**Typical search cost**: Varies based on:
-- Number of search terms (1-2)
-- Channels found (capped at 50)
-- Cache hits (reduces repeat fetches)
+**Typical search cost**: ~250 units (varies based on cache hits)
 
 Enable debug mode to see real-time usage.
 
 ### Google Gemini API (Free Tier)
 - **Rate Limits**: 15 requests/min, 1M tokens/min
-- **Cost**: Free
+- **Cost**: Free tier available
 - **Paid tier**: ~$0.10-0.30 per 1M tokens (if needed)
 
 ---
@@ -411,10 +384,9 @@ Enable debug mode to see real-time usage.
 ## 🚧 Known Limitations
 
 - **YouTube API Quota**: 10K units/day limits search volume
-- **Seed Analysis Language**: Best results with English/Spanish content
-- **Similarity Accuracy**: Depends on channels actually using tags
+- **Language Support**: Seed topic extraction optimized for English/Spanish content. Other languages fall back to English stopwords.
+- **Cache Staleness**: 24hr TTL may show outdated data for rapidly changing channels
 - **No Historical Data**: Can't analyze deleted videos or past performance
-- **Cache Invalidation**: 24hr TTL may show stale data for rapidly changing channels
 
 ---
 
@@ -432,10 +404,10 @@ This project is licensed under the Apache License 2.0 - see [LICENSE](LICENSE) f
 
 ---
 
-
 ## 📚 Additional Resources
 
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Deep dive into system design and algorithms
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Deep dive into system design, scoring algorithms, and caching
+- **[CLAUDE.md](CLAUDE.md)** - Quick reference for AI assistants and developers
 - **[YouTube API Docs](https://developers.google.com/youtube/v3)** - Official API reference
 - **[Gemini API Guide](https://ai.google.dev/docs)** - AI integration documentation
 

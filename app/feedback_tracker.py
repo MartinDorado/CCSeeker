@@ -210,7 +210,9 @@ def export_feedback_csv(filepath: str) -> bool:
             fieldnames = [
                 "timestamp", "search_mode", "query", "results_count",
                 "feedback", "reason", "seed_channel_id", "seed_channel_name",
-                "top_result_1", "top_result_2", "top_result_3"
+                "top_result_1_name", "top_result_1_id", "top_result_1_url", "top_result_1_score",
+                "top_result_2_name", "top_result_2_id", "top_result_2_url", "top_result_2_score",
+                "top_result_3_name", "top_result_3_id", "top_result_3_url", "top_result_3_score"
             ]
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
@@ -227,14 +229,20 @@ def export_feedback_csv(filepath: str) -> bool:
                     "seed_channel_name": entry.get("seed_channel_name")
                 }
 
-                # Add top 3 results as columns
+                # Add top 3 results as separate columns for name, id, url, and score
                 top_results = entry.get("top_results", [])
                 for i in range(3):
                     if i < len(top_results):
                         r = top_results[i]
-                        row[f"top_result_{i+1}"] = f"{r.get('channel_name')} ({r.get('score')})"
+                        row[f"top_result_{i+1}_name"] = r.get('channel_name', '')
+                        row[f"top_result_{i+1}_id"] = r.get('channel_id', '')
+                        row[f"top_result_{i+1}_url"] = r.get('channel_url', '')
+                        row[f"top_result_{i+1}_score"] = r.get('score', '')
                     else:
-                        row[f"top_result_{i+1}"] = ""
+                        row[f"top_result_{i+1}_name"] = ""
+                        row[f"top_result_{i+1}_id"] = ""
+                        row[f"top_result_{i+1}_url"] = ""
+                        row[f"top_result_{i+1}_score"] = ""
 
                 writer.writerow(row)
 

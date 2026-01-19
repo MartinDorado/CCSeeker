@@ -1238,6 +1238,8 @@ if 'display_df' in st.session_state:
                         score = row.get('similarity_score') or row.get('relevance_score', 0)
                         top_results.append({
                             "channel_name": row.get('channel_title', ''),
+                            "channel_id": row.get('channel_id', ''),
+                            "channel_url": row.get('channel_url', ''),
                             "score": score
                         })
 
@@ -1296,6 +1298,8 @@ if 'display_df' in st.session_state:
                         score = row.get('similarity_score') or row.get('relevance_score', 0)
                         top_results.append({
                             "channel_name": row.get('channel_title', ''),
+                            "channel_id": row.get('channel_id', ''),
+                            "channel_url": row.get('channel_url', ''),
                             "score": score
                         })
 

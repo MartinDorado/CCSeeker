@@ -54,7 +54,8 @@ def save_feedback(
     seed_channel_id: Optional[str] = None,
     seed_channel_name: Optional[str] = None,
     filters: Optional[dict] = None,
-    ai_enabled: Optional[bool] = None
+    ai_enabled: Optional[bool] = None,
+    scoring_context: Optional[dict] = None
 ) -> bool:
     """
     Save user feedback for a search.
@@ -91,6 +92,15 @@ def save_feedback(
     ai_enabled : bool, optional
         Whether AI enhancement was enabled for this search
 
+    scoring_context : dict, optional
+        For seed mode: similarity scoring details for top result
+        {
+            'top_result_total_score': float,
+            'top_result_algorithmic_score': float,
+            'top_result_gemini_score': float,
+            'score_distribution': {'max': float, 'min': float, 'avg': float}
+        }
+
     Returns:
     --------
     bool: True if saved successfully
@@ -119,6 +129,10 @@ def save_feedback(
     # Add AI enabled flag if provided
     if ai_enabled is not None:
         entry["ai_enabled"] = ai_enabled
+
+    # Add scoring context if provided (seed mode)
+    if scoring_context:
+        entry["scoring_context"] = scoring_context
 
     data["feedback_entries"].append(entry)
 
@@ -227,6 +241,8 @@ def export_feedback_csv(filepath: str) -> bool:
                 "timestamp", "search_mode", "query", "results_count",
                 "feedback", "reason", "seed_channel_id", "seed_channel_name",
                 "ai_enabled", "min_subscribers", "country_filter", "months_ago", "region",
+                "top_result_total_score", "top_result_algorithmic_score", "top_result_gemini_score",
+                "score_dist_max", "score_dist_min", "score_dist_avg",
                 "top_result_1_name", "top_result_1_id", "top_result_1_url", "top_result_1_score",
                 "top_result_2_name", "top_result_2_id", "top_result_2_url", "top_result_2_score",
                 "top_result_3_name", "top_result_3_id", "top_result_3_url", "top_result_3_score"
@@ -236,6 +252,8 @@ def export_feedback_csv(filepath: str) -> bool:
 
             for entry in entries:
                 filters = entry.get("filters", {})
+                scoring_context = entry.get("scoring_context", {})
+                score_dist = scoring_context.get("score_distribution", {})
                 row = {
                     "timestamp": entry.get("timestamp"),
                     "search_mode": entry.get("search_mode"),
@@ -249,7 +267,13 @@ def export_feedback_csv(filepath: str) -> bool:
                     "min_subscribers": filters.get("min_subscribers"),
                     "country_filter": filters.get("country_filter"),
                     "months_ago": filters.get("months_ago"),
-                    "region": filters.get("region")
+                    "region": filters.get("region"),
+                    "top_result_total_score": scoring_context.get("top_result_total_score"),
+                    "top_result_algorithmic_score": scoring_context.get("top_result_algorithmic_score"),
+                    "top_result_gemini_score": scoring_context.get("top_result_gemini_score"),
+                    "score_dist_max": score_dist.get("max"),
+                    "score_dist_min": score_dist.get("min"),
+                    "score_dist_avg": score_dist.get("avg")
                 }
 
                 # Add top 3 results as separate columns for name, id, url, and score

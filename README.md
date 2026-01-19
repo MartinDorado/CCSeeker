@@ -110,24 +110,21 @@ Results table shows relevance scores, subscriber counts, engagement rates, and m
 
 Toggle debug mode to see:
 
-![Debug Sidebar](docs/screenshots/screenshot_debug_collapsed.jpg)
-
 **API Call Summary**
-![API Calls](docs/screenshots/screenshot_api_summary.jpg)
-![API Calls2](docs/screenshots/screenshot_api_summary2.jpg)
+
 - Tracks YouTube (search, channels, videos, playlists)
 - Tracks Gemini (summary, outreach, similarity)
 - Shows quota units consumed
 - Estimates costs
 
 **Performance Timing**
-![Performance Timing](docs/screenshots/screenshot_performance_timing.jpg)
+
 - Measures each pipeline stage
 - Identifies bottlenecks
 - Total execution time
 
 **Quota Efficiency**
-![Quota Efficiency](docs/screenshots/screenshot_quota_efficiency.jpg)
+
 - Compares current vs baseline usage
 - Tracks total runs for same search
 - Shows cache effectiveness

@@ -15,9 +15,9 @@ FEEDBACK_FILE = os.path.join(os.path.dirname(__file__), ".feedback_data.json")
 
 # Reason codes for negative feedback
 FEEDBACK_REASONS = {
+    "few_results": "Few results",
+    "low_quality": "Low quality content",
     "wrong_topic": "Wrong topic/niche",
-    "size_mismatch": "Channel too big/small",
-    "inactive": "Outdated/inactive channels",
     "other": "Other"
 }
 
@@ -75,7 +75,7 @@ def save_feedback(
         Top 5 results with channel_id, channel_name, and score
 
     reason : str, optional
-        Reason code for negative feedback (wrong_topic, size_mismatch, inactive, other)
+        Reason code for negative feedback (few_results, low_quality, wrong_topic, other)
 
     seed_channel_id : str, optional
         Channel ID of seed (if seed mode)
@@ -130,9 +130,9 @@ def get_feedback_stats() -> dict:
         "positive_count": 0,
         "negative_count": 0,
         "reason_breakdown": {
+            "few_results": 0,
+            "low_quality": 0,
             "wrong_topic": 0,
-            "size_mismatch": 0,
-            "inactive": 0,
             "other": 0
         },
         "by_search_mode": {

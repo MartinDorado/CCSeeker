@@ -1272,9 +1272,9 @@ if 'display_df' in st.session_state:
             reason = st.radio(
                 "Select a reason:",
                 options=[
+                    ("few_results", "Few results"),
+                    ("low_quality", "Low quality content"),
                     ("wrong_topic", "Wrong topic/niche"),
-                    ("size_mismatch", "Channel too big/small"),
-                    ("inactive", "Outdated/inactive channels"),
                     ("other", "Other")
                 ],
                 format_func=lambda x: x[1],

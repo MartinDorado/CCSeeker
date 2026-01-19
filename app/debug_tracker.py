@@ -381,7 +381,7 @@ def display_debug_panel():
     st.sidebar.subheader("🔍 Debug Info")
     
     # API USAGE SECTION
-    with st.sidebar.expander("📊 API Call Summary", expanded=True):
+    with st.sidebar.expander("📊 API Call Summary", expanded=False):
         st.markdown("**This Search:**")
 
         # Calculate totals

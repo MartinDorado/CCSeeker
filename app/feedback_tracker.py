@@ -52,7 +52,9 @@ def save_feedback(
     top_results: list[dict],
     reason: Optional[str] = None,
     seed_channel_id: Optional[str] = None,
-    seed_channel_name: Optional[str] = None
+    seed_channel_name: Optional[str] = None,
+    filters: Optional[dict] = None,
+    ai_enabled: Optional[bool] = None
 ) -> bool:
     """
     Save user feedback for a search.
@@ -72,7 +74,7 @@ def save_feedback(
         Total number of results returned
 
     top_results : list[dict]
-        Top 5 results with channel_id, channel_name, and score
+        Top 5 results with channel_id, channel_name, channel_url, and score
 
     reason : str, optional
         Reason code for negative feedback (few_results, low_quality, wrong_topic, other)
@@ -82,6 +84,12 @@ def save_feedback(
 
     seed_channel_name : str, optional
         Channel name of seed (if seed mode)
+
+    filters : dict, optional
+        Search filter settings used (min_subscribers, country_filter, months_ago, region)
+
+    ai_enabled : bool, optional
+        Whether AI enhancement was enabled for this search
 
     Returns:
     --------
@@ -103,6 +111,14 @@ def save_feedback(
     if search_mode == "seed":
         entry["seed_channel_id"] = seed_channel_id
         entry["seed_channel_name"] = seed_channel_name
+
+    # Add filter settings if provided
+    if filters:
+        entry["filters"] = filters
+
+    # Add AI enabled flag if provided
+    if ai_enabled is not None:
+        entry["ai_enabled"] = ai_enabled
 
     data["feedback_entries"].append(entry)
 
@@ -210,6 +226,7 @@ def export_feedback_csv(filepath: str) -> bool:
             fieldnames = [
                 "timestamp", "search_mode", "query", "results_count",
                 "feedback", "reason", "seed_channel_id", "seed_channel_name",
+                "ai_enabled", "min_subscribers", "country_filter", "months_ago", "region",
                 "top_result_1_name", "top_result_1_id", "top_result_1_url", "top_result_1_score",
                 "top_result_2_name", "top_result_2_id", "top_result_2_url", "top_result_2_score",
                 "top_result_3_name", "top_result_3_id", "top_result_3_url", "top_result_3_score"
@@ -218,6 +235,7 @@ def export_feedback_csv(filepath: str) -> bool:
             writer.writeheader()
 
             for entry in entries:
+                filters = entry.get("filters", {})
                 row = {
                     "timestamp": entry.get("timestamp"),
                     "search_mode": entry.get("search_mode"),
@@ -226,7 +244,12 @@ def export_feedback_csv(filepath: str) -> bool:
                     "feedback": entry.get("feedback"),
                     "reason": entry.get("reason"),
                     "seed_channel_id": entry.get("seed_channel_id"),
-                    "seed_channel_name": entry.get("seed_channel_name")
+                    "seed_channel_name": entry.get("seed_channel_name"),
+                    "ai_enabled": entry.get("ai_enabled"),
+                    "min_subscribers": filters.get("min_subscribers"),
+                    "country_filter": filters.get("country_filter"),
+                    "months_ago": filters.get("months_ago"),
+                    "region": filters.get("region")
                 }
 
                 # Add top 3 results as separate columns for name, id, url, and score

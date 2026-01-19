@@ -682,9 +682,10 @@ def run_search_pipeline(
         )
 
         # Choose display columns
+        # Note: channel_id is included for feedback tracking but not displayed in UI
         if 'similarity_score' in top_channels.columns:
             display_columns = [
-                'channel_title', 'channel_url', 'similarity_score', 'relevance_score',
+                'channel_id', 'channel_title', 'channel_url', 'similarity_score', 'relevance_score',
                 'avg_views_per_video', 'subscribers', 'country', 'engagement_rate'
             ]
             column_explanations = {
@@ -698,7 +699,7 @@ def run_search_pipeline(
             }
         else:
             display_columns = [
-                'channel_title', 'channel_url', 'relevance_score', 'subscribers',
+                'channel_id', 'channel_title', 'channel_url', 'relevance_score', 'subscribers',
                 'avg_views_per_video', 'country', 'engagement_rate'
             ]
             column_explanations = {

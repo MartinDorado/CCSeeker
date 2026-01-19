@@ -865,7 +865,7 @@ if search_method:
             # AI Enhancement toggle (only show if Gemini API key is configured)
             if GEMINI_API_KEY:
                 enable_ai = st.checkbox(
-                    "🤖 Enable AI Enhancement",
+                    "Enable AI Enhancement",
                     value=True,
                     help="Use Gemini AI to improve relevance scoring and generate summaries. Disable to save API quota or compare results.",
                     key="keyword_enable_ai"
@@ -1058,7 +1058,7 @@ if st.session_state.get('seed_profile'):
     # AI Enhancement toggle (only show if Gemini API key is configured)
     if GEMINI_API_KEY:
         enable_ai = st.checkbox(
-            "🤖 Enable AI Enhancement",
+            "Enable AI Enhancement",
             value=True,
             help="Use Gemini AI to improve similarity scoring (vibe analysis) and generate summaries. Disable to save API quota or compare results.",
             key="seed_enable_ai"
@@ -1296,6 +1296,31 @@ if 'display_df' in st.session_state:
                 # Get search config for analytics
                 search_config = st.session_state.get('search_config', {})
 
+                # Build scoring context for seed mode (similarity breakdown)
+                scoring_context = None
+                if search_mode == "seed" and 'top_channels_full' in st.session_state:
+                    top_channels_full = st.session_state['top_channels_full']
+                    if not top_channels_full.empty and 'similarity' in top_channels_full.columns:
+                        # Get similarity data from top result
+                        top_sim = top_channels_full.iloc[0].get('similarity', {})
+                        if isinstance(top_sim, dict):
+                            # Calculate score distribution across all results
+                            all_scores = [
+                                row.get('similarity', {}).get('total_score', 0)
+                                for _, row in top_channels_full.head(10).iterrows()
+                                if isinstance(row.get('similarity'), dict)
+                            ]
+                            scoring_context = {
+                                'top_result_total_score': top_sim.get('total_score', 0),
+                                'top_result_algorithmic_score': top_sim.get('algorithmic_score', 0),
+                                'top_result_gemini_score': top_sim.get('gemini_score', 0),
+                                'score_distribution': {
+                                    'max': max(all_scores) if all_scores else 0,
+                                    'min': min(all_scores) if all_scores else 0,
+                                    'avg': sum(all_scores) / len(all_scores) if all_scores else 0
+                                }
+                            }
+
                 # Save positive feedback
                 feedback_tracker.save_feedback(
                     feedback="up",
@@ -1306,7 +1331,8 @@ if 'display_df' in st.session_state:
                     seed_channel_id=seed_id,
                     seed_channel_name=seed_name,
                     filters=search_config.get('filters'),
-                    ai_enabled=search_config.get('ai_enabled')
+                    ai_enabled=search_config.get('ai_enabled'),
+                    scoring_context=scoring_context
                 )
                 st.session_state['feedback_submitted'] = True
                 st.rerun()
@@ -1361,6 +1387,31 @@ if 'display_df' in st.session_state:
                 # Get search config for analytics
                 search_config = st.session_state.get('search_config', {})
 
+                # Build scoring context for seed mode (similarity breakdown)
+                scoring_context = None
+                if search_mode == "seed" and 'top_channels_full' in st.session_state:
+                    top_channels_full = st.session_state['top_channels_full']
+                    if not top_channels_full.empty and 'similarity' in top_channels_full.columns:
+                        # Get similarity data from top result
+                        top_sim = top_channels_full.iloc[0].get('similarity', {})
+                        if isinstance(top_sim, dict):
+                            # Calculate score distribution across all results
+                            all_scores = [
+                                row.get('similarity', {}).get('total_score', 0)
+                                for _, row in top_channels_full.head(10).iterrows()
+                                if isinstance(row.get('similarity'), dict)
+                            ]
+                            scoring_context = {
+                                'top_result_total_score': top_sim.get('total_score', 0),
+                                'top_result_algorithmic_score': top_sim.get('algorithmic_score', 0),
+                                'top_result_gemini_score': top_sim.get('gemini_score', 0),
+                                'score_distribution': {
+                                    'max': max(all_scores) if all_scores else 0,
+                                    'min': min(all_scores) if all_scores else 0,
+                                    'avg': sum(all_scores) / len(all_scores) if all_scores else 0
+                                }
+                            }
+
                 # Save negative feedback with reason
                 feedback_tracker.save_feedback(
                     feedback="down",
@@ -1372,7 +1423,8 @@ if 'display_df' in st.session_state:
                     seed_channel_id=seed_id,
                     seed_channel_name=seed_name,
                     filters=search_config.get('filters'),
-                    ai_enabled=search_config.get('ai_enabled')
+                    ai_enabled=search_config.get('ai_enabled'),
+                    scoring_context=scoring_context
                 )
                 st.session_state['feedback_submitted'] = True
                 st.session_state['show_reason_selector'] = False

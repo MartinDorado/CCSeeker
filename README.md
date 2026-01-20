@@ -131,6 +131,51 @@ Toggle debug mode to see:
 
 </details>
 
+<details>
+<summary><strong>📈 Feedback & Analytics</strong></summary>
+
+CCSeeker includes a feedback collection system to track search quality and enable future improvements.
+
+### How It Works
+
+After each search, users can provide feedback:
+- **Thumbs up** - Results were helpful
+- **Thumbs down** - Results missed the mark (with reason: few results, low quality, wrong topic, or other)
+
+### Data Collected
+
+All feedback is stored locally in `.feedback_data.json`:
+
+Timestamp, Search mode, query, results count
+
+Top 5 results with (channel name, id, url and score)
+
+Feedback, reason, Filter settings, AI enabled flag
+
+**Seed mode captures detailed scoring component breakdown**
+
+### Analytics Use Cases
+
+- **Satisfaction tracking** - Positive vs. negative feedback ratio by search mode
+- **Failure analysis** - Which reason appear most frequently
+- **Score calibration** - What scores correlate with user satisfaction
+- **Filter effectiveness** - Which filter combinations yield better results
+- **AI Lift** - Gemini correlation with satisfaction
+
+Export feedback to CSV via the debug panel for external analysis.
+
+### Future Roadmap
+
+The feedback system is designed to enable future enhancements:
+
+1. Exports data to Microsoft Fabric for analytics
+2. Builds dashboards to track search quality
+3. Uses simple ML models to learn optimal scoring weights 
+  a. Logistic Regression for weight learning
+  b. Linear Regression for score calibration
+4. Creates a feedback loop to improve the app over time
+
+</details>
 
 <details>
 <summary><strong>📐 Scoring Methodology</strong></summary>
@@ -464,6 +509,24 @@ Enable debug mode to see real-time usage.
 - **Language Support**: Seed topic extraction optimized for English/Spanish content. Other languages fall back to English stopwords.
 - **Cache Staleness**: 24hr TTL may show outdated data for rapidly changing channels
 - **No Historical Data**: Can't analyze deleted videos or past performance
+
+</details>
+
+<details>
+<summary><strong>🧭 Scaling Considerations</strong></summary>
+
+CCSeeker is currently architected as a single-user portfolio application. Below are the architectural decisions I'd make if usage patterns required scaling.
+
+| Trigger | Architectural Change | Rationale |
+|---------|---------------------|-----------|
+| Multiple concurrent users | Server-side cache (Redis/Postgres) | Streamlit Community Cloud restarts invalidate in-memory caches |
+| API quota becomes bottleneck | BYOK (Bring Your Own Key) | Let users provide their own YouTube/Gemini API keys |
+| User-specific search history needed | Google OAuth authentication | Can't persist user data without identity |
+| Uptime/reliability requirements | Docker deployment on paid hosting | Control over restarts, resource allocation |
+| Per-search costs justify gating | Budget-aware search flow | Run Deep analysis only on user-selected shortlist, not all candidates |
+
+**Current architecture handles:** 25 searches/day within free API quotas, with 24-hour cached results reducing redundant API calls by approximately 40x on repeat searches.
+
 
 </details>
 

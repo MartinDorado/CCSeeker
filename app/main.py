@@ -1273,16 +1273,21 @@ if 'display_df' in st.session_state:
                 search_mode = "seed" if 'seed_profile' in st.session_state else "keyword"
                 query = st.session_state.get('final_query', '')
 
-                # Build top results list
+                # Build top results list with RAW scores (not formatted strings)
                 top_results = []
-                if not display_df.empty:
-                    for _, row in display_df.head(5).iterrows():
-                        score = row.get('similarity_score') or row.get('relevance_score', 0)
+                top_channels_full = st.session_state.get('top_channels_full', pd.DataFrame())
+                if not top_channels_full.empty:
+                    for _, row in top_channels_full.head(5).iterrows():
+                        # Get raw numeric score
+                        if 'similarity' in row and isinstance(row.get('similarity'), dict):
+                            score = row['similarity'].get('total_score', 0)
+                        else:
+                            score = row.get('relevance_score', 0)
                         top_results.append({
                             "channel_name": row.get('channel_title', ''),
                             "channel_id": row.get('channel_id', ''),
                             "channel_url": row.get('channel_url', ''),
-                            "score": score
+                            "score": round(score, 2) if isinstance(score, float) else score
                         })
 
                 # Get seed info if available
@@ -1298,27 +1303,35 @@ if 'display_df' in st.session_state:
 
                 # Build scoring context for seed mode (similarity breakdown)
                 scoring_context = None
-                if search_mode == "seed" and 'top_channels_full' in st.session_state:
-                    top_channels_full = st.session_state['top_channels_full']
-                    if not top_channels_full.empty and 'similarity' in top_channels_full.columns:
-                        # Get similarity data from top result
-                        top_sim = top_channels_full.iloc[0].get('similarity', {})
-                        if isinstance(top_sim, dict):
-                            # Calculate score distribution across all results
-                            all_scores = [
-                                row.get('similarity', {}).get('total_score', 0)
-                                for _, row in top_channels_full.head(10).iterrows()
-                                if isinstance(row.get('similarity'), dict)
-                            ]
-                            scoring_context = {
-                                'top_result_total_score': top_sim.get('total_score', 0),
-                                'top_result_algorithmic_score': top_sim.get('algorithmic_score', 0),
-                                'top_result_gemini_score': top_sim.get('gemini_score', 0),
-                                'score_distribution': {
-                                    'max': max(all_scores) if all_scores else 0,
-                                    'min': min(all_scores) if all_scores else 0,
-                                    'avg': sum(all_scores) / len(all_scores) if all_scores else 0
-                                }
+                if search_mode == "seed" and not top_channels_full.empty and 'similarity' in top_channels_full.columns:
+                    # Get similarity data from top result
+                    top_sim = top_channels_full.iloc[0].get('similarity', {})
+                    if isinstance(top_sim, dict):
+                        # Calculate score distribution across all results
+                        all_scores = [
+                            row.get('similarity', {}).get('total_score', 0)
+                            for _, row in top_channels_full.head(10).iterrows()
+                            if isinstance(row.get('similarity'), dict)
+                        ]
+                        scoring_context = {
+                            'top_result_total_score': top_sim.get('total_score', 0),
+                            'top_result_algorithmic_score': top_sim.get('algorithmic_score', 0),
+                            'top_result_gemini_score': top_sim.get('gemini_score', 0),
+                            'score_distribution': {
+                                'max': max(all_scores) if all_scores else 0,
+                                'min': min(all_scores) if all_scores else 0,
+                                'avg': sum(all_scores) / len(all_scores) if all_scores else 0
+                            }
+                        }
+                        # Add component breakdown if available
+                        breakdown = top_sim.get('breakdown', {})
+                        if breakdown:
+                            scoring_context['component_scores'] = {
+                                'tag_score': breakdown.get('tag_score', 0),
+                                'keyword_score': breakdown.get('keyword_score', 0),
+                                'subscriber_score': breakdown.get('subscriber_score', 0),
+                                'engagement_score': breakdown.get('engagement_score', 0),
+                                'frequency_score': breakdown.get('frequency_score', 0)
                             }
 
                 # Save positive feedback
@@ -1364,16 +1377,21 @@ if 'display_df' in st.session_state:
                 search_mode = "seed" if 'seed_profile' in st.session_state else "keyword"
                 query = st.session_state.get('final_query', '')
 
-                # Build top results list
+                # Build top results list with RAW scores (not formatted strings)
                 top_results = []
-                if not display_df.empty:
-                    for _, row in display_df.head(5).iterrows():
-                        score = row.get('similarity_score') or row.get('relevance_score', 0)
+                top_channels_full = st.session_state.get('top_channels_full', pd.DataFrame())
+                if not top_channels_full.empty:
+                    for _, row in top_channels_full.head(5).iterrows():
+                        # Get raw numeric score
+                        if 'similarity' in row and isinstance(row.get('similarity'), dict):
+                            score = row['similarity'].get('total_score', 0)
+                        else:
+                            score = row.get('relevance_score', 0)
                         top_results.append({
                             "channel_name": row.get('channel_title', ''),
                             "channel_id": row.get('channel_id', ''),
                             "channel_url": row.get('channel_url', ''),
-                            "score": score
+                            "score": round(score, 2) if isinstance(score, float) else score
                         })
 
                 # Get seed info if available
@@ -1389,27 +1407,35 @@ if 'display_df' in st.session_state:
 
                 # Build scoring context for seed mode (similarity breakdown)
                 scoring_context = None
-                if search_mode == "seed" and 'top_channels_full' in st.session_state:
-                    top_channels_full = st.session_state['top_channels_full']
-                    if not top_channels_full.empty and 'similarity' in top_channels_full.columns:
-                        # Get similarity data from top result
-                        top_sim = top_channels_full.iloc[0].get('similarity', {})
-                        if isinstance(top_sim, dict):
-                            # Calculate score distribution across all results
-                            all_scores = [
-                                row.get('similarity', {}).get('total_score', 0)
-                                for _, row in top_channels_full.head(10).iterrows()
-                                if isinstance(row.get('similarity'), dict)
-                            ]
-                            scoring_context = {
-                                'top_result_total_score': top_sim.get('total_score', 0),
-                                'top_result_algorithmic_score': top_sim.get('algorithmic_score', 0),
-                                'top_result_gemini_score': top_sim.get('gemini_score', 0),
-                                'score_distribution': {
-                                    'max': max(all_scores) if all_scores else 0,
-                                    'min': min(all_scores) if all_scores else 0,
-                                    'avg': sum(all_scores) / len(all_scores) if all_scores else 0
-                                }
+                if search_mode == "seed" and not top_channels_full.empty and 'similarity' in top_channels_full.columns:
+                    # Get similarity data from top result
+                    top_sim = top_channels_full.iloc[0].get('similarity', {})
+                    if isinstance(top_sim, dict):
+                        # Calculate score distribution across all results
+                        all_scores = [
+                            row.get('similarity', {}).get('total_score', 0)
+                            for _, row in top_channels_full.head(10).iterrows()
+                            if isinstance(row.get('similarity'), dict)
+                        ]
+                        scoring_context = {
+                            'top_result_total_score': top_sim.get('total_score', 0),
+                            'top_result_algorithmic_score': top_sim.get('algorithmic_score', 0),
+                            'top_result_gemini_score': top_sim.get('gemini_score', 0),
+                            'score_distribution': {
+                                'max': max(all_scores) if all_scores else 0,
+                                'min': min(all_scores) if all_scores else 0,
+                                'avg': sum(all_scores) / len(all_scores) if all_scores else 0
+                            }
+                        }
+                        # Add component breakdown if available
+                        breakdown = top_sim.get('breakdown', {})
+                        if breakdown:
+                            scoring_context['component_scores'] = {
+                                'tag_score': breakdown.get('tag_score', 0),
+                                'keyword_score': breakdown.get('keyword_score', 0),
+                                'subscriber_score': breakdown.get('subscriber_score', 0),
+                                'engagement_score': breakdown.get('engagement_score', 0),
+                                'frequency_score': breakdown.get('frequency_score', 0)
                             }
 
                 # Save negative feedback with reason

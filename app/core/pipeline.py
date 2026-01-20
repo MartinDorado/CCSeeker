@@ -609,7 +609,8 @@ def run_search_pipeline(
                 candidates,
                 config.seed_profile,
                 gemini_api_key=gemini_api_key,
-                gemini_limit=10
+                gemini_limit=10,
+                debug=True  # Enable breakdown for feedback analytics
             )
 
             top_channels = pd.DataFrame(ranked)
@@ -668,6 +669,14 @@ def run_search_pipeline(
         if on_progress:
             on_progress("Formatting results...", 0.95)
 
+        # Create YouTube channel URL (before saving full data)
+        top_channels['channel_url'] = top_channels['channel_id'].apply(
+            lambda x: f"https://www.youtube.com/channel/{x}" if x else ""
+        )
+
+        # Save full data BEFORE formatting (for feedback analytics with raw scores)
+        top_channels_full = top_channels.copy()
+
         # Format display values
         top_channels['relevance_score'] = top_channels['relevance_score'].fillna(0).map('{:.0%}'.format)
         top_channels['engagement_rate'] = top_channels['engagement_rate'].fillna(0).map('{:.2%}'.format)
@@ -676,15 +685,11 @@ def run_search_pipeline(
         if 'similarity_score' in top_channels.columns:
             top_channels['similarity_score'] = top_channels['similarity_score'].fillna(0).map('{:.1f}'.format)
 
-        # Create YouTube channel URL
-        top_channels['channel_url'] = top_channels['channel_id'].apply(
-            lambda x: f"https://www.youtube.com/channel/{x}" if x else ""
-        )
-
         # Choose display columns
+        # Note: channel_id is included for feedback tracking but not displayed in UI
         if 'similarity_score' in top_channels.columns:
             display_columns = [
-                'channel_title', 'channel_url', 'similarity_score', 'relevance_score',
+                'channel_id', 'channel_title', 'channel_url', 'similarity_score', 'relevance_score',
                 'avg_views_per_video', 'subscribers', 'country', 'engagement_rate'
             ]
             column_explanations = {
@@ -698,7 +703,7 @@ def run_search_pipeline(
             }
         else:
             display_columns = [
-                'channel_title', 'channel_url', 'relevance_score', 'subscribers',
+                'channel_id', 'channel_title', 'channel_url', 'relevance_score', 'subscribers',
                 'avg_views_per_video', 'country', 'engagement_rate'
             ]
             column_explanations = {
@@ -712,11 +717,6 @@ def run_search_pipeline(
 
         # Prepare outreach data
         top_channels_for_outreach = top_channels[['channel_title']].reset_index(drop=True)
-
-        # Full data for seed mode
-        top_channels_full = None
-        if 'similarity_score' in top_channels.columns:
-            top_channels_full = top_channels.copy()
 
         timings['total'] = time.time() - pipeline_start
 

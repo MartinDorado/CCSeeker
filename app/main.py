@@ -506,6 +506,7 @@ def run_search(
     min_subs_input: int,
     months_ago_input: int,
     country_filter_input: str,
+    enable_ai: bool = True,
 ) -> None:
     """
     Execute the end-to-end search pipeline: validate -> search -> stats -> filter -> analyze -> rank -> render.
@@ -524,6 +525,7 @@ def run_search(
         min_subs_input: Minimum subscriber threshold.
         months_ago_input: Only include videos from the last N months (0 = no recency filter).
         country_filter_input: Optional strict country filter by ISO code (e.g., "US"); falsy disables.
+        enable_ai: Whether to use Gemini AI for relevance scoring and summaries.
 
     Returns:
         None. Renders UI and updates session state.
@@ -562,10 +564,21 @@ def run_search(
         min_subscribers=min_subs_input,
         country_filter=country_filter_input if country_filter_input else None,
         months_ago=months_ago_input,
-        enable_ai_relevance=bool(GEMINI_API_KEY),
-        enable_ai_summary=bool(GEMINI_API_KEY),
+        enable_ai_relevance=bool(GEMINI_API_KEY) and enable_ai,
+        enable_ai_summary=bool(GEMINI_API_KEY) and enable_ai,
         seed_profile=seed_profile,
     )
+
+    # Store search configuration for feedback tracking
+    st.session_state['search_config'] = {
+        'filters': {
+            'min_subscribers': min_subs_input,
+            'country_filter': country_filter_input if country_filter_input else None,
+            'months_ago': months_ago_input,
+            'region': region_input if region_input else None
+        },
+        'ai_enabled': bool(GEMINI_API_KEY) and enable_ai
+    }
 
     # Get Gemini model if configured
     gemini_model = None
@@ -848,12 +861,24 @@ if search_method:
                     value=8, min_value=0, step=1,
                     help="Only show channels with uploads in the last X months. Set to 0 to ignore upload recency."
                 )
+
+            # AI Enhancement toggle (only show if Gemini API key is configured)
+            if GEMINI_API_KEY:
+                enable_ai = st.checkbox(
+                    "Enable AI Enhancement",
+                    value=True,
+                    help="Use Gemini AI to improve relevance scoring and generate summaries. Disable to save API quota or compare results.",
+                    key="keyword_enable_ai"
+                )
+            else:
+                enable_ai = False
         else:
             # For Channel-as-Seed: initialize default values (filters will be shown after analysis)
             region_input = ""
             min_subs_input = 10000
             country_filter_input = ""
             months_ago_input = 18
+            enable_ai = True  # Default for seed mode, actual toggle shown later
 
         # Button label changes based on search method
         button_label = "Analyse Seed" if search_method == "Channel-as-Seed" else "Find Creators"
@@ -920,6 +945,7 @@ if submitted:
                 min_subs_input=min_subs_input,
                 months_ago_input=months_ago_input,
                 country_filter_input=country_filter_input,
+                enable_ai=enable_ai,
             )
 
 # ============================================================================
@@ -1028,7 +1054,18 @@ if st.session_state.get('seed_profile'):
             help="Only show channels with uploads in the last X months. Set to 0 to ignore upload recency.",
             key="seed_months_ago"
         )
-    
+
+    # AI Enhancement toggle (only show if Gemini API key is configured)
+    if GEMINI_API_KEY:
+        enable_ai = st.checkbox(
+            "Enable AI Enhancement",
+            value=True,
+            help="Use Gemini AI to improve similarity scoring (vibe analysis) and generate summaries. Disable to save API quota or compare results.",
+            key="seed_enable_ai"
+        )
+    else:
+        enable_ai = False
+
     # Build search query from profile (needed for the button)
     search_terms = profile['primary_keywords'][:2]  # Top 2 phrases
         
@@ -1111,6 +1148,7 @@ if st.session_state.get('seed_profile'):
                 min_subs_input=min_subs_input,
                 months_ago_input=months_ago_input,
                 country_filter_input=country_filter_input,
+                enable_ai=enable_ai,
             )
 
 
@@ -1119,9 +1157,13 @@ if st.session_state.get('seed_profile'):
 # ============================================================================
 if 'display_df' in st.session_state:
     st.subheader("📊 Search Results")
-    
+
+    # Get display DataFrame, excluding channel_id from visible columns (kept for feedback tracking)
+    display_df = st.session_state['display_df']
+    visible_columns = [col for col in display_df.columns if col != 'channel_id']
+
     st.dataframe(
-        st.session_state['display_df'],
+        display_df[visible_columns],
         column_config={
             "channel_url": st.column_config.LinkColumn(
                 label="Link",
@@ -1231,14 +1273,21 @@ if 'display_df' in st.session_state:
                 search_mode = "seed" if 'seed_profile' in st.session_state else "keyword"
                 query = st.session_state.get('final_query', '')
 
-                # Build top results list
+                # Build top results list with RAW scores (not formatted strings)
                 top_results = []
-                if not display_df.empty:
-                    for _, row in display_df.head(5).iterrows():
-                        score = row.get('similarity_score') or row.get('relevance_score', 0)
+                top_channels_full = st.session_state.get('top_channels_full', pd.DataFrame())
+                if not top_channels_full.empty:
+                    for _, row in top_channels_full.head(5).iterrows():
+                        # Get raw numeric score
+                        if 'similarity' in row and isinstance(row.get('similarity'), dict):
+                            score = row['similarity'].get('total_score', 0)
+                        else:
+                            score = row.get('relevance_score', 0)
                         top_results.append({
                             "channel_name": row.get('channel_title', ''),
-                            "score": score
+                            "channel_id": row.get('channel_id', ''),
+                            "channel_url": row.get('channel_url', ''),
+                            "score": round(score, 2) if isinstance(score, float) else score
                         })
 
                 # Get seed info if available
@@ -1249,6 +1298,42 @@ if 'display_df' in st.session_state:
                     seed_id = seed_profile.get('channel_id')
                     seed_name = seed_profile.get('channel_name')
 
+                # Get search config for analytics
+                search_config = st.session_state.get('search_config', {})
+
+                # Build scoring context for seed mode (similarity breakdown)
+                scoring_context = None
+                if search_mode == "seed" and not top_channels_full.empty and 'similarity' in top_channels_full.columns:
+                    # Get similarity data from top result
+                    top_sim = top_channels_full.iloc[0].get('similarity', {})
+                    if isinstance(top_sim, dict):
+                        # Calculate score distribution across all results
+                        all_scores = [
+                            row.get('similarity', {}).get('total_score', 0)
+                            for _, row in top_channels_full.head(10).iterrows()
+                            if isinstance(row.get('similarity'), dict)
+                        ]
+                        scoring_context = {
+                            'top_result_total_score': top_sim.get('total_score', 0),
+                            'top_result_algorithmic_score': top_sim.get('algorithmic_score', 0),
+                            'top_result_gemini_score': top_sim.get('gemini_score', 0),
+                            'score_distribution': {
+                                'max': max(all_scores) if all_scores else 0,
+                                'min': min(all_scores) if all_scores else 0,
+                                'avg': sum(all_scores) / len(all_scores) if all_scores else 0
+                            }
+                        }
+                        # Add component breakdown if available
+                        breakdown = top_sim.get('breakdown', {})
+                        if breakdown:
+                            scoring_context['component_scores'] = {
+                                'tag_score': breakdown.get('tag_score', 0),
+                                'keyword_score': breakdown.get('keyword_score', 0),
+                                'subscriber_score': breakdown.get('subscriber_score', 0),
+                                'engagement_score': breakdown.get('engagement_score', 0),
+                                'frequency_score': breakdown.get('frequency_score', 0)
+                            }
+
                 # Save positive feedback
                 feedback_tracker.save_feedback(
                     feedback="up",
@@ -1257,7 +1342,10 @@ if 'display_df' in st.session_state:
                     results_count=len(display_df),
                     top_results=top_results,
                     seed_channel_id=seed_id,
-                    seed_channel_name=seed_name
+                    seed_channel_name=seed_name,
+                    filters=search_config.get('filters'),
+                    ai_enabled=search_config.get('ai_enabled'),
+                    scoring_context=scoring_context
                 )
                 st.session_state['feedback_submitted'] = True
                 st.rerun()
@@ -1289,14 +1377,21 @@ if 'display_df' in st.session_state:
                 search_mode = "seed" if 'seed_profile' in st.session_state else "keyword"
                 query = st.session_state.get('final_query', '')
 
-                # Build top results list
+                # Build top results list with RAW scores (not formatted strings)
                 top_results = []
-                if not display_df.empty:
-                    for _, row in display_df.head(5).iterrows():
-                        score = row.get('similarity_score') or row.get('relevance_score', 0)
+                top_channels_full = st.session_state.get('top_channels_full', pd.DataFrame())
+                if not top_channels_full.empty:
+                    for _, row in top_channels_full.head(5).iterrows():
+                        # Get raw numeric score
+                        if 'similarity' in row and isinstance(row.get('similarity'), dict):
+                            score = row['similarity'].get('total_score', 0)
+                        else:
+                            score = row.get('relevance_score', 0)
                         top_results.append({
                             "channel_name": row.get('channel_title', ''),
-                            "score": score
+                            "channel_id": row.get('channel_id', ''),
+                            "channel_url": row.get('channel_url', ''),
+                            "score": round(score, 2) if isinstance(score, float) else score
                         })
 
                 # Get seed info if available
@@ -1307,6 +1402,42 @@ if 'display_df' in st.session_state:
                     seed_id = seed_profile.get('channel_id')
                     seed_name = seed_profile.get('channel_name')
 
+                # Get search config for analytics
+                search_config = st.session_state.get('search_config', {})
+
+                # Build scoring context for seed mode (similarity breakdown)
+                scoring_context = None
+                if search_mode == "seed" and not top_channels_full.empty and 'similarity' in top_channels_full.columns:
+                    # Get similarity data from top result
+                    top_sim = top_channels_full.iloc[0].get('similarity', {})
+                    if isinstance(top_sim, dict):
+                        # Calculate score distribution across all results
+                        all_scores = [
+                            row.get('similarity', {}).get('total_score', 0)
+                            for _, row in top_channels_full.head(10).iterrows()
+                            if isinstance(row.get('similarity'), dict)
+                        ]
+                        scoring_context = {
+                            'top_result_total_score': top_sim.get('total_score', 0),
+                            'top_result_algorithmic_score': top_sim.get('algorithmic_score', 0),
+                            'top_result_gemini_score': top_sim.get('gemini_score', 0),
+                            'score_distribution': {
+                                'max': max(all_scores) if all_scores else 0,
+                                'min': min(all_scores) if all_scores else 0,
+                                'avg': sum(all_scores) / len(all_scores) if all_scores else 0
+                            }
+                        }
+                        # Add component breakdown if available
+                        breakdown = top_sim.get('breakdown', {})
+                        if breakdown:
+                            scoring_context['component_scores'] = {
+                                'tag_score': breakdown.get('tag_score', 0),
+                                'keyword_score': breakdown.get('keyword_score', 0),
+                                'subscriber_score': breakdown.get('subscriber_score', 0),
+                                'engagement_score': breakdown.get('engagement_score', 0),
+                                'frequency_score': breakdown.get('frequency_score', 0)
+                            }
+
                 # Save negative feedback with reason
                 feedback_tracker.save_feedback(
                     feedback="down",
@@ -1316,7 +1447,10 @@ if 'display_df' in st.session_state:
                     top_results=top_results,
                     reason=reason[0],  # reason code
                     seed_channel_id=seed_id,
-                    seed_channel_name=seed_name
+                    seed_channel_name=seed_name,
+                    filters=search_config.get('filters'),
+                    ai_enabled=search_config.get('ai_enabled'),
+                    scoring_context=scoring_context
                 )
                 st.session_state['feedback_submitted'] = True
                 st.session_state['show_reason_selector'] = False

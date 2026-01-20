@@ -52,7 +52,10 @@ def save_feedback(
     top_results: list[dict],
     reason: Optional[str] = None,
     seed_channel_id: Optional[str] = None,
-    seed_channel_name: Optional[str] = None
+    seed_channel_name: Optional[str] = None,
+    filters: Optional[dict] = None,
+    ai_enabled: Optional[bool] = None,
+    scoring_context: Optional[dict] = None
 ) -> bool:
     """
     Save user feedback for a search.
@@ -72,7 +75,7 @@ def save_feedback(
         Total number of results returned
 
     top_results : list[dict]
-        Top 5 results with channel_id, channel_name, and score
+        Top 5 results with channel_id, channel_name, channel_url, and score
 
     reason : str, optional
         Reason code for negative feedback (few_results, low_quality, wrong_topic, other)
@@ -82,6 +85,21 @@ def save_feedback(
 
     seed_channel_name : str, optional
         Channel name of seed (if seed mode)
+
+    filters : dict, optional
+        Search filter settings used (min_subscribers, country_filter, months_ago, region)
+
+    ai_enabled : bool, optional
+        Whether AI enhancement was enabled for this search
+
+    scoring_context : dict, optional
+        For seed mode: similarity scoring details for top result
+        {
+            'top_result_total_score': float,
+            'top_result_algorithmic_score': float,
+            'top_result_gemini_score': float,
+            'score_distribution': {'max': float, 'min': float, 'avg': float}
+        }
 
     Returns:
     --------
@@ -103,6 +121,18 @@ def save_feedback(
     if search_mode == "seed":
         entry["seed_channel_id"] = seed_channel_id
         entry["seed_channel_name"] = seed_channel_name
+
+    # Add filter settings if provided
+    if filters:
+        entry["filters"] = filters
+
+    # Add AI enabled flag if provided
+    if ai_enabled is not None:
+        entry["ai_enabled"] = ai_enabled
+
+    # Add scoring context if provided (seed mode)
+    if scoring_context:
+        entry["scoring_context"] = scoring_context
 
     data["feedback_entries"].append(entry)
 
@@ -210,12 +240,23 @@ def export_feedback_csv(filepath: str) -> bool:
             fieldnames = [
                 "timestamp", "search_mode", "query", "results_count",
                 "feedback", "reason", "seed_channel_id", "seed_channel_name",
-                "top_result_1", "top_result_2", "top_result_3"
+                "ai_enabled", "min_subscribers", "country_filter", "months_ago", "region",
+                "top_result_total_score", "top_result_algorithmic_score", "top_result_gemini_score",
+                "score_dist_max", "score_dist_min", "score_dist_avg",
+                "component_tag_score", "component_keyword_score", "component_subscriber_score",
+                "component_engagement_score", "component_frequency_score",
+                "top_result_1_name", "top_result_1_id", "top_result_1_url", "top_result_1_score",
+                "top_result_2_name", "top_result_2_id", "top_result_2_url", "top_result_2_score",
+                "top_result_3_name", "top_result_3_id", "top_result_3_url", "top_result_3_score"
             ]
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
 
             for entry in entries:
+                filters = entry.get("filters", {})
+                scoring_context = entry.get("scoring_context", {})
+                score_dist = scoring_context.get("score_distribution", {})
+                component_scores = scoring_context.get("component_scores", {})
                 row = {
                     "timestamp": entry.get("timestamp"),
                     "search_mode": entry.get("search_mode"),
@@ -224,17 +265,39 @@ def export_feedback_csv(filepath: str) -> bool:
                     "feedback": entry.get("feedback"),
                     "reason": entry.get("reason"),
                     "seed_channel_id": entry.get("seed_channel_id"),
-                    "seed_channel_name": entry.get("seed_channel_name")
+                    "seed_channel_name": entry.get("seed_channel_name"),
+                    "ai_enabled": entry.get("ai_enabled"),
+                    "min_subscribers": filters.get("min_subscribers"),
+                    "country_filter": filters.get("country_filter"),
+                    "months_ago": filters.get("months_ago"),
+                    "region": filters.get("region"),
+                    "top_result_total_score": scoring_context.get("top_result_total_score"),
+                    "top_result_algorithmic_score": scoring_context.get("top_result_algorithmic_score"),
+                    "top_result_gemini_score": scoring_context.get("top_result_gemini_score"),
+                    "score_dist_max": score_dist.get("max"),
+                    "score_dist_min": score_dist.get("min"),
+                    "score_dist_avg": score_dist.get("avg"),
+                    "component_tag_score": component_scores.get("tag_score"),
+                    "component_keyword_score": component_scores.get("keyword_score"),
+                    "component_subscriber_score": component_scores.get("subscriber_score"),
+                    "component_engagement_score": component_scores.get("engagement_score"),
+                    "component_frequency_score": component_scores.get("frequency_score")
                 }
 
-                # Add top 3 results as columns
+                # Add top 3 results as separate columns for name, id, url, and score
                 top_results = entry.get("top_results", [])
                 for i in range(3):
                     if i < len(top_results):
                         r = top_results[i]
-                        row[f"top_result_{i+1}"] = f"{r.get('channel_name')} ({r.get('score')})"
+                        row[f"top_result_{i+1}_name"] = r.get('channel_name', '')
+                        row[f"top_result_{i+1}_id"] = r.get('channel_id', '')
+                        row[f"top_result_{i+1}_url"] = r.get('channel_url', '')
+                        row[f"top_result_{i+1}_score"] = r.get('score', '')
                     else:
-                        row[f"top_result_{i+1}"] = ""
+                        row[f"top_result_{i+1}_name"] = ""
+                        row[f"top_result_{i+1}_id"] = ""
+                        row[f"top_result_{i+1}_url"] = ""
+                        row[f"top_result_{i+1}_score"] = ""
 
                 writer.writerow(row)
 

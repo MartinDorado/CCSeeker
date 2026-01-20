@@ -243,6 +243,8 @@ def export_feedback_csv(filepath: str) -> bool:
                 "ai_enabled", "min_subscribers", "country_filter", "months_ago", "region",
                 "top_result_total_score", "top_result_algorithmic_score", "top_result_gemini_score",
                 "score_dist_max", "score_dist_min", "score_dist_avg",
+                "component_tag_score", "component_keyword_score", "component_subscriber_score",
+                "component_engagement_score", "component_frequency_score",
                 "top_result_1_name", "top_result_1_id", "top_result_1_url", "top_result_1_score",
                 "top_result_2_name", "top_result_2_id", "top_result_2_url", "top_result_2_score",
                 "top_result_3_name", "top_result_3_id", "top_result_3_url", "top_result_3_score"
@@ -254,6 +256,7 @@ def export_feedback_csv(filepath: str) -> bool:
                 filters = entry.get("filters", {})
                 scoring_context = entry.get("scoring_context", {})
                 score_dist = scoring_context.get("score_distribution", {})
+                component_scores = scoring_context.get("component_scores", {})
                 row = {
                     "timestamp": entry.get("timestamp"),
                     "search_mode": entry.get("search_mode"),
@@ -273,7 +276,12 @@ def export_feedback_csv(filepath: str) -> bool:
                     "top_result_gemini_score": scoring_context.get("top_result_gemini_score"),
                     "score_dist_max": score_dist.get("max"),
                     "score_dist_min": score_dist.get("min"),
-                    "score_dist_avg": score_dist.get("avg")
+                    "score_dist_avg": score_dist.get("avg"),
+                    "component_tag_score": component_scores.get("tag_score"),
+                    "component_keyword_score": component_scores.get("keyword_score"),
+                    "component_subscriber_score": component_scores.get("subscriber_score"),
+                    "component_engagement_score": component_scores.get("engagement_score"),
+                    "component_frequency_score": component_scores.get("frequency_score")
                 }
 
                 # Add top 3 results as separate columns for name, id, url, and score

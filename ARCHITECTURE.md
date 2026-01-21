@@ -594,6 +594,73 @@ score = doc_freq * weight * (1.0 - penalty)
 
 ---
 
+## Performance & Efficiency
+
+CCSeeker optimizes for two constraints: **API quota** (10,000 YouTube units/day) and **latency**. Performance was measured via the debug panel (January 2026).
+
+### Measured Performance
+
+#### Keyword Search Mode
+
+| Scenario | Total Time | Bottleneck | Quota Used |
+|----------|------------|------------|------------|
+| Cold cache (no AI) | 9-10s | Video details (84-87%) | ~400 units |
+| Warm cache (no AI) | 0.04s | Relevance filtering (46-48%) | ~100 units |
+| Warm cache (with AI) | 17-19s | AI relevance (92-94%) | ~100 units |
+
+<details>
+<summary>Step-by-step breakdown (cold cache, no AI)</summary>
+
+| Step | Time | % of Total |
+|------|------|------------|
+| Search | 1.2s | 12% |
+| Channel stats | 0.2s | 2% |
+| Video details | 8-9s | **84-87%** |
+| Relevance scoring | <0.1s | <1% |
+| **Total** | **9-10s** | 100% |
+
+</details>
+
+#### Seed-Based Search Mode (with AI)
+
+| Step | Time | % of Total |
+|------|------|------------|
+| Search | 2.4s | 6% |
+| Channel stats | 0.4s | 1% |
+| Video details | 9.8s | 23% |
+| AI relevance | 17.5s | **42%** |
+| Similarity calculation | 8.1s | 19% |
+| AI summary | 3.8s | 9% |
+| **Total** | **~42s** | 100% |
+
+*Seed channel: @t3dotgg*
+
+### Key Findings
+
+1. **Cache reduces latency by 99%** — Warm cache keyword search: 0.04s vs cold: 9-10s
+2. **Cache reduces quota by 75%** — 100 units (warm) vs 400 units (cold)
+3. **AI is the bottleneck when enabled** — 92-94% of keyword time, 42% of seed time
+4. **Video details fetch is the bottleneck without AI** — Sequential API calls per channel
+
+### Efficiency by Design
+
+| Pattern | How It Saves Resources |
+|---------|----------------------|
+| **Filter-before-fetch** | Channels filtered by subscribers/country before expensive video fetches |
+| **Entity-level caching** | Cache keyed by channel ID, not query — "cooking" and "recipes" share cache hits |
+| **Batched channel stats** | Up to 50 channel IDs per API call (YouTube limit) |
+| **Bounded work limits** | Max 2 search terms, 50 channels, 10 videos/channel — prevents runaway quota |
+| **Quota monitoring** | Real-time tracking with warnings before exhaustion |
+
+### Quota Budget
+
+| Cache State | Quota Units | Searches/Day (Free Tier) |
+|-------------|-------------|--------------------------|
+| Cold cache | ~400 units | ~25 searches |
+| Warm cache | ~100 units | ~100 searches |
+
+---
+
 ## Key Design Decisions
 
 ### 1. Layered Architecture

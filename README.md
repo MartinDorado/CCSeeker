@@ -513,6 +513,23 @@ Enable debug mode to see real-time usage.
 </details>
 
 <details>
+<summary><strong>⚡ Performance</strong></summary>
+
+Measured via debug panel (January 2026):
+
+- **Keyword search**: 9-10s cold cache, <1s warm cache (without AI)
+- **Seed-based search**: ~42s with full AI similarity analysis  
+- **AI overhead**: +17s when AI relevance scoring enabled
+- **Cache benefit**: 99% faster, 75% less quota on repeat searches
+- **Quota usage**: ~400 units cold / ~100 units warm (~25-100 searches/day on free tier)
+
+**Bottlenecks**: Video details fetch (without AI) · AI relevance scoring (with AI)
+
+See [ARCHITECTURE.md](ARCHITECTURE.md#performance--efficiency) for detailed breakdown.
+
+</details>
+
+<details>
 <summary><strong>🧭 Scaling Considerations</strong></summary>
 
 CCSeeker is currently architected as a single-user portfolio application. Below are the architectural decisions I'd make if usage patterns required scaling.

@@ -580,10 +580,11 @@ score = doc_freq * weight * (1.0 - penalty)
 **Daily limit:** 10,000 units (free tier)
 
 **Typical search cost:**
-- 2 search calls × 100 = 200 units
-- 1 channel stats call = 1 unit
+- 3 search calls × 100 = 300 units
+- 4 channel stats call = 4 unit
 - 50 video detail calls = 50 units
-- **Total: ~250 units per search**
+- 50 playlist calls = 50 units
+- **Total: ~404 units per search**
 
 ### Gemini AI
 
@@ -609,7 +610,7 @@ CCSeeker optimizes for two constraints: **API quota** (10,000 YouTube units/day)
 | Warm cache (with AI) | 17-19s | AI relevance (92-94%) | ~100 units |
 
 <details>
-<summary>Step-by-step breakdown (cold cache, no AI)</summary>
+<summary>Step-by-step breakdown (1 term, cold cache, no AI)</summary>
 
 | Step | Time | % of Total |
 |------|------|------------|
@@ -621,7 +622,7 @@ CCSeeker optimizes for two constraints: **API quota** (10,000 YouTube units/day)
 
 </details>
 
-#### Seed-Based Search Mode (with AI)
+#### Seed-Based Search Mode (with AI and 2 terms)
 
 | Step | Time | % of Total |
 |------|------|------------|
@@ -654,10 +655,10 @@ CCSeeker optimizes for two constraints: **API quota** (10,000 YouTube units/day)
 
 ### Quota Budget
 
-| Cache State | Quota Units | Searches/Day (Free Tier) |
+| Cache State | Quota Units | Searches/Day on 1 term (Free Tier) |
 |-------------|-------------|--------------------------|
-| Cold cache | ~400 units | ~25 searches |
-| Warm cache | ~100 units | ~100 searches |
+| Cold cache | 400 units | 25 searches |
+| Warm cache | 100 units | 100 searches |
 
 ---
 

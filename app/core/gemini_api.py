@@ -38,7 +38,12 @@ class SummaryResult:
 # AI RELEVANCE SCORING
 # ============================================================================
 
-def generate_ai_relevance_score(model, channel_data: dict, query: str) -> float:
+def generate_ai_relevance_score(
+    model,
+    channel_data: dict,
+    query: str,
+    on_api_call: Callable[[str], None] | None = None,
+) -> float:
     """
     Uses a Gemini model to score channel relevance based on video titles.
 
@@ -46,6 +51,7 @@ def generate_ai_relevance_score(model, channel_data: dict, query: str) -> float:
         model: An initialized Gemini model instance.
         channel_data: A dict with 'channel_title' and a list of 'video_titles'.
         query: The user's original search query.
+        on_api_call: Optional callback for tracking API calls.
 
     Returns:
         A relevance score between 0.0 and 1.0, or 0.0 on failure.
@@ -56,6 +62,10 @@ def generate_ai_relevance_score(model, channel_data: dict, query: str) -> float:
     """
     if not channel_data.get("video_titles"):
         return 0.0
+
+    # Track API call before making request
+    if on_api_call:
+        on_api_call('gemini_relevance')
 
     # Create a concise summary of video titles
     titles_str = "\n- ".join(channel_data["video_titles"][:10])

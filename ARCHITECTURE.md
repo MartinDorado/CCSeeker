@@ -58,7 +58,7 @@ CCSeeker is an AI-powered YouTube creator discovery tool that automates finding 
 | **Presentation** | `app/main.py` | UI rendering, user input, session state, progress display |
 | **Cache** | `app/cache/` | Streamlit caching wrappers, TTL configuration |
 | **Core** | `app/core/` | Pure business logic, API wrappers, pipeline orchestration |
-| **Utilities** | `app/*.py` | Seed analysis, similarity scoring, debug tracking |
+| **Utilities** | `app/*.py` | Seed analysis, similarity scoring, debug tracking, feedback collection |
 
 ---
 
@@ -98,6 +98,26 @@ CCSeeker/
 ├── requirements.txt              # Python dependencies
 └── README.md                     # User guide
 ```
+
+---
+
+## Session State Keys
+
+CCSeeker uses Streamlit's session state for cross-rerun persistence:
+
+| Key | Type | Purpose |
+|-----|------|---------|
+| `debug_mode` | bool | Toggle for debug panel visibility |
+| `search_method` | str | Current mode: "Keywords" or "Channel-as-Seed" |
+| `seed_profile` | dict | Analyzed seed channel data (topics, stats, engagement) |
+| `debug_data` | dict | API call tracking and performance metrics |
+| `daily_quota` | dict | Persistent quota tracking across sessions |
+| `display_df` | DataFrame | Current search results for display |
+| `column_explanations` | dict | Column descriptions for results table |
+| `final_query` | str | Processed search query used |
+| `top_channels_for_outreach` | list | Top 3 channels for email generation |
+| `ai_summary` | str | Generated AI summary of results |
+| `feedback_submitted` | bool | Prevents duplicate feedback submissions |
 
 ---
 
@@ -343,6 +363,12 @@ def jaccard_similarity(set1: set, set2: set) -> float:
     return len(set1 & set2) / len(set1 | set2) if (set1 | set2) else 0.0
 ```
 
+**Why Jaccard over Cosine Similarity?**
+- Tags and keywords are discrete sets (present/absent), not continuous vectors
+- Jaccard is order-independent and handles variable-length sets naturally
+- Simpler to interpret: "30% of combined tags overlap" vs. "0.85 cosine angle"
+- No need for TF-IDF weighting since we already filter common terms via penalties
+
 **Gemini "Vibe" Analysis (top 10 channels):**
 ```python
 # Evaluates content similarity beyond keyword matching
@@ -455,19 +481,115 @@ The debug sidebar displays timing for each pipeline step:
 
 Plus bottleneck identification: shows which step consumed the most time.
 
-### Daily Quota Persistence
+### Persistence Files
 
+CCSeeker uses local JSON files for persistence (git-ignored):
+
+| File | Purpose | Reset Behavior |
+|------|---------|----------------|
+| `.quota_cache.json` | Daily API quota tracking | Resets at midnight PT |
+| `.feedback_data.json` | User feedback storage | Never resets (append-only) |
+
+**Quota Cache Schema:**
 ```python
-# Quota tracking persists across browser refreshes
-daily_quota = {
+{
     'date': '2024-01-15',
     'youtube_units': 1500,
     'youtube_calls': 25,
     'gemini_calls': 10,
     'gemini_cost_usd': 0.0012
 }
-# Stored in .daily_quota.json, resets at midnight PT
 ```
+
+**Note:** On Streamlit Community Cloud, these files are ephemeral and reset on app restarts. For production use, consider migrating to cloud storage.
+
+---
+
+## Feedback Collection System
+
+### Purpose
+
+Collects user feedback on search quality to enable future improvements to similarity and relevance scoring algorithms.
+
+### Data Flow
+
+```
+User Search → Results Displayed → Feedback UI (👍/👎)
+                                        │
+                                        ▼
+                              ┌─────────────────────┐
+                              │  feedback_tracker.py │
+                              │  save_feedback()     │
+                              └─────────────────────┘
+                                        │
+                                        ▼
+                              ┌─────────────────────┐
+                              │ .feedback_data.json │
+                              │   (local storage)   │
+                              └─────────────────────┘
+```
+
+### Feedback Schema
+
+```python
+{
+    "timestamp": "2026-01-22T10:30:00",
+    "search_mode": "seed" | "keyword",
+    "query": "manga, anime",
+    "results_count": 25,
+    "feedback": "up" | "down",
+    "reason": "few_results" | "low_quality" | "wrong_topic" | "other",  # if down
+    "top_results": [  # Top 5 results with scores
+        {"channel_id": "...", "channel_name": "...", "channel_url": "...", "score": 75.5}
+    ],
+    "filters": {"min_subscribers": 1000, "country_filter": "US", "months_ago": 6},
+    "ai_enabled": true,
+    "scoring_context": {  # Seed mode only
+        "top_result_total_score": 75.5,
+        "top_result_algorithmic_score": 72.0,
+        "top_result_gemini_score": 8.5,
+        "score_distribution": {"max": 75.5, "min": 20.1, "avg": 45.3},
+        "component_scores": {
+            "tag_score": 24.5,
+            "keyword_score": 18.2,
+            "subscriber_score": 12.0,
+            "engagement_score": 10.3,
+            "frequency_score": 7.0
+        }
+    }
+}
+```
+
+### Available Functions
+
+| Function | Purpose |
+|----------|---------|
+| `save_feedback()` | Store feedback entry with full context |
+| `get_feedback_stats()` | Summary statistics (positive/negative counts, reason breakdown) |
+| `get_negative_feedback_entries()` | Recent negative feedback for analysis |
+| `export_feedback_csv()` | Export all feedback to CSV (31 columns) |
+
+### CSV Export Schema
+
+The export includes 31 columns covering:
+- Metadata: timestamp, search_mode, query, results_count
+- Feedback: feedback, reason
+- Context: seed_channel_id/name, ai_enabled
+- Filters: min_subscribers, country_filter, months_ago, region
+- Scoring: total/algorithmic/gemini scores, score distribution, component breakdowns
+- Top 3 results: name, id, url, score for each
+
+### Known Limitations
+
+- **Local storage only**: `.feedback_data.json` resets on Streamlit Cloud restarts
+- **No authentication**: Can't tie feedback to specific users
+- **Manual export**: Requires debug panel access to export CSV
+
+### Future Roadmap
+
+1. Export to cloud storage (Microsoft Fabric, S3, or Google Sheets)
+2. Build analytics dashboards for search quality tracking
+3. Use feedback for ML-based scoring weight optimization
 
 ---
 
@@ -597,7 +719,7 @@ score = doc_freq * weight * (1.0 - penalty)
 
 ## Performance & Efficiency
 
-CCSeeker optimizes for two constraints: **API quota** (10,000 YouTube units/day) and **latency**. Performance was measured via the debug panel (January 2026).
+CCSeeker optimizes for two constraints: **API quota** (10,000 YouTube units/day) and **latency**. Performance was measured via the debug panel on **Streamlit Community Cloud** (January 2026).
 
 ### Measured Performance
 

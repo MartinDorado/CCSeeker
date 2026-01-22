@@ -25,7 +25,7 @@ pip install -r requirements.txt
 
 # Configure API keys in .env
 YOUTUBE_API_KEY=your_key
-GEMINI_API_KEY=your_key  # Optional
+GEMINI_API_KEY=your_key  # Optional - core search works without it; enables AI features
 
 # Run the application
 streamlit run app/main.py
@@ -56,7 +56,7 @@ CCSeeker/
 │   ├── similarity_engine.py      # Multi-factor similarity scoring
 │   ├── debug_tracker.py          # API usage tracking, quota monitoring
 │   ├── feedback_tracker.py       # User feedback collection
-│   └── smart_cache.py            # Legacy per-channel video caching
+│   └── smart_cache.py            # Per-channel video caching (24h TTL)
 │
 ├── tests/                        # Unit test suite
 │   ├── test_query_utils.py       # 21 tests for query utilities
@@ -132,12 +132,37 @@ Final similarity = 80% algorithmic + 20% Gemini "vibe" analysis (when API key av
 | `seed_topics_v2.py` | `analyze_seed_channel_v2()` - topic extraction from seed channels |
 | `similarity_engine.py` | `calculate_similarity_score()` - multi-factor channel comparison |
 | `debug_tracker.py` | `track_api_call()`, quota monitoring, performance timing |
-| `feedback_tracker.py` | `save_feedback()` - user feedback collection |
+| `feedback_tracker.py` | `save_feedback()`, `get_feedback_stats()`, `export_feedback_csv()`, `get_negative_feedback_entries()` - user feedback persistence |
 
 ## API Quotas
 
 - **YouTube Data API:** 10,000 units/day (search = 100 units, others = 1 unit)
 - **Gemini:** 15 requests/min, 1M tokens/min (free tier)
+- **Gemini Model:** `gemini-2.0-flash-lite` (configured in `app/main.py:343`)
+
+## Environment Variables
+
+API keys are loaded via `python-dotenv` with Streamlit Cloud fallback:
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `YOUTUBE_API_KEY` | Yes | YouTube Data API v3 access |
+| `GEMINI_API_KEY` | No | Enables AI features (summaries, semantic scoring, outreach emails, vibe analysis) |
+
+**Loading mechanism** (`app/main.py:250-264` via `_get_secret()`):
+1. Check `os.getenv()` first (local `.env` file)
+2. Fall back to `st.secrets` for Streamlit Cloud deployment
+
+## Persistence Files
+
+These files are created at runtime and are git-ignored:
+
+| File | Created By | Purpose |
+|------|------------|---------|
+| `.quota_cache.json` | `debug_tracker.py` | Daily API quota tracking, resets at midnight PT |
+| `.feedback_data.json` | `feedback_tracker.py` | User feedback storage for analytics |
+
+**Note:** On Streamlit Cloud, these files are ephemeral and reset on app restarts.
 
 ## Development
 
@@ -176,6 +201,16 @@ pytest tests/ -v
 | Add caching for new function | `app/cache/cache_layer.py` - add cached wrapper |
 | Track new API call type | `app/debug_tracker.py` - add to tracking |
 | Add new test | `tests/test_<module>.py` - follow existing patterns |
+
+## Modification Guidelines
+
+Follow these rules to maintain architectural integrity:
+
+1. **Core must remain Streamlit-agnostic** - No `st.*` calls in `app/core/`
+2. **UI uses callbacks only** - Progress updates via `on_progress`, `on_api_call` callbacks
+3. **Update tests when changing scoring** - Modify `tests/test_relevance.py` or `tests/test_pipeline.py`
+4. **Update docs when changing constraints** - If you change max terms, max channels, TTLs, update README + ARCHITECTURE
+5. **Export new functions from `__init__.py`** - When adding to `app/core/`, update `app/core/__init__.py`
 
 ## Known Limitations
 

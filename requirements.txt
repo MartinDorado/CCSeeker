@@ -1,6 +1,6 @@
 # CCSeeker Production Dependencies
 # Last tested: 2025-11-05
-# Python 3.10+
+# Python 3.11
 # 
 # This file uses exact version pinning for reproducible deployments.
 # All versions have been tested together and are known to work.

@@ -12,7 +12,7 @@
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.49.0-red.svg)](https://streamlit.io/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 
-[Features](#-features) • [Demo]([text](https://ccseeker.streamlit.app/)) • [Installation](#-installation) • [Tech Stack](#-tech-stack) • [Architecture](ARCHITECTURE.md)
+[Features](#-features) • [Demo](https://ccseeker.streamlit.app/) • [Installation](#-installation) • [Tech Stack](#-tech-stack) • [Architecture](ARCHITECTURE.md)
 
 </div>
 
@@ -292,13 +292,13 @@ pytest tests/ -v
 
 ### Test Coverage
 
-| Module | Tests | Coverage |
-|--------|-------|----------|
-| `test_query_utils.py` | 21 | Query validation, URL parsing, edge cases |
-| `test_relevance.py` | 13 | Keyword matching, weights, empty inputs |
-| `test_youtube_api.py` | 20 | Search results, channel stats, error handling |
-| `test_gemini_api.py` | 15 | AI scoring, summary generation, API failures |
-| `test_pipeline.py` | 25 | Full pipeline, filters, early exits, callbacks |
+| Module | Coverage |
+|--------|-------|
+| `test_query_utils.py` | Query validation, URL parsing, edge cases |
+| `test_relevance.py` | Keyword matching, weights, empty inputs |
+| `test_youtube_api.py` | Search results, channel stats, error handling |
+| `test_gemini_api.py` | AI scoring, summary generation, API failures |
+| `test_pipeline.py` | Full pipeline, filters, early exits, callbacks |
 
 All tests use mocked API clients - no actual API calls needed.
 
@@ -333,7 +333,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 # Configure API keys
-cp .env.example .env
+create .env manually
 # Edit .env and add your keys:
 # YOUTUBE_API_KEY=your_youtube_key_here
 # GEMINI_API_KEY=your_gemini_key_here
@@ -550,7 +550,7 @@ CCSeeker is currently architected as a single-user portfolio application. Below 
 <details>
 <summary><strong>📄 License</strong></summary>
 
-This project is licensed under the Apache License 2.0 - see [LICENSE](LICENSE) for details.
+This project is licensed under the Apache License 2.0 - see [license.txt](LICENSE) for details.
 </details>
 
 <details>

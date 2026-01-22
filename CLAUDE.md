@@ -10,7 +10,7 @@ CCSeeker is an AI-powered YouTube creator discovery tool that automates finding 
 
 ## Tech Stack
 
-- **Python 3.10+** - Core language
+- **Python 3.11** - Core language
 - **Streamlit 1.49.0** - Web UI framework
 - **YouTube Data API v3** - Channel/video metadata
 - **Google Gemini AI** - Topic extraction and content generation

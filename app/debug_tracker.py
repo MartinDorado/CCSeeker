@@ -422,12 +422,23 @@ def display_debug_panel():
             data.get('gemini_relevance_calls', 0)
         )
 
-        st.caption("YouTube API Calls")
-        st.text(f"  Total: {calculate_youtube_quota_used()}")
-        st.text(f"  ├─ 🔎 Search: {data.get('youtube_search_calls', 0)}")
-        st.text(f"  ├─ 📺 Channels: {data.get('youtube_channel_calls', 0)}")
-        st.text(f"  ├─ 📃 Playlists: {data.get('youtube_playlist_calls', 0)}")
-        st.text(f"  └─ 🎬 Videos: {data.get('youtube_video_calls', 0)}")
+        # Calculate quota units per category
+        search_calls = data.get('youtube_search_calls', 0)
+        search_units = search_calls * YOUTUBE_QUOTA_COSTS['search']
+        channel_units = data.get('youtube_channel_calls', 0) * YOUTUBE_QUOTA_COSTS['channels']
+        playlist_units = data.get('youtube_playlist_calls', 0) * YOUTUBE_QUOTA_COSTS['playlistItems']
+        video_units = data.get('youtube_video_calls', 0) * YOUTUBE_QUOTA_COSTS['videos']
+
+        st.caption("YouTube API Quota")
+        st.text(f"  Total: {calculate_youtube_quota_used()} units")
+        # Show search with call count since it's expensive (100 units/call)
+        if search_calls > 0:
+            st.text(f"  ├─ 🔎 Search: {search_units} ({search_calls}×100)")
+        else:
+            st.text(f"  ├─ 🔎 Search: {search_units}")
+        st.text(f"  ├─ 📺 Channels: {channel_units}")
+        st.text(f"  ├─ 📃 Playlists: {playlist_units}")
+        st.text(f"  └─ 🎬 Videos: {video_units}")
 
         st.caption("Gemini API Calls")
         st.text(f"  Total: {gemini_total}")

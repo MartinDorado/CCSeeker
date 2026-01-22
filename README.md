@@ -310,8 +310,8 @@ All tests use mocked API clients - no actual API calls needed.
 
 ### Prerequisites
 - Python 3.11
-- [YouTube Data API v3 key](https://console.cloud.google.com/apis/credentials)
-- [Google Gemini API key](https://aistudio.google.com/apikey)
+- [YouTube Data API v3 key](https://console.cloud.google.com/apis/credentials) (required)
+- [Google Gemini API key](https://aistudio.google.com/apikey) (optional - enables AI features)
 
 ### Setup
 
@@ -359,11 +359,11 @@ App opens at `http://localhost:8501`
 1. Select **🔑 Keywords** mode
 2. Enter 1-2 search terms (e.g., "manga, anime")
 3. Relevant in: Country (default: Global)
-3. Set filters:
+4. Set filters:
    - Minimum subscribers (default: 1,000)
    - Channel's origin country (default: Global)
    - Recent activity (default: 8 months)
-4. Click **Find Creators**
+5. Click **Find Creators**
 
 Results show:
 - Relevance score (80% keyword match + 20% AI)
@@ -415,53 +415,27 @@ Results ranked by similarity score (0-100) with match reasons.
 ```
 CCSeeker/
 ├── app/
-│   ├── core/                        # Pure business logic (Streamlit-agnostic)
-│   │   ├── query_utils.py           # Query validation, URL parsing
-│   │   ├── relevance.py             # Keyword relevance scoring
-│   │   ├── youtube_api.py           # YouTube API wrappers
-│   │   ├── gemini_api.py            # Gemini AI wrappers
-│   │   └── pipeline.py              # Search pipeline orchestration
-│   │
-│   ├── cache/                       # Caching layer
-│   │   └── cache_layer.py           # Streamlit cache wrappers
-│   │
-│   ├── main.py                      # Main UI & integration
-│   ├── seed_topics_v2.py            # Seed channel analysis
-│   ├── similarity_engine.py         # Multi-factor similarity scoring
-│   ├── debug_tracker.py             # API tracking & performance
-│   ├── feedback_tracker.py          # User feedback collection
-│   └── smart_cache.py               # Per-channel video caching
+│   ├── core/           # Pure business logic (Streamlit-agnostic, testable)
+│   ├── cache/          # Streamlit caching wrappers
+│   ├── main.py         # UI and integration
+│   └── *.py            # Utilities (seed analysis, similarity, debug, feedback)
 │
-├── tests/                           # Unit test suite
-│   ├── test_query_utils.py
-│   ├── test_relevance.py
-│   ├── test_youtube_api.py
-│   ├── test_gemini_api.py
-│   └── test_pipeline.py
-│
-├── docs/
-│   ├── appicons/                    # App icons
-│   └── screenshots/                 # App screenshots
-│
-├── .streamlit/                      # Streamlit config
-├── requirements.txt                 # Python dependencies
-├── ARCHITECTURE.md                  # Technical deep dive
-├── CLAUDE.md                        # AI assistant guide
-└── README.md                        # This file
+├── tests/              # Unit tests (mocked APIs, no real calls needed)
+├── docs/               # Icons and screenshots
+├── ARCHITECTURE.md     # Technical deep dive (scoring, caching, pipelines)
+├── CLAUDE.md           # Developer quick reference
+└── README.md           # This file
 ```
 
-**Key Functions:**
+**Key Entry Points:**
 
-| Function | File | Purpose |
-|----------|------|---------|
-| `run_search_pipeline()` | core/pipeline.py | Main search orchestration |
-| `search_channels_hybrid()` | core/youtube_api.py | YouTube hybrid search |
-| `calculate_keyword_relevance()` | core/relevance.py | Keyword matching algorithm |
-| `generate_ai_relevance_score()` | core/gemini_api.py | AI semantic scoring |
-| `analyze_seed_channel_v2()` | seed_topics_v2.py | Seed channel topic extraction |
-| `calculate_similarity_score()` | similarity_engine.py | Multi-factor similarity |
-| `get_channel_stats_cached()` | cache/cache_layer.py | Cached channel data |
-| `track_api_call()` | debug_tracker.py | API usage tracking |
+| Function | Location | Purpose |
+|----------|----------|---------|
+| `run_search_pipeline()` | `app/core/pipeline.py` | Main search orchestration |
+| `analyze_seed_channel_v2()` | `app/seed_topics_v2.py` | Seed channel topic extraction |
+| `calculate_similarity_score()` | `app/similarity_engine.py` | Multi-factor channel comparison |
+
+See [CLAUDE.md](CLAUDE.md) for full module reference and [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design docs.
 
 </details>
 
@@ -491,8 +465,6 @@ Enable debug mode to see real-time usage.
 
 <details>
 <summary><strong>🔒 Security & Best Practices</strong></summary>
-
-### 🔒 Security & Best Practices
 
 - ✅ API keys stored in `.env` (git-ignored)
 - ✅ Graceful error handling for API failures
@@ -530,6 +502,27 @@ See [ARCHITECTURE.md](ARCHITECTURE.md#performance--efficiency) for detailed brea
 </details>
 
 <details>
+<summary><strong>☁️ Deployment (Streamlit Cloud)</strong></summary>
+
+CCSeeker is deployed on [Streamlit Community Cloud](https://ccseeker.streamlit.app/).
+
+### Secrets Configuration
+
+Add API keys in Streamlit Cloud dashboard → Settings → Secrets:
+```toml
+YOUTUBE_API_KEY = "your_key"
+GEMINI_API_KEY = "your_key"  # Optional
+```
+
+### Known Limitations
+
+- **No persistent storage**: `.feedback_data.json` and `.quota_cache.json` reset on app restarts
+- **Memory limits**: ~1GB RAM on free tier
+- **Timeout**: Long-running operations may timeout after 10 minutes
+
+</details>
+
+<details>
 <summary><strong>🧭 Scaling Considerations</strong></summary>
 
 CCSeeker is currently architected as a single-user portfolio application. Below are the architectural decisions I'd make if usage patterns required scaling.
@@ -541,6 +534,7 @@ CCSeeker is currently architected as a single-user portfolio application. Below 
 | User-specific search history needed | Google OAuth authentication | Can't persist user data without identity |
 | Uptime/reliability requirements | Docker deployment on paid hosting | Control over restarts, resource allocation |
 | Per-search costs justify gating | Budget-aware search flow | Run Deep analysis only on user-selected shortlist, not all candidates |
+| Feedback data volume grows | Migrate from local `.json` to cloud storage | Local file doesn't persist on Streamlit Cloud restarts |
 
 **Current architecture handles:** 25 one term searches/day within free API quotas, with 24-hour cached results reducing redundant API calls by approximately 75% on repeat searches.
 

@@ -514,7 +514,12 @@ def run_search_pipeline(
                     'channel_title': row['channel_title'],
                     'video_titles': video_titles_by_channel.get(channel_id, [])
                 }
-                ai_score = generate_ai_relevance_score(gemini_model, channel_data_for_ai, final_query)
+                ai_score = generate_ai_relevance_score(
+                    gemini_model,
+                    channel_data_for_ai,
+                    final_query,
+                    on_api_call=on_api_call,
+                )
                 ai_scores.append({'channel_id': channel_id, 'ai_relevance_score': ai_score})
 
             if ai_scores:

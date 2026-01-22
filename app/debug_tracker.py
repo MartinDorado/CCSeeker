@@ -52,6 +52,7 @@ def initialize_debug_tracking():
             'gemini_summary_calls': 0,
             'gemini_outreach_calls': 0,
             'gemini_similarity_calls': 0,
+            'gemini_relevance_calls': 0,
             
             # Timing data (in seconds)
             'timings': {
@@ -93,6 +94,7 @@ def reset_debug_tracking():
         'gemini_summary_calls': 0,
         'gemini_outreach_calls': 0,
         'gemini_similarity_calls': 0,
+        'gemini_relevance_calls': 0,
         'timings': {
             'search': 0.0,
             'channel_stats': 0.0,
@@ -131,9 +133,10 @@ def _accumulate_to_daily_quota():
     total_gemini_calls = (
         data.get('gemini_summary_calls', 0) +
         data.get('gemini_outreach_calls', 0) +
-        data.get('gemini_similarity_calls', 0)
+        data.get('gemini_similarity_calls', 0) +
+        data.get('gemini_relevance_calls', 0)
     )
-    
+
     # Add to daily total
     st.session_state.daily_quota['youtube_calls'] += total_youtube_calls
     st.session_state.daily_quota['gemini_calls'] += total_gemini_calls
@@ -269,11 +272,12 @@ def calculate_gemini_cost_estimate():
     summary_calls = data.get('gemini_summary_calls', 0)
     outreach_calls = data.get('gemini_outreach_calls', 0)
     similarity_calls = data.get('gemini_similarity_calls', 0)
-    
+    relevance_calls = data.get('gemini_relevance_calls', 0)
+
     # Estimate: ~500 tokens input + 200 tokens output per call
     cost_per_call = (500 * GEMINI_COSTS['flash']['input'] + 200 * GEMINI_COSTS['flash']['output']) / 1000
-    
-    total = (summary_calls + outreach_calls + similarity_calls) * cost_per_call
+
+    total = (summary_calls + outreach_calls + similarity_calls + relevance_calls) * cost_per_call
     
     return total
 
@@ -325,30 +329,49 @@ def save_daily_quota():
 
 
 def get_current_date_pt():
-    """Get current date in Pacific Time (YYYY-MM-DD format)."""
+    """Get current date in Pacific Time (YYYY-MM-DD format).
+
+    Uses proper DST-aware timezone handling via zoneinfo (Python 3.9+).
+    Falls back to UTC-8 if zoneinfo is unavailable.
+    """
     from datetime import datetime, timezone, timedelta
-    
-    # Pacific Time is UTC-8 (or UTC-7 during DST)
-    # For simplicity, using UTC-8
-    pt_offset = timedelta(hours=-8)
-    pt_time = datetime.now(timezone.utc) + pt_offset
-    
+
+    try:
+        from zoneinfo import ZoneInfo
+        pt_tz = ZoneInfo("America/Los_Angeles")
+        pt_time = datetime.now(pt_tz)
+    except ImportError:
+        # Fallback for systems without zoneinfo
+        # Note: This doesn't handle DST correctly
+        pt_offset = timedelta(hours=-8)
+        pt_time = datetime.now(timezone.utc) + pt_offset
+
     return pt_time.strftime('%Y-%m-%d')
 
 
 def get_next_reset_time():
-    """Get human-readable time until quota resets (midnight PT)."""
+    """Get human-readable time until quota resets (midnight PT).
+
+    Uses proper DST-aware timezone handling via zoneinfo (Python 3.9+).
+    Falls back to UTC-8 if zoneinfo is unavailable.
+    """
     from datetime import datetime, timezone, timedelta
-    
-    pt_offset = timedelta(hours=-8)
-    pt_now = datetime.now(timezone.utc) + pt_offset
-    
+
+    try:
+        from zoneinfo import ZoneInfo
+        pt_tz = ZoneInfo("America/Los_Angeles")
+        pt_now = datetime.now(pt_tz)
+    except ImportError:
+        # Fallback for systems without zoneinfo
+        pt_offset = timedelta(hours=-8)
+        pt_now = datetime.now(timezone.utc) + pt_offset
+
     # Calculate midnight PT
     midnight_pt = pt_now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
     time_until = midnight_pt - pt_now
-    
+
     hours = int(time_until.total_seconds() // 3600)
-    
+
     if hours < 1:
         return "in less than 1 hour"
     elif hours == 1:
@@ -395,7 +418,8 @@ def display_debug_panel():
         gemini_total = (
             data.get('gemini_summary_calls', 0) +
             data.get('gemini_outreach_calls', 0) +
-            data.get('gemini_similarity_calls', 0)
+            data.get('gemini_similarity_calls', 0) +
+            data.get('gemini_relevance_calls', 0)
         )
 
         st.caption("YouTube API Calls")
@@ -409,7 +433,8 @@ def display_debug_panel():
         st.text(f"  Total: {gemini_total}")
         st.text(f"  ├─ 📝 Summary: {data.get('gemini_summary_calls', 0)}")
         st.text(f"  ├─ ✉️  Outreach: {data.get('gemini_outreach_calls', 0)}")
-        st.text(f"  └─ 🎯 Similarity: {data.get('gemini_similarity_calls', 0)}")
+        st.text(f"  ├─ 🎯 Similarity: {data.get('gemini_similarity_calls', 0)}")
+        st.text(f"  └─ 🧠 Relevance: {data.get('gemini_relevance_calls', 0)}")
         
         this_search_youtube = calculate_youtube_quota_used()
         this_search_gemini = calculate_gemini_cost_estimate()
@@ -434,7 +459,8 @@ def display_debug_panel():
         total_gemini_calls = daily.get('gemini_calls', 0) + (
             data.get('gemini_summary_calls', 0) +
             data.get('gemini_outreach_calls', 0) +
-            data.get('gemini_similarity_calls', 0)
+            data.get('gemini_similarity_calls', 0) +
+            data.get('gemini_relevance_calls', 0)
         )
         
         st.text(f"📞 {total_youtube_calls} YouTube calls")

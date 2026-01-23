@@ -12,7 +12,7 @@
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.49.0-red.svg)](https://streamlit.io/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 
-[Features](#-features) • [Demo](https://ccseeker.streamlit.app/) • [Installation](#-installation) • [Tech Stack](#-tech-stack) • [Architecture](ARCHITECTURE.md)
+[Features](#-features) • [Demo](https://ccseeker.streamlit.app/) • [Architecture](ARCHITECTURE.md)
 
 </div>
 
@@ -34,7 +34,6 @@ CCSeeker automates niche creator discovery turning hours of manual search into a
 
 The system ranks results using a blend of algorithmic scoring (80%) and AI semantic analysis (20%), tracks API usage to stay within free quotas, and generates AI-powered summaries and outreach emails.
 
----
 
 ## ✨ Features
 
@@ -168,11 +167,9 @@ Export feedback to CSV via the debug panel for external analysis.
 
 The feedback system is designed to enable future enhancements:
 
-1. Exports data to Microsoft Fabric for analytics
+1. Export to cloud storage (Microsoft Fabric)
 2. Builds dashboards to track search quality
 3. Uses simple ML models to learn optimal scoring weights 
-  a. Logistic Regression for weight learning
-  b. Linear Regression for score calibration
 4. Creates a feedback loop to improve the app over time
 
 </details>

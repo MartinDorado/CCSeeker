@@ -18,7 +18,10 @@ ENV/
 
 # OS/editor noise
 .DS_Store
+Thumbs.db
 
+# Runtime data files
+.daily_quota.json
 .quota_cache.json
 .feedback_data.json
 

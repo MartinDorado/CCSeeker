@@ -542,6 +542,8 @@ CCSeeker is currently architected as a single-user portfolio application. Below 
 <summary><strong>📄 License</strong></summary>
 
 This project is licensed under the Apache License 2.0 - see [license.txt](LICENSE) for details.
+Free for personal and educational use.
+For commercial licensing inquiries, contact doradomartin.10@gmail.com.
 </details>
 
 <details>

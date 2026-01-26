@@ -12,7 +12,7 @@
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.49.0-red.svg)](https://streamlit.io/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 
-[Features](#-features) • [Demo](https://ccseeker.streamlit.app/) • [Installation](#-installation) • [Tech Stack](#-tech-stack) • [Architecture](ARCHITECTURE.md)
+[Features](#-features) • [Demo](https://ccseeker.streamlit.app/) • [Architecture](ARCHITECTURE.md)
 
 </div>
 
@@ -34,7 +34,6 @@ CCSeeker automates niche creator discovery turning hours of manual search into a
 
 The system ranks results using a blend of algorithmic scoring (80%) and AI semantic analysis (20%), tracks API usage to stay within free quotas, and generates AI-powered summaries and outreach emails.
 
----
 
 ## ✨ Features
 
@@ -168,11 +167,9 @@ Export feedback to CSV via the debug panel for external analysis.
 
 The feedback system is designed to enable future enhancements:
 
-1. Exports data to Microsoft Fabric for analytics
+1. Export to cloud storage (Microsoft Fabric)
 2. Builds dashboards to track search quality
 3. Uses simple ML models to learn optimal scoring weights 
-  a. Logistic Regression for weight learning
-  b. Linear Regression for score calibration
 4. Creates a feedback loop to improve the app over time
 
 </details>
@@ -480,7 +477,8 @@ Enable debug mode to see real-time usage.
 - **YouTube API Quota**: 10K units/day limits search volume
 - **Language Support**: Seed topic extraction optimized for English/Spanish content. Other languages fall back to English stopwords.
 - **Cache Staleness**: 24hr TTL in video details fetch, which may show outdated data for rapidly changing channels
-- **No Historical Data**: Can't analyze deleted videos or past performance
+- **Ephemeral storage on Streamlit Cloud**: See [Deployment section](#deployment-streamlit-cloud)
+
 
 </details>
 
@@ -513,6 +511,15 @@ Add API keys in Streamlit Cloud dashboard → Settings → Secrets:
 YOUTUBE_API_KEY = "your_key"
 GEMINI_API_KEY = "your_key"  # Optional
 ```
+### Storage Behavior
+
+| Cache Type | Storage | Local | Streamlit Cloud |
+|------------|---------|-------|-----------------|
+| `@st.cache_data` | RAM | Persists while running | **Resets on restart** |
+| `.quota_cache.json` | Filesystem | Persists indefinitely | **Resets on restart** |
+| `.feedback_data.json` | Filesystem | Persists indefinitely | **Resets on restart** |
+
+App restarts occur on: idle timeout (~7 days), git push, platform maintenance.
 
 ### Known Limitations
 
@@ -545,6 +552,8 @@ CCSeeker is currently architected as a single-user portfolio application. Below 
 <summary><strong>📄 License</strong></summary>
 
 This project is licensed under the Apache License 2.0 - see [license.txt](LICENSE) for details.
+Free for personal and educational use.
+For commercial licensing inquiries, contact doradomartin.10@gmail.com.
 </details>
 
 <details>

@@ -587,9 +587,13 @@ The export includes 31 columns covering:
 
 ### Future Roadmap
 
-1. Export to cloud storage (Microsoft Fabric, S3, or Google Sheets)
-2. Build analytics dashboards for search quality tracking
-3. Use feedback for ML-based scoring weight optimization
+1. Export to cloud storage (Microsoft Fabric)
+2. Builds dashboards to track search quality
+3. Uses simple ML models to learn optimal scoring weights 
+    A. Logistic Regression for weight learning
+    B. Linear Regression for score calibration
+4. Creates a feedback loop to improve the app over time
+
 
 ---
 

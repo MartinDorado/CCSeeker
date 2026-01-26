@@ -320,9 +320,12 @@ def get_channel_stats(
         - api_calls: Number of API calls made
 
     Each stat dict contains:
-        - channel_id, country, subscribers, views, videos
+        - channel_id, country, description, subscribers, views, videos
         - uploads_playlist_id (for fetching videos)
         - avg_views_per_video, channel_age_days
+        - channel_keywords (list of keywords from brandingSettings)
+        - default_language (from brandingSettings)
+        - topic_categories (list of topic names from topicDetails)
     """
     stats_data = []
     api_calls = 0
@@ -331,7 +334,7 @@ def get_channel_stats(
     for i in range(0, len(channel_ids), 50):
         chunk = channel_ids[i:i + 50]
         request = youtube_service.channels().list(
-            part="snippet,statistics,contentDetails",
+            part="snippet,statistics,contentDetails,brandingSettings,topicDetails",
             id=",".join(chunk)
         )
         response = request.execute()
@@ -345,6 +348,8 @@ def get_channel_stats(
             uploads_id = related_playlists.get('uploads')
             snippet = item.get("snippet", {})
             statistics = item.get("statistics", {})
+            branding = item.get("brandingSettings", {}).get("channel", {})
+            topic_details = item.get("topicDetails", {})
 
             if uploads_id:
                 # Calculate channel age in days
@@ -362,15 +367,31 @@ def get_channel_stats(
                 total_views = int(statistics.get("viewCount", 0))
                 avg_views_per_video = round(total_views / videos_count, 0) if videos_count > 0 else 0
 
+                # Extract keywords from brandingSettings (space-separated string)
+                keywords_str = branding.get("keywords", "")
+                channel_keywords = keywords_str.split() if keywords_str else []
+
+                # Extract topic names from Wikipedia URLs
+                topic_urls = topic_details.get("topicCategories", [])
+                topic_categories = [
+                    url.split("/wiki/")[-1].replace("_", " ")
+                    for url in topic_urls
+                    if "/wiki/" in url
+                ]
+
                 stats_data.append({
                     "channel_id": item["id"],
                     "country": snippet.get("country", "N/A"),
+                    "description": snippet.get("description", ""),
                     "subscribers": int(statistics.get("subscriberCount", 0)),
                     "views": total_views,
                     "videos": videos_count,
                     "uploads_playlist_id": uploads_id,
                     "avg_views_per_video": avg_views_per_video,
                     "channel_age_days": channel_age_days,
+                    "channel_keywords": channel_keywords,
+                    "default_language": branding.get("defaultLanguage", ""),
+                    "topic_categories": topic_categories,
                 })
 
     return ChannelStatsResult(stats=stats_data, api_calls=api_calls)
@@ -402,7 +423,7 @@ def get_video_details(
         - api_calls: Number of API calls made
 
     Each video dict contains:
-        - channel_id, video_id, video_title, published_at
+        - channel_id, video_id, video_title, video_description, published_at
         - video_views, video_likes, video_comments, video_tags
     """
     all_video_details = []
@@ -469,6 +490,7 @@ def get_video_details(
                 "channel_id": channel_id,
                 "video_id": item["id"],
                 "video_title": item["snippet"]["title"],
+                "video_description": item["snippet"].get("description", ""),
                 "published_at": item["snippet"]["publishedAt"],
                 "video_views": int(item["statistics"].get("viewCount", 0)),
                 "video_likes": int(item["statistics"].get("likeCount", 0)),

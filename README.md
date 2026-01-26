@@ -477,7 +477,8 @@ Enable debug mode to see real-time usage.
 - **YouTube API Quota**: 10K units/day limits search volume
 - **Language Support**: Seed topic extraction optimized for English/Spanish content. Other languages fall back to English stopwords.
 - **Cache Staleness**: 24hr TTL in video details fetch, which may show outdated data for rapidly changing channels
-- **No Historical Data**: Can't analyze deleted videos or past performance
+- **Ephemeral storage on Streamlit Cloud**: See [Deployment section](#deployment-streamlit-cloud)
+
 
 </details>
 
@@ -510,6 +511,15 @@ Add API keys in Streamlit Cloud dashboard → Settings → Secrets:
 YOUTUBE_API_KEY = "your_key"
 GEMINI_API_KEY = "your_key"  # Optional
 ```
+### Storage Behavior
+
+| Cache Type | Storage | Local | Streamlit Cloud |
+|------------|---------|-------|-----------------|
+| `@st.cache_data` | RAM | Persists while running | **Resets on restart** |
+| `.quota_cache.json` | Filesystem | Persists indefinitely | **Resets on restart** |
+| `.feedback_data.json` | Filesystem | Persists indefinitely | **Resets on restart** |
+
+App restarts occur on: idle timeout (~7 days), git push, platform maintenance.
 
 ### Known Limitations
 

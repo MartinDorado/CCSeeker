@@ -10,12 +10,12 @@ from pathlib import Path
 from dotenv import load_dotenv
 try:
     # Try relative import (when run as module)
-    from . import seed_topics_v2 as seedmod
+    from .core import analyze_seed_channel, SeedAnalysisResult
     from . import similarity_engine
     from . import feedback_tracker
 except ImportError:
     # Fallback for direct execution
-    import seed_topics_v2 as seedmod
+    from core import analyze_seed_channel, SeedAnalysisResult
     import similarity_engine
     import feedback_tracker
 
@@ -113,7 +113,7 @@ except ImportError:
 # ────────────────────────────────────────────────────────────────────────────
 #   - Standard library imports
 #   - Third-party imports (streamlit, pandas, google APIs)
-#   - Local module imports (core, cache, seed_topics_v2, similarity_engine)
+#   - Local module imports (core, cache, similarity_engine)
 #   - Configuration constants (search params, cache TTLs, similarity weights)
 #   - API key loading (_get_secret)
 #
@@ -214,7 +214,7 @@ YOUTUBE_API_VERSION = "v3"
 MAX_SEARCH_RESULTS = 50           # Maximum channels to return per search
 MAX_VIDEOS_PER_TERM = 100         # Videos to fetch from YouTube search per term
 MAX_VIDEOS_PER_CHANNEL = 10       # Videos to analyze per channel (for relevance)
-MAX_VIDEOS_PER_SEED = 50          # Videos to analyze for seed channel profile - to adjust it go to seed_topics_v2.py - def analyze_seed_channel_v2 -ln 175
+MAX_VIDEOS_PER_SEED = 50          # Videos to analyze for seed channel profile - see core/seed_topics.py
 
 
 # Cache TTLs (in seconds)
@@ -914,21 +914,40 @@ if submitted:
                 final_query = None
 
             if seed_channel_id:
-                # NEW: Analyze seed channel to extract complete profile
-                with st.spinner("🔍 Analyzing seed channel..."):
-                    seed_profile = seedmod.analyze_seed_channel_v2(
-                        youtube,
-                        seed_channel_id,
+                # Analyze seed channel to extract complete profile
+                # Get Gemini model for AI summary (optional)
+                seed_gemini_model = None
+                if GEMINI_API_KEY:
+                    try:
+                        seed_gemini_model = get_gemini_model()
+                    except Exception:
+                        pass
+
+                with st.status("🔍 Analyzing seed channel...", expanded=True) as status:
+                    def on_seed_progress(msg: str, pct: float):
+                        status.update(label=msg)
+
+                    result = analyze_seed_channel(
+                        youtube_service=youtube,
+                        channel_id=seed_channel_id,
                         max_videos=50,
-                        gemini_api_key=GEMINI_API_KEY
+                        gemini_model=seed_gemini_model,
+                        on_progress=on_seed_progress,
+                        on_api_call=_get_api_tracker(),
                     )
-                
-                if seed_profile:
-                    # Store profile in session state for later use
-                    st.session_state['seed_profile'] = seed_profile
+
+                if result.error:
+                    status.update(label="❌ Analysis failed", state="error")
+                    st.error(result.error)
+                    seed_profile = None
+                elif result.profile:
+                    status.update(label=f"✅ Analyzed: {result.profile.channel_name}", state="complete", expanded=False)
+                    # Store profile in session state for later use (as dict for backward compatibility)
+                    st.session_state['seed_profile'] = result.profile.to_dict()
                     st.session_state['seed_channel_id'] = seed_channel_id
-                    
+                    seed_profile = result.profile.to_dict()
                 else:
+                    status.update(label="❌ Analysis failed", state="error")
                     st.error("Failed to analyze seed channel. Please check the URL and try again.")
                     seed_profile = None
 

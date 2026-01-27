@@ -12,6 +12,7 @@ Modules:
 - gemini_api: Gemini AI API wrapper functions
 - pipeline: Search pipeline orchestration
 - scoring_version: Centralized scoring weights and version signatures
+- seed_topics: Seed channel topic extraction and profiling
 
 These modules are Streamlit-agnostic and can be unit tested independently.
 """
@@ -66,6 +67,16 @@ from .pipeline import (
     run_search_pipeline,
 )
 
+from .seed_topics import (
+    # Result types
+    SeedProfile,
+    SeedAnalysisResult,
+    # Functions
+    analyze_seed_channel,
+    detect_language,
+    calculate_subscriber_tier,
+)
+
 __all__ = [
     # Constants
     "MAX_SEARCH_TERMS",
@@ -104,4 +115,10 @@ __all__ = [
     "VALID_RATINGS",
     "get_scoring_version",
     "is_version_compatible",
+    # Seed topics
+    "SeedProfile",
+    "SeedAnalysisResult",
+    "analyze_seed_channel",
+    "detect_language",
+    "calculate_subscriber_tier",
 ]

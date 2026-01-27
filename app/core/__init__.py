@@ -11,6 +11,7 @@ Modules:
 - youtube_api: YouTube Data API wrapper functions
 - gemini_api: Gemini AI API wrapper functions
 - pipeline: Search pipeline orchestration
+- scoring_version: Centralized scoring weights and version signatures
 
 These modules are Streamlit-agnostic and can be unit tested independently.
 """
@@ -21,6 +22,16 @@ from .query_utils import (
     extract_identifier_from_url,
     resolve_channel_id,
     strip_outer_quotes,
+)
+
+from .scoring_version import (
+    SCORING_VERSION,
+    KEYWORD_WEIGHTS,
+    SEED_WEIGHTS,
+    CHANNEL_FEEDBACK_REASONS,
+    VALID_RATINGS,
+    get_scoring_version,
+    is_version_compatible,
 )
 
 from .relevance import calculate_keyword_relevance
@@ -58,6 +69,7 @@ from .pipeline import (
 __all__ = [
     # Constants
     "MAX_SEARCH_TERMS",
+    "SCORING_VERSION",
     # Query utilities
     "validate_and_truncate_query",
     "extract_identifier_from_url",
@@ -85,4 +97,11 @@ __all__ = [
     "PipelineResult",
     "PipelineConfig",
     "run_search_pipeline",
+    # Scoring version
+    "KEYWORD_WEIGHTS",
+    "SEED_WEIGHTS",
+    "CHANNEL_FEEDBACK_REASONS",
+    "VALID_RATINGS",
+    "get_scoring_version",
+    "is_version_compatible",
 ]

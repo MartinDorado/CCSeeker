@@ -11,19 +11,19 @@ import sys
 import tempfile
 
 # Add app directory for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))  # noqa: E402
 
-from analytics.synthetic_data_generator import (
+from analytics.synthetic_data_generator import (  # type: ignore[import-not-found]
     generate_synthetic_feedback,
     generate_search_feedback,
     get_synthetic_data_summary,
     _generate_component_scores,
     _determine_rating,
 )
-from analytics.ml_trainer import (
+from analytics.ml_trainer import (  # type: ignore[import-not-found]
     prepare_features_seed_mode,
 )
-from analytics.weight_optimizer import (
+from analytics.weight_optimizer import (  # type: ignore[import-not-found]
     softmax,
     apply_weight_constraints,
 )
@@ -324,8 +324,8 @@ class TestFabricExport:
 
     def test_export_to_csv_no_data(self):
         """Should handle empty data gracefully."""
-        from analytics.fabric_export import export_to_csv
-        from feedback_tracker import clear_all_feedback
+        from analytics.fabric_export import export_to_csv  # type: ignore[import-not-found]
+        from feedback_tracker import clear_all_feedback  # type: ignore[import-not-found]
 
         # Ensure no data
         clear_all_feedback()
@@ -337,8 +337,8 @@ class TestFabricExport:
 
     def test_get_fabric_ready_dataframe_empty(self):
         """Should return empty DataFrame when no data."""
-        from analytics.fabric_export import get_fabric_ready_dataframe
-        from feedback_tracker import clear_all_feedback
+        from analytics.fabric_export import get_fabric_ready_dataframe  # type: ignore[import-not-found]
+        from feedback_tracker import clear_all_feedback  # type: ignore[import-not-found]
 
         clear_all_feedback()
 
@@ -347,7 +347,7 @@ class TestFabricExport:
 
     def test_generate_summary_report_structure(self):
         """Summary report should have expected structure."""
-        from analytics.fabric_export import generate_summary_report
+        from analytics.fabric_export import generate_summary_report  # type: ignore[import-not-found]
 
         report = generate_summary_report()
 

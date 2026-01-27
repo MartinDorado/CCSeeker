@@ -1251,210 +1251,195 @@ if 'display_df' in st.session_state:
         elif 'ai_summary_error' in st.session_state:
             st.warning(f"⚠️ {st.session_state['ai_summary_error']}")
 
-    # === USER FEEDBACK SECTION ===
+    # === USER FEEDBACK SECTION (Per-Channel) ===
     st.divider()
-    st.markdown("#### 📝 How were these results?")
+    st.markdown("#### 📝 Rate Top Results")
+    st.caption("Help improve rankings by rating individual channels")
 
     # Initialize feedback state if needed
     if 'feedback_submitted' not in st.session_state:
         st.session_state['feedback_submitted'] = False
-    if 'show_reason_selector' not in st.session_state:
-        st.session_state['show_reason_selector'] = False
+    if 'channel_ratings' not in st.session_state:
+        st.session_state['channel_ratings'] = {}
+    if 'channel_reasons' not in st.session_state:
+        st.session_state['channel_reasons'] = {}
 
     if st.session_state['feedback_submitted']:
-        st.success("Thanks for your feedback! It helps us improve.")
+        st.success("Thanks for your feedback! It helps us improve rankings.")
     else:
-        col_fb1, col_fb2, col_fb3 = st.columns([1, 1, 4])
+        # Get top 5 channels for rating
+        top_channels_full = st.session_state.get('top_channels_full', pd.DataFrame())
+        search_mode = "seed" if 'seed_profile' in st.session_state else "keyword"
 
-        with col_fb1:
-            if st.button("👍 Good", use_container_width=True):
-                # Gather search context
-                display_df = st.session_state.get('display_df', pd.DataFrame())
-                search_mode = "seed" if 'seed_profile' in st.session_state else "keyword"
-                query = st.session_state.get('final_query', '')
+        if top_channels_full.empty:
+            st.info("No results to rate.")
+        else:
+            # Display rating UI for each of top 5 channels
+            for idx, (_, row) in enumerate(top_channels_full.head(5).iterrows()):
+                rank = idx + 1
+                channel_id = row.get('channel_id', '')
+                channel_name = row.get('channel_title', 'Unknown')
 
-                # Build top results list with RAW scores (not formatted strings)
-                top_results = []
-                top_channels_full = st.session_state.get('top_channels_full', pd.DataFrame())
-                if not top_channels_full.empty:
-                    for _, row in top_channels_full.head(5).iterrows():
-                        # Get raw numeric score
-                        if 'similarity' in row and isinstance(row.get('similarity'), dict):
-                            score = row['similarity'].get('total_score', 0)
-                        else:
-                            score = row.get('relevance_score', 0)
-                        top_results.append({
-                            "channel_name": row.get('channel_title', ''),
-                            "channel_id": row.get('channel_id', ''),
-                            "channel_url": row.get('channel_url', ''),
-                            "score": round(score, 2) if isinstance(score, float) else score
-                        })
+                # Get score based on mode
+                if search_mode == "seed" and 'similarity' in row and isinstance(row.get('similarity'), dict):
+                    score = row['similarity'].get('total_score', 0)
+                    score_label = f"Score: {score:.1f}/100"
+                else:
+                    score = row.get('relevance_score', 0)
+                    if isinstance(score, float):
+                        score_label = f"Relevance: {score:.0%}"
+                    else:
+                        score_label = f"Score: {score}"
 
-                # Get seed info if available
-                seed_id = None
-                seed_name = None
-                if search_mode == "seed" and 'seed_profile' in st.session_state:
-                    seed_profile = st.session_state['seed_profile']
-                    seed_id = seed_profile.get('channel_id')
-                    seed_name = seed_profile.get('channel_name')
+                # Channel card
+                with st.container():
+                    col_info, col_rating = st.columns([3, 2])
 
-                # Get search config for analytics
-                search_config = st.session_state.get('search_config', {})
+                    with col_info:
+                        st.markdown(f"**{rank}. {channel_name}** ({score_label})")
 
-                # Build scoring context for seed mode (similarity breakdown)
-                scoring_context = None
-                if search_mode == "seed" and not top_channels_full.empty and 'similarity' in top_channels_full.columns:
-                    # Get similarity data from top result
-                    top_sim = top_channels_full.iloc[0].get('similarity', {})
-                    if isinstance(top_sim, dict):
-                        # Calculate score distribution across all results
-                        all_scores = [
-                            row.get('similarity', {}).get('total_score', 0)
-                            for _, row in top_channels_full.head(10).iterrows()
-                            if isinstance(row.get('similarity'), dict)
-                        ]
-                        scoring_context = {
-                            'top_result_total_score': top_sim.get('total_score', 0),
-                            'top_result_algorithmic_score': top_sim.get('algorithmic_score', 0),
-                            'top_result_gemini_score': top_sim.get('gemini_score', 0),
-                            'score_distribution': {
-                                'max': max(all_scores) if all_scores else 0,
-                                'min': min(all_scores) if all_scores else 0,
-                                'avg': sum(all_scores) / len(all_scores) if all_scores else 0
-                            }
-                        }
-                        # Add component breakdown if available
-                        breakdown = top_sim.get('breakdown', {})
-                        if breakdown:
-                            scoring_context['component_scores'] = {
+                    with col_rating:
+                        # Rating buttons
+                        rating_key = f"rating_{channel_id}"
+                        current_rating = st.session_state['channel_ratings'].get(channel_id)
+
+                        btn_cols = st.columns(3)
+                        with btn_cols[0]:
+                            if st.button(
+                                "👍" if current_rating != "relevant" else "👍 ✓",
+                                key=f"rel_{channel_id}",
+                                use_container_width=True,
+                                type="primary" if current_rating == "relevant" else "secondary"
+                            ):
+                                st.session_state['channel_ratings'][channel_id] = "relevant"
+                                st.session_state['channel_reasons'].pop(channel_id, None)
+                                st.rerun()
+
+                        with btn_cols[1]:
+                            if st.button(
+                                "👎" if current_rating != "not_relevant" else "👎 ✓",
+                                key=f"notrel_{channel_id}",
+                                use_container_width=True,
+                                type="primary" if current_rating == "not_relevant" else "secondary"
+                            ):
+                                st.session_state['channel_ratings'][channel_id] = "not_relevant"
+                                st.rerun()
+
+                        with btn_cols[2]:
+                            if st.button(
+                                "➖" if current_rating != "skip" else "➖ ✓",
+                                key=f"skip_{channel_id}",
+                                use_container_width=True,
+                                type="primary" if current_rating == "skip" else "secondary"
+                            ):
+                                st.session_state['channel_ratings'][channel_id] = "skip"
+                                st.session_state['channel_reasons'].pop(channel_id, None)
+                                st.rerun()
+
+                    # Show reason selector if marked as not relevant
+                    if current_rating == "not_relevant":
+                        reason_key = f"reason_{channel_id}"
+                        current_reason = st.session_state['channel_reasons'].get(channel_id, "wrong_topic")
+                        reason = st.radio(
+                            "Why not relevant?",
+                            options=["wrong_topic", "low_quality", "poor_fit", "other"],
+                            format_func=lambda x: {
+                                "wrong_topic": "Wrong topic",
+                                "low_quality": "Low quality",
+                                "poor_fit": "Poor fit",
+                                "other": "Other"
+                            }.get(x, x),
+                            horizontal=True,
+                            key=reason_key,
+                            index=["wrong_topic", "low_quality", "poor_fit", "other"].index(current_reason),
+                            label_visibility="collapsed"
+                        )
+                        st.session_state['channel_reasons'][channel_id] = reason
+
+                    st.markdown("---")
+
+            # Submit button - only show if at least one rating exists
+            if st.session_state['channel_ratings']:
+                rated_count = len([r for r in st.session_state['channel_ratings'].values() if r != "skip"])
+                st.caption(f"{rated_count} channel(s) rated")
+
+                if st.button("Submit Feedback", type="primary", use_container_width=True):
+                    # Gather search context
+                    display_df = st.session_state.get('display_df', pd.DataFrame())
+                    query = st.session_state.get('final_query', '')
+
+                    # Get seed info if available
+                    seed_id = None
+                    seed_name = None
+                    if search_mode == "seed" and 'seed_profile' in st.session_state:
+                        seed_profile_data = st.session_state['seed_profile']
+                        seed_id = seed_profile_data.get('channel_id')
+                        seed_name = seed_profile_data.get('channel_name')
+
+                    # Get search config for analytics
+                    search_config = st.session_state.get('search_config', {})
+
+                    # Build per-channel feedback list
+                    channel_feedback_list = []
+                    for idx, (_, row) in enumerate(top_channels_full.head(5).iterrows()):
+                        channel_id = row.get('channel_id', '')
+                        rating = st.session_state['channel_ratings'].get(channel_id, "skip")
+                        reason = st.session_state['channel_reasons'].get(channel_id) if rating == "not_relevant" else None
+
+                        # Get score and component scores based on mode
+                        if search_mode == "seed" and 'similarity' in row and isinstance(row.get('similarity'), dict):
+                            sim_data = row['similarity']
+                            presented_score = sim_data.get('total_score', 0)
+                            breakdown = sim_data.get('breakdown', {})
+                            component_scores = {
                                 'tag_score': breakdown.get('tag_score', 0),
                                 'keyword_score': breakdown.get('keyword_score', 0),
                                 'subscriber_score': breakdown.get('subscriber_score', 0),
                                 'engagement_score': breakdown.get('engagement_score', 0),
-                                'frequency_score': breakdown.get('frequency_score', 0)
+                                'frequency_score': breakdown.get('frequency_score', 0),
+                                'algorithmic_score': sim_data.get('algorithmic_score', 0),
+                                'gemini_score': sim_data.get('gemini_score', 0),
                             }
-
-                # Save positive feedback
-                feedback_tracker.save_feedback(
-                    feedback="up",
-                    search_mode=search_mode,
-                    query=query,
-                    results_count=len(display_df),
-                    top_results=top_results,
-                    seed_channel_id=seed_id,
-                    seed_channel_name=seed_name,
-                    filters=search_config.get('filters'),
-                    ai_enabled=search_config.get('ai_enabled'),
-                    scoring_context=scoring_context
-                )
-                st.session_state['feedback_submitted'] = True
-                st.rerun()
-
-        with col_fb2:
-            if st.button("👎 Not helpful", use_container_width=True):
-                st.session_state['show_reason_selector'] = True
-
-        # Show reason selector if thumbs down was clicked
-        if st.session_state.get('show_reason_selector', False):
-            st.markdown("**What was the issue?**")
-            reason = st.radio(
-                "Select a reason:",
-                options=[
-                    ("few_results", "Few results"),
-                    ("low_quality", "Low quality content"),
-                    ("wrong_topic", "Wrong topic/niche"),
-                    ("other", "Other")
-                ],
-                format_func=lambda x: x[1],
-                label_visibility="collapsed",
-                horizontal=True,
-                key="feedback_reason_radio"
-            )
-
-            if st.button("Submit Feedback", type="primary"):
-                # Gather search context
-                display_df = st.session_state.get('display_df', pd.DataFrame())
-                search_mode = "seed" if 'seed_profile' in st.session_state else "keyword"
-                query = st.session_state.get('final_query', '')
-
-                # Build top results list with RAW scores (not formatted strings)
-                top_results = []
-                top_channels_full = st.session_state.get('top_channels_full', pd.DataFrame())
-                if not top_channels_full.empty:
-                    for _, row in top_channels_full.head(5).iterrows():
-                        # Get raw numeric score
-                        if 'similarity' in row and isinstance(row.get('similarity'), dict):
-                            score = row['similarity'].get('total_score', 0)
                         else:
-                            score = row.get('relevance_score', 0)
-                        top_results.append({
-                            "channel_name": row.get('channel_title', ''),
-                            "channel_id": row.get('channel_id', ''),
-                            "channel_url": row.get('channel_url', ''),
-                            "score": round(score, 2) if isinstance(score, float) else score
-                        })
-
-                # Get seed info if available
-                seed_id = None
-                seed_name = None
-                if search_mode == "seed" and 'seed_profile' in st.session_state:
-                    seed_profile = st.session_state['seed_profile']
-                    seed_id = seed_profile.get('channel_id')
-                    seed_name = seed_profile.get('channel_name')
-
-                # Get search config for analytics
-                search_config = st.session_state.get('search_config', {})
-
-                # Build scoring context for seed mode (similarity breakdown)
-                scoring_context = None
-                if search_mode == "seed" and not top_channels_full.empty and 'similarity' in top_channels_full.columns:
-                    # Get similarity data from top result
-                    top_sim = top_channels_full.iloc[0].get('similarity', {})
-                    if isinstance(top_sim, dict):
-                        # Calculate score distribution across all results
-                        all_scores = [
-                            row.get('similarity', {}).get('total_score', 0)
-                            for _, row in top_channels_full.head(10).iterrows()
-                            if isinstance(row.get('similarity'), dict)
-                        ]
-                        scoring_context = {
-                            'top_result_total_score': top_sim.get('total_score', 0),
-                            'top_result_algorithmic_score': top_sim.get('algorithmic_score', 0),
-                            'top_result_gemini_score': top_sim.get('gemini_score', 0),
-                            'score_distribution': {
-                                'max': max(all_scores) if all_scores else 0,
-                                'min': min(all_scores) if all_scores else 0,
-                                'avg': sum(all_scores) / len(all_scores) if all_scores else 0
-                            }
-                        }
-                        # Add component breakdown if available
-                        breakdown = top_sim.get('breakdown', {})
-                        if breakdown:
-                            scoring_context['component_scores'] = {
-                                'tag_score': breakdown.get('tag_score', 0),
-                                'keyword_score': breakdown.get('keyword_score', 0),
-                                'subscriber_score': breakdown.get('subscriber_score', 0),
-                                'engagement_score': breakdown.get('engagement_score', 0),
-                                'frequency_score': breakdown.get('frequency_score', 0)
+                            # Keyword mode
+                            presented_score = row.get('relevance_score', 0)
+                            component_scores = {
+                                'algorithmic_relevance': row.get('relevance_score', 0),
+                                'ai_relevance': row.get('ai_relevance_score', 0),
                             }
 
-                # Save negative feedback with reason
-                feedback_tracker.save_feedback(
-                    feedback="down",
-                    search_mode=search_mode,
-                    query=query,
-                    results_count=len(display_df),
-                    top_results=top_results,
-                    reason=reason[0],  # reason code
-                    seed_channel_id=seed_id,
-                    seed_channel_name=seed_name,
-                    filters=search_config.get('filters'),
-                    ai_enabled=search_config.get('ai_enabled'),
-                    scoring_context=scoring_context
-                )
-                st.session_state['feedback_submitted'] = True
-                st.session_state['show_reason_selector'] = False
-                st.rerun()
+                        channel_feedback_list.append(
+                            feedback_tracker.build_channel_feedback_entry(
+                                channel_id=channel_id,
+                                channel_name=row.get('channel_title', ''),
+                                channel_url=row.get('channel_url', ''),
+                                presented_rank=idx + 1,
+                                presented_score=round(presented_score, 2) if isinstance(presented_score, float) else presented_score,
+                                rating=rating,
+                                component_scores=component_scores,
+                                reason=reason,
+                            )
+                        )
+
+                    # Save feedback using new per-channel function
+                    feedback_tracker.save_channel_feedback(
+                        search_mode=search_mode,
+                        query=query,
+                        results_count=len(display_df),
+                        channel_feedback=channel_feedback_list,
+                        seed_channel_id=seed_id,
+                        seed_channel_name=seed_name,
+                        filters=search_config.get('filters'),
+                        ai_enabled=search_config.get('ai_enabled'),
+                    )
+
+                    # Clear rating state and mark as submitted
+                    st.session_state['feedback_submitted'] = True
+                    st.session_state['channel_ratings'] = {}
+                    st.session_state['channel_reasons'] = {}
+                    st.rerun()
+            else:
+                st.caption("Rate at least one channel to submit feedback")
 
 # ============================================================================
 # SECTION 10: STREAMLIT UI - MATCH ANALYSIS

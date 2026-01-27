@@ -1,25 +1,37 @@
 """
-feedback_tracker.py - User feedback collection for search results
+feedback_tracker.py - Per-channel user feedback collection for search results
 
-Collects and stores user feedback on search quality to help improve
-similarity and relevance scoring algorithms.
+Collects and stores user feedback at the individual channel level (top 5 results)
+to enable ML-based improvements to similarity and relevance scoring algorithms.
+
+Schema version: 2.0.0 - Per-channel feedback with version signatures
 """
 
 import json
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Literal
+
+try:
+    from core.scoring_version import (
+        CHANNEL_FEEDBACK_REASONS,
+        VALID_RATINGS,
+        get_scoring_version,
+        is_version_compatible,
+    )
+except ImportError:
+    from .core.scoring_version import (
+        CHANNEL_FEEDBACK_REASONS,
+        VALID_RATINGS,
+        get_scoring_version,
+        is_version_compatible,
+    )
 
 # Feedback storage file path (in app directory)
 FEEDBACK_FILE = os.path.join(os.path.dirname(__file__), ".feedback_data.json")
 
-# Reason codes for negative feedback
-FEEDBACK_REASONS = {
-    "few_results": "Few results",
-    "low_quality": "Low quality content",
-    "wrong_topic": "Wrong topic/niche",
-    "other": "Other"
-}
+# Schema version for this feedback format
+FEEDBACK_SCHEMA_VERSION = "2.0.0"
 
 
 def _load_feedback_data() -> dict:
@@ -30,8 +42,8 @@ def _load_feedback_data() -> dict:
                 return json.load(f)
         except (json.JSONDecodeError, IOError):
             # Corrupted or unreadable file - start fresh
-            return {"feedback_entries": []}
-    return {"feedback_entries": []}
+            return {"schema_version": FEEDBACK_SCHEMA_VERSION, "feedback_entries": []}
+    return {"schema_version": FEEDBACK_SCHEMA_VERSION, "feedback_entries": []}
 
 
 def _save_feedback_data(data: dict) -> bool:
@@ -44,29 +56,23 @@ def _save_feedback_data(data: dict) -> bool:
         return False
 
 
-def save_feedback(
-    feedback: str,
-    search_mode: str,
+def save_channel_feedback(
+    search_mode: Literal["seed", "keyword"],
     query: str,
     results_count: int,
-    top_results: list[dict],
-    reason: Optional[str] = None,
+    channel_feedback: list[dict],
     seed_channel_id: Optional[str] = None,
     seed_channel_name: Optional[str] = None,
     filters: Optional[dict] = None,
     ai_enabled: Optional[bool] = None,
-    scoring_context: Optional[dict] = None
 ) -> bool:
     """
-    Save user feedback for a search.
+    Save per-channel user feedback for a search.
 
     Parameters:
     -----------
-    feedback : str
-        "up" for positive, "down" for negative
-
-    search_mode : str
-        "seed" or "keyword"
+    search_mode : Literal["seed", "keyword"]
+        The search mode used
 
     query : str
         The search query used
@@ -74,11 +80,16 @@ def save_feedback(
     results_count : int
         Total number of results returned
 
-    top_results : list[dict]
-        Top 5 results with channel_id, channel_name, channel_url, and score
-
-    reason : str, optional
-        Reason code for negative feedback (few_results, low_quality, wrong_topic, other)
+    channel_feedback : list[dict]
+        Per-channel feedback, each entry should have:
+        - channel_id: str
+        - channel_name: str
+        - channel_url: str
+        - presented_rank: int (1-5)
+        - presented_score: float
+        - rating: "relevant" | "not_relevant" | "skip"
+        - reason: str | None (required if rating is "not_relevant")
+        - component_scores: dict (scoring breakdown for ML training)
 
     seed_channel_id : str, optional
         Channel ID of seed (if seed mode)
@@ -92,29 +103,22 @@ def save_feedback(
     ai_enabled : bool, optional
         Whether AI enhancement was enabled for this search
 
-    scoring_context : dict, optional
-        For seed mode: similarity scoring details for top result
-        {
-            'top_result_total_score': float,
-            'top_result_algorithmic_score': float,
-            'top_result_gemini_score': float,
-            'score_distribution': {'max': float, 'min': float, 'avg': float}
-        }
-
     Returns:
     --------
     bool: True if saved successfully
     """
     data = _load_feedback_data()
 
+    # Get current scoring version signature
+    scoring_version = get_scoring_version(search_mode)
+
     entry = {
         "timestamp": datetime.now().isoformat(),
         "search_mode": search_mode,
         "query": query,
         "results_count": results_count,
-        "top_results": top_results[:5],  # Store top 5 for analysis
-        "feedback": feedback,
-        "reason": reason
+        "scoring_version": scoring_version.to_dict(),
+        "channel_feedback": channel_feedback,
     }
 
     # Add seed info if applicable
@@ -130,13 +134,77 @@ def save_feedback(
     if ai_enabled is not None:
         entry["ai_enabled"] = ai_enabled
 
-    # Add scoring context if provided (seed mode)
-    if scoring_context:
-        entry["scoring_context"] = scoring_context
-
     data["feedback_entries"].append(entry)
 
     return _save_feedback_data(data)
+
+
+def build_channel_feedback_entry(
+    channel_id: str,
+    channel_name: str,
+    channel_url: str,
+    presented_rank: int,
+    presented_score: float,
+    rating: Literal["relevant", "not_relevant", "skip"],
+    component_scores: dict,
+    reason: Optional[str] = None,
+) -> dict:
+    """
+    Build a properly structured channel feedback entry.
+
+    Parameters:
+    -----------
+    channel_id : str
+        YouTube channel ID
+
+    channel_name : str
+        Channel display name
+
+    channel_url : str
+        Channel URL
+
+    presented_rank : int
+        Position in results (1-5)
+
+    presented_score : float
+        The score shown to user (relevance or similarity)
+
+    rating : Literal["relevant", "not_relevant", "skip"]
+        User's rating for this channel
+
+    component_scores : dict
+        Breakdown of scoring components for ML training.
+        For seed mode: tag_score, keyword_score, subscriber_score,
+                      engagement_score, frequency_score, algorithmic_score, gemini_score
+        For keyword mode: title_match_score, tags_match_score,
+                         algorithmic_relevance, ai_relevance
+
+    reason : str, optional
+        Reason code if rating is "not_relevant"
+        Valid values: "wrong_topic", "low_quality", "poor_fit", "other"
+
+    Returns:
+    --------
+    dict: Structured channel feedback entry
+    """
+    if rating not in VALID_RATINGS:
+        raise ValueError(f"Invalid rating: {rating}. Must be one of {VALID_RATINGS}")
+
+    if rating == "not_relevant" and reason and reason not in CHANNEL_FEEDBACK_REASONS:
+        raise ValueError(
+            f"Invalid reason: {reason}. Must be one of {list(CHANNEL_FEEDBACK_REASONS.keys())}"
+        )
+
+    return {
+        "channel_id": channel_id,
+        "channel_name": channel_name,
+        "channel_url": channel_url,
+        "presented_rank": presented_rank,
+        "presented_score": presented_score,
+        "rating": rating,
+        "reason": reason if rating == "not_relevant" else None,
+        "component_scores": component_scores,
+    }
 
 
 def get_feedback_stats() -> dict:
@@ -146,53 +214,146 @@ def get_feedback_stats() -> dict:
     Returns:
     --------
     dict with keys:
-        - total_entries: int
-        - positive_count: int
-        - negative_count: int
-        - reason_breakdown: dict[str, int]
+        - total_entries: int (number of feedback submissions)
+        - total_channel_ratings: int (total individual channel ratings)
+        - rating_breakdown: dict[str, int] (relevant/not_relevant/skip counts)
+        - reason_breakdown: dict[str, int] (for not_relevant ratings)
         - by_search_mode: dict[str, dict]
+        - compatible_entries: int (entries compatible with current scoring version)
     """
     data = _load_feedback_data()
     entries = data.get("feedback_entries", [])
 
     stats = {
         "total_entries": len(entries),
-        "positive_count": 0,
-        "negative_count": 0,
+        "total_channel_ratings": 0,
+        "rating_breakdown": {
+            "relevant": 0,
+            "not_relevant": 0,
+            "skip": 0,
+        },
         "reason_breakdown": {
-            "few_results": 0,
-            "low_quality": 0,
             "wrong_topic": 0,
-            "other": 0
+            "low_quality": 0,
+            "poor_fit": 0,
+            "other": 0,
         },
         "by_search_mode": {
-            "seed": {"positive": 0, "negative": 0},
-            "keyword": {"positive": 0, "negative": 0}
-        }
+            "seed": {"entries": 0, "relevant": 0, "not_relevant": 0},
+            "keyword": {"entries": 0, "relevant": 0, "not_relevant": 0},
+        },
+        "compatible_entries": {
+            "seed": 0,
+            "keyword": 0,
+        },
     }
 
     for entry in entries:
-        feedback = entry.get("feedback")
         mode = entry.get("search_mode", "keyword")
-        reason = entry.get("reason")
+        channel_feedback = entry.get("channel_feedback", [])
+        scoring_version = entry.get("scoring_version", {})
 
-        if feedback == "up":
-            stats["positive_count"] += 1
-            if mode in stats["by_search_mode"]:
-                stats["by_search_mode"][mode]["positive"] += 1
-        elif feedback == "down":
-            stats["negative_count"] += 1
-            if mode in stats["by_search_mode"]:
-                stats["by_search_mode"][mode]["negative"] += 1
-            if reason and reason in stats["reason_breakdown"]:
+        if mode in stats["by_search_mode"]:
+            stats["by_search_mode"][mode]["entries"] += 1
+
+        # Check version compatibility
+        if is_version_compatible(scoring_version, mode):
+            stats["compatible_entries"][mode] += 1
+
+        for cf in channel_feedback:
+            rating = cf.get("rating")
+            reason = cf.get("reason")
+
+            stats["total_channel_ratings"] += 1
+
+            if rating in stats["rating_breakdown"]:
+                stats["rating_breakdown"][rating] += 1
+
+            if mode in stats["by_search_mode"] and rating in ("relevant", "not_relevant"):
+                stats["by_search_mode"][mode][rating] += 1
+
+            if rating == "not_relevant" and reason in stats["reason_breakdown"]:
                 stats["reason_breakdown"][reason] += 1
 
     return stats
 
 
+def get_training_data(
+    mode: Literal["seed", "keyword"],
+    only_compatible: bool = True,
+) -> list[dict]:
+    """
+    Extract training data for ML models from feedback.
+
+    Returns flattened list of channel ratings with their component scores,
+    suitable for training logistic regression (weight learning) or
+    linear regression (score calibration).
+
+    Parameters:
+    -----------
+    mode : Literal["seed", "keyword"]
+        Filter by search mode
+
+    only_compatible : bool
+        If True, only include feedback collected under compatible scoring version
+
+    Returns:
+    --------
+    List of dicts, each containing:
+        - All component_scores fields (features)
+        - presented_score: float
+        - rating: str (label)
+        - is_relevant: bool (binary label for logistic regression)
+        - reason: str | None
+        - query: str
+        - timestamp: str
+    """
+    data = _load_feedback_data()
+    entries = data.get("feedback_entries", [])
+    training_data = []
+
+    for entry in entries:
+        if entry.get("search_mode") != mode:
+            continue
+
+        scoring_version = entry.get("scoring_version", {})
+        if only_compatible and not is_version_compatible(scoring_version, mode):
+            continue
+
+        query = entry.get("query", "")
+        timestamp = entry.get("timestamp", "")
+
+        for cf in entry.get("channel_feedback", []):
+            rating = cf.get("rating")
+
+            # Skip 'skip' ratings - no signal
+            if rating == "skip":
+                continue
+
+            record = {
+                "query": query,
+                "timestamp": timestamp,
+                "channel_id": cf.get("channel_id"),
+                "presented_rank": cf.get("presented_rank"),
+                "presented_score": cf.get("presented_score"),
+                "rating": rating,
+                "is_relevant": rating == "relevant",
+                "reason": cf.get("reason"),
+            }
+
+            # Flatten component scores
+            component_scores = cf.get("component_scores", {})
+            for key, value in component_scores.items():
+                record[f"component_{key}"] = value
+
+            training_data.append(record)
+
+    return training_data
+
+
 def get_negative_feedback_entries(limit: int = 50) -> list[dict]:
     """
-    Get recent negative feedback entries for analysis.
+    Get recent feedback entries containing negative channel ratings for analysis.
 
     Parameters:
     -----------
@@ -201,12 +362,20 @@ def get_negative_feedback_entries(limit: int = 50) -> list[dict]:
 
     Returns:
     --------
-    List of negative feedback entries, most recent first
+    List of feedback entries that contain at least one "not_relevant" rating,
+    most recent first
     """
     data = _load_feedback_data()
     entries = data.get("feedback_entries", [])
 
-    negative = [e for e in entries if e.get("feedback") == "down"]
+    # Filter to entries with at least one negative rating
+    negative = [
+        e for e in entries
+        if any(
+            cf.get("rating") == "not_relevant"
+            for cf in e.get("channel_feedback", [])
+        )
+    ]
 
     # Sort by timestamp descending (most recent first)
     negative.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
@@ -217,6 +386,9 @@ def get_negative_feedback_entries(limit: int = 50) -> list[dict]:
 def export_feedback_csv(filepath: str) -> bool:
     """
     Export all feedback to CSV for analysis.
+
+    The CSV is flattened with one row per channel rating, suitable for
+    importing into BI tools or ML pipelines.
 
     Parameters:
     -----------
@@ -238,32 +410,59 @@ def export_feedback_csv(filepath: str) -> bool:
     try:
         with open(filepath, "w", newline="", encoding="utf-8") as f:
             fieldnames = [
-                "timestamp", "search_mode", "query", "results_count",
-                "feedback", "reason", "seed_channel_id", "seed_channel_name",
-                "ai_enabled", "min_subscribers", "country_filter", "months_ago", "region",
-                "top_result_total_score", "top_result_algorithmic_score", "top_result_gemini_score",
-                "score_dist_max", "score_dist_min", "score_dist_avg",
-                "component_tag_score", "component_keyword_score", "component_subscriber_score",
-                "component_engagement_score", "component_frequency_score",
-                "top_result_1_name", "top_result_1_id", "top_result_1_url", "top_result_1_score",
-                "top_result_2_name", "top_result_2_id", "top_result_2_url", "top_result_2_score",
-                "top_result_3_name", "top_result_3_id", "top_result_3_url", "top_result_3_score"
+                # Entry-level fields
+                "timestamp",
+                "search_mode",
+                "query",
+                "results_count",
+                "seed_channel_id",
+                "seed_channel_name",
+                "ai_enabled",
+                # Filters
+                "min_subscribers",
+                "country_filter",
+                "months_ago",
+                "region",
+                # Version signature
+                "scoring_version",
+                "scoring_weights",
+                "ai_blend_ratio",
+                "pipeline_hash",
+                # Per-channel fields
+                "channel_id",
+                "channel_name",
+                "channel_url",
+                "presented_rank",
+                "presented_score",
+                "rating",
+                "reason",
+                # Component scores (seed mode)
+                "component_tag_score",
+                "component_keyword_score",
+                "component_subscriber_score",
+                "component_engagement_score",
+                "component_frequency_score",
+                "component_algorithmic_score",
+                "component_gemini_score",
+                # Component scores (keyword mode)
+                "component_title_match_score",
+                "component_tags_match_score",
+                "component_algorithmic_relevance",
+                "component_ai_relevance",
             ]
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
 
             for entry in entries:
                 filters = entry.get("filters", {})
-                scoring_context = entry.get("scoring_context", {})
-                score_dist = scoring_context.get("score_distribution", {})
-                component_scores = scoring_context.get("component_scores", {})
-                row = {
+                scoring_version = entry.get("scoring_version", {})
+
+                # Base row data (entry-level)
+                base_row = {
                     "timestamp": entry.get("timestamp"),
                     "search_mode": entry.get("search_mode"),
                     "query": entry.get("query"),
                     "results_count": entry.get("results_count"),
-                    "feedback": entry.get("feedback"),
-                    "reason": entry.get("reason"),
                     "seed_channel_id": entry.get("seed_channel_id"),
                     "seed_channel_name": entry.get("seed_channel_name"),
                     "ai_enabled": entry.get("ai_enabled"),
@@ -271,36 +470,85 @@ def export_feedback_csv(filepath: str) -> bool:
                     "country_filter": filters.get("country_filter"),
                     "months_ago": filters.get("months_ago"),
                     "region": filters.get("region"),
-                    "top_result_total_score": scoring_context.get("top_result_total_score"),
-                    "top_result_algorithmic_score": scoring_context.get("top_result_algorithmic_score"),
-                    "top_result_gemini_score": scoring_context.get("top_result_gemini_score"),
-                    "score_dist_max": score_dist.get("max"),
-                    "score_dist_min": score_dist.get("min"),
-                    "score_dist_avg": score_dist.get("avg"),
-                    "component_tag_score": component_scores.get("tag_score"),
-                    "component_keyword_score": component_scores.get("keyword_score"),
-                    "component_subscriber_score": component_scores.get("subscriber_score"),
-                    "component_engagement_score": component_scores.get("engagement_score"),
-                    "component_frequency_score": component_scores.get("frequency_score")
+                    "scoring_version": scoring_version.get("version"),
+                    "scoring_weights": json.dumps(scoring_version.get("weights", {})),
+                    "ai_blend_ratio": scoring_version.get("ai_blend_ratio"),
+                    "pipeline_hash": scoring_version.get("pipeline_hash"),
                 }
 
-                # Add top 3 results as separate columns for name, id, url, and score
-                top_results = entry.get("top_results", [])
-                for i in range(3):
-                    if i < len(top_results):
-                        r = top_results[i]
-                        row[f"top_result_{i+1}_name"] = r.get('channel_name', '')
-                        row[f"top_result_{i+1}_id"] = r.get('channel_id', '')
-                        row[f"top_result_{i+1}_url"] = r.get('channel_url', '')
-                        row[f"top_result_{i+1}_score"] = r.get('score', '')
-                    else:
-                        row[f"top_result_{i+1}_name"] = ""
-                        row[f"top_result_{i+1}_id"] = ""
-                        row[f"top_result_{i+1}_url"] = ""
-                        row[f"top_result_{i+1}_score"] = ""
+                # One row per channel feedback
+                for cf in entry.get("channel_feedback", []):
+                    component_scores = cf.get("component_scores", {})
 
-                writer.writerow(row)
+                    row = {
+                        **base_row,
+                        "channel_id": cf.get("channel_id"),
+                        "channel_name": cf.get("channel_name"),
+                        "channel_url": cf.get("channel_url"),
+                        "presented_rank": cf.get("presented_rank"),
+                        "presented_score": cf.get("presented_score"),
+                        "rating": cf.get("rating"),
+                        "reason": cf.get("reason"),
+                        # Seed mode components
+                        "component_tag_score": component_scores.get("tag_score"),
+                        "component_keyword_score": component_scores.get("keyword_score"),
+                        "component_subscriber_score": component_scores.get("subscriber_score"),
+                        "component_engagement_score": component_scores.get("engagement_score"),
+                        "component_frequency_score": component_scores.get("frequency_score"),
+                        "component_algorithmic_score": component_scores.get("algorithmic_score"),
+                        "component_gemini_score": component_scores.get("gemini_score"),
+                        # Keyword mode components
+                        "component_title_match_score": component_scores.get("title_match_score"),
+                        "component_tags_match_score": component_scores.get("tags_match_score"),
+                        "component_algorithmic_relevance": component_scores.get("algorithmic_relevance"),
+                        "component_ai_relevance": component_scores.get("ai_relevance"),
+                    }
+
+                    writer.writerow(row)
 
         return True
     except IOError:
         return False
+
+
+def clear_incompatible_feedback() -> int:
+    """
+    Remove feedback entries that are incompatible with current scoring version.
+
+    This should be called when scoring logic changes significantly and old
+    feedback would pollute ML training data.
+
+    Returns:
+    --------
+    int: Number of entries removed
+    """
+    data = _load_feedback_data()
+    entries = data.get("feedback_entries", [])
+
+    original_count = len(entries)
+
+    # Keep only compatible entries
+    compatible_entries = [
+        e for e in entries
+        if is_version_compatible(
+            e.get("scoring_version", {}),
+            e.get("search_mode", "keyword")
+        )
+    ]
+
+    data["feedback_entries"] = compatible_entries
+    _save_feedback_data(data)
+
+    return original_count - len(compatible_entries)
+
+
+def clear_all_feedback() -> bool:
+    """
+    Remove all feedback entries.
+
+    Returns:
+    --------
+    bool: True if cleared successfully
+    """
+    data = {"schema_version": FEEDBACK_SCHEMA_VERSION, "feedback_entries": []}
+    return _save_feedback_data(data)

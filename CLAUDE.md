@@ -40,19 +40,19 @@ pytest tests/
 CCSeeker/
 ├── app/
 │   ├── core/                     # Pure business logic (Streamlit-agnostic)
-│   │   ├── __init__.py           # Public API exports (~30 functions/classes)
+│   │   ├── __init__.py           # Public API exports (~35 functions/classes)
 │   │   ├── query_utils.py        # Query validation, URL parsing, channel ID resolution
 │   │   ├── relevance.py          # Keyword relevance scoring
 │   │   ├── youtube_api.py        # YouTube Data API wrappers
 │   │   ├── gemini_api.py         # Gemini AI API wrappers
-│   │   └── pipeline.py           # Search pipeline orchestration
+│   │   ├── pipeline.py           # Search pipeline orchestration
+│   │   └── seed_topics.py        # Seed channel topic extraction and profiling
 │   │
 │   ├── cache/                    # Centralized caching layer
 │   │   ├── __init__.py           # Cache exports and TTL constants
 │   │   └── cache_layer.py        # Streamlit @cache_data wrappers
 │   │
-│   ├── main.py                   # Streamlit UI and integration (~1467 lines)
-│   ├── seed_topics_v2.py         # Seed channel topic extraction
+│   ├── main.py                   # Streamlit UI and integration (~1500 lines)
 │   ├── similarity_engine.py      # Multi-factor similarity scoring
 │   ├── debug_tracker.py          # API usage tracking, quota monitoring
 │   ├── feedback_tracker.py       # User feedback collection
@@ -63,7 +63,8 @@ CCSeeker/
 │   ├── test_relevance.py         # 13 tests for relevance scoring
 │   ├── test_youtube_api.py       # YouTube API wrapper tests
 │   ├── test_gemini_api.py        # Gemini API wrapper tests
-│   └── test_pipeline.py          # Search pipeline tests
+│   ├── test_pipeline.py          # Search pipeline tests
+│   └── test_seed_topics.py       # Seed topic extraction tests
 │
 ├── docs/                         # Icons and screenshots
 ├── .streamlit/config.toml        # Streamlit configuration
@@ -114,6 +115,7 @@ Final similarity = 80% algorithmic + 20% Gemini "vibe" analysis (when API key av
 | `youtube_api.py` | `search_channels_hybrid()`, `get_channel_stats()`, `get_video_details()` |
 | `gemini_api.py` | `generate_ai_relevance_score()`, `generate_summary()`, `generate_outreach_drafts()` |
 | `pipeline.py` | `run_search_pipeline()` - main search orchestration |
+| `seed_topics.py` | `analyze_seed_channel()` - topic extraction from seed channels |
 
 ### Cache Layer (`app/cache/`)
 
@@ -129,7 +131,6 @@ Final similarity = 80% algorithmic + 20% Gemini "vibe" analysis (when API key av
 | Module | Purpose |
 |--------|---------|
 | `main.py` | Streamlit UI, user interactions, result display |
-| `seed_topics_v2.py` | `analyze_seed_channel_v2()` - topic extraction from seed channels |
 | `similarity_engine.py` | `calculate_similarity_score()` - multi-factor channel comparison |
 | `debug_tracker.py` | `track_api_call()`, quota monitoring, performance timing |
 | `feedback_tracker.py` | `save_feedback()`, `get_feedback_stats()`, `export_feedback_csv()`, `get_negative_feedback_entries()` - user feedback persistence |

@@ -13,6 +13,11 @@ try:
 except ImportError:
     genai = None
 
+try:
+    from core.scoring_version import SEED_WEIGHTS
+except ImportError:
+    from .core.scoring_version import SEED_WEIGHTS
+
 
 # ============================================================================
 # SIMILARITY METRICS
@@ -158,7 +163,7 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
         tag_overlap = jaccard_similarity(candidate_tags_set, seed_tags_set)
         common_tag_count = overlap_count(candidate_tags_set, seed_tags_set)
 
-        tag_score = tag_overlap * 30
+        tag_score = tag_overlap * SEED_WEIGHTS.tag_overlap
 
     score += tag_score
 
@@ -196,7 +201,7 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
         keyword_overlap = jaccard_similarity(candidate_keywords_set, seed_keywords_set)
         common_keyword_count = overlap_count(candidate_keywords_set, seed_keywords_set)
 
-        keyword_score = keyword_overlap * 30
+        keyword_score = keyword_overlap * SEED_WEIGHTS.keyword_overlap
 
     score += keyword_score
 
@@ -217,7 +222,7 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
     seed_subs = seed_profile['subscriber_count']
     
     sub_similarity = get_subscriber_similarity(candidate_subs, seed_subs)
-    sub_score = sub_similarity * 15 
+    sub_score = sub_similarity * SEED_WEIGHTS.subscriber_similarity
     score += sub_score
     
     # Human-readable size comparison
@@ -240,10 +245,11 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
     engagement_diff = abs(candidate_engagement - seed_engagement)
     
     # Score inversely proportional to difference
-    # diff=0.0 → score=17
-    # diff=0.05 → score=8.5
+    # diff=0.0 → score=max_points
+    # diff=0.05 → score=half
     # diff=0.10+ → score=0
-    engagement_score = max(0, 17 - (engagement_diff * 170))  
+    max_engagement_pts = SEED_WEIGHTS.engagement_rate
+    engagement_score = max(0, max_engagement_pts - (engagement_diff * max_engagement_pts * 10))
     score += engagement_score
     
     if engagement_score >= 12: # Adjusted threshold
@@ -261,7 +267,7 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
     
     if seed_freq > 0 and candidate_freq > 0:
         freq_ratio = min(candidate_freq / seed_freq, seed_freq / candidate_freq)
-        freq_score = freq_ratio * 8  
+        freq_score = freq_ratio * SEED_WEIGHTS.upload_frequency
     else:
         freq_score = 0.0
     
@@ -424,13 +430,14 @@ def calculate_final_score(
 
         # Only blend if Gemini analysis succeeded (score > 0)
         if gemini_result['gemini_score'] > 0:
-            # Combine scores (80% algorithmic, 20% Gemini)
+            # Combine scores using configured blend ratio
             # Normalize Gemini score to 0-100 scale
             gemini_normalized = gemini_result['gemini_score'] * 10
+            ai_blend = SEED_WEIGHTS.ai_blend_ratio
 
             combined_score = (
-                algo_result['total_score'] * 0.80 +
-                gemini_normalized * 0.20
+                algo_result['total_score'] * (1 - ai_blend) +
+                gemini_normalized * ai_blend
             )
 
             result['total_score'] = round(combined_score, 1)

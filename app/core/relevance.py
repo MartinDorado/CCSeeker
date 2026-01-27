@@ -11,6 +11,7 @@ import re
 import pandas as pd
 
 from .query_utils import strip_outer_quotes
+from .scoring_version import KEYWORD_WEIGHTS
 
 
 # ============================================================================
@@ -20,8 +21,8 @@ from .query_utils import strip_outer_quotes
 def calculate_keyword_relevance(
     df: pd.DataFrame,
     query: str,
-    title_weight: float = 2.0,
-    tags_weight: float = 1.0
+    title_weight: float = KEYWORD_WEIGHTS.title_weight,
+    tags_weight: float = KEYWORD_WEIGHTS.tags_weight
 ) -> pd.DataFrame:
     """
     Compute per-channel relevance by matching query terms against video titles and tags.

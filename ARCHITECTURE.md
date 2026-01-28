@@ -58,7 +58,8 @@ CCSeeker is an AI-powered YouTube creator discovery tool that automates finding 
 | **Presentation** | `app/main.py` | UI rendering, user input, session state, progress display |
 | **Cache** | `app/cache/` | Streamlit caching wrappers, TTL configuration |
 | **Core** | `app/core/` | Pure business logic, API wrappers, pipeline orchestration |
-| **Utilities** | `app/*.py` | Seed analysis, similarity scoring, debug tracking, feedback collection |
+| **Utilities** | `app/*.py` | Similarity scoring, debug tracking, feedback collection |
+| **Analytics** | `app/analytics/` | ML training, weight optimization, Fabric export |
 
 ---
 
@@ -68,30 +69,42 @@ CCSeeker is an AI-powered YouTube creator discovery tool that automates finding 
 CCSeeker/
 ├── app/
 │   ├── core/                     # Pure business logic (Streamlit-agnostic)
-│   │   ├── __init__.py           # Public API exports (~30 functions/classes)
+│   │   ├── __init__.py           # Public API exports (~33 functions/classes)
 │   │   ├── query_utils.py        # Query validation, URL parsing, channel ID resolution
 │   │   ├── relevance.py          # Keyword relevance scoring
 │   │   ├── youtube_api.py        # YouTube Data API wrappers
 │   │   ├── gemini_api.py         # Gemini AI API wrappers
-│   │   └── pipeline.py           # Search pipeline orchestration
+│   │   ├── pipeline.py           # Search pipeline orchestration
+│   │   ├── scoring_version.py    # Centralized scoring weights and version management
+│   │   └── seed_topics.py        # Seed channel topic extraction and profiling
 │   │
 │   ├── cache/                    # Centralized caching layer
 │   │   ├── __init__.py           # Cache exports and TTL constants
 │   │   └── cache_layer.py        # Streamlit @cache_data wrappers
 │   │
-│   ├── main.py                   # Streamlit UI (~1467 lines)
-│   ├── seed_topics_v2.py         # Seed channel topic extraction
+│   ├── analytics/                # ML and analytics module
+│   │   ├── __init__.py           # Analytics exports (14 functions/classes)
+│   │   ├── synthetic_data_generator.py  # Synthetic feedback generation
+│   │   ├── ml_trainer.py         # ML model training (logistic regression, cross-validation)
+│   │   ├── weight_optimizer.py   # Weight optimization algorithms
+│   │   └── fabric_export.py      # Microsoft Fabric/Power BI export
+│   │
+│   ├── main.py                   # Streamlit UI (~1675 lines)
 │   ├── similarity_engine.py      # Multi-factor similarity scoring
 │   ├── debug_tracker.py          # API usage tracking, quota monitoring
 │   ├── feedback_tracker.py       # User feedback collection
 │   └── smart_cache.py            # Per-channel video caching (24h TTL)
 │
-├── tests/                        # Unit test suite
-│   ├── test_query_utils.py       # Query validation tests
-│   ├── test_relevance.py         # Relevance scoring tests
-│   ├── test_youtube_api.py       # YouTube API wrapper tests
-│   ├── test_gemini_api.py        # Gemini API wrapper tests
-│   └── test_pipeline.py          # Pipeline integration tests
+├── tests/                        # Unit test suite (216 tests total)
+│   ├── test_query_utils.py       # 21 tests for query utilities
+│   ├── test_relevance.py         # 13 tests for relevance scoring
+│   ├── test_youtube_api.py       # 29 tests for YouTube API wrappers
+│   ├── test_gemini_api.py        # 31 tests for Gemini API wrappers
+│   ├── test_pipeline.py          # 26 tests for search pipeline
+│   ├── test_seed_topics.py       # 46 tests for seed topic extraction
+│   ├── test_analytics.py         # 27 tests for analytics module
+│   ├── test_feedback_tracker.py  # 27 tests for feedback tracking
+│   └── test_scoring_version.py   # 26 tests for scoring version
 │
 ├── docs/                         # Documentation assets
 ├── .streamlit/config.toml        # Streamlit configuration
@@ -138,6 +151,8 @@ The core layer contains pure business logic extracted from the original monolith
 | `youtube_api.py` | 483 | `SearchResult`, `ChannelStatsResult`, `VideoDetailsResult`, `search_channels_hybrid()`, `get_channel_stats()`, `get_video_details()` |
 | `gemini_api.py` | 290 | `OutreachDraft`, `SummaryResult`, `generate_ai_relevance_score()`, `generate_summary()`, `generate_outreach_drafts()` |
 | `pipeline.py` | 753 | `PipelineResult`, `PipelineConfig`, `run_search_pipeline()` |
+| `scoring_version.py` | ~200 | `SCORING_VERSION`, weight constants, `get_weight_config()` |
+| `seed_topics.py` | ~400 | `SeedProfile`, `SeedAnalysisResult`, `analyze_seed_channel()` |
 
 ### Design Patterns
 
@@ -509,7 +524,7 @@ CCSeeker uses local JSON files for persistence (git-ignored):
 
 ### Purpose
 
-Collects user feedback on search quality to enable future improvements to similarity and relevance scoring algorithms.
+Collects user feedback on search quality to enable improvements to similarity and relevance scoring algorithms through ML-powered weight optimization.
 
 ### Data Flow
 
@@ -526,6 +541,13 @@ User Search → Results Displayed → Feedback UI (👍/👎)
                               ┌─────────────────────┐
                               │ .feedback_data.json │
                               │   (local storage)   │
+                              └─────────────────────┘
+                                        │
+                                        ▼
+                              ┌─────────────────────┐
+                              │   app/analytics/     │
+                              │  ML Training &       │
+                              │  Weight Optimization │
                               └─────────────────────┘
 ```
 
@@ -585,14 +607,74 @@ The export includes 31 columns covering:
 - **No authentication**: Can't tie feedback to specific users
 - **Manual export**: Requires debug panel access to export CSV
 
-### Future Roadmap
+---
 
-1. Export to cloud storage (Microsoft Fabric)
-2. Builds dashboards to track search quality
-3. Uses simple ML models to learn optimal scoring weights 
-    A. Logistic Regression for weight learning
-    B. Linear Regression for score calibration
-4. Creates a feedback loop to improve the app over time
+## Analytics Module (`app/analytics/`)
+
+The analytics module provides ML-powered tools for learning optimal scoring weights from feedback data.
+
+### Module Overview
+
+| Module | Purpose | Key Functions |
+|--------|---------|---------------|
+| `synthetic_data_generator.py` | Generate synthetic feedback for testing | `generate_synthetic_feedback()` |
+| `ml_trainer.py` | Train ML models on feedback data | `train_model()`, `cross_validate()` |
+| `weight_optimizer.py` | Optimize similarity scoring weights | `optimize_weights()`, `evaluate_weights()` |
+| `fabric_export.py` | Export to Microsoft Fabric/Power BI | `export_to_fabric()`, `format_for_powerbi()` |
+
+### ML Training Pipeline
+
+```
+Feedback Data (.json)
+        │
+        ▼
+┌─────────────────────────┐
+│  Feature Extraction     │
+│  - Component scores     │
+│  - Filter settings      │
+│  - AI enabled flag      │
+└─────────────────────────┘
+        │
+        ▼
+┌─────────────────────────┐
+│  Model Training         │
+│  - Logistic Regression  │
+│  - Cross-validation     │
+│  - Hyperparameter tuning│
+└─────────────────────────┘
+        │
+        ▼
+┌─────────────────────────┐
+│  Weight Optimization    │
+│  - Learn optimal weights│
+│  - Validate on holdout  │
+└─────────────────────────┘
+        │
+        ▼
+┌─────────────────────────┐
+│  scoring_version.py     │
+│  (Update weights)       │
+└─────────────────────────┘
+```
+
+### Synthetic Data Generation
+
+For testing ML pipelines without real feedback data:
+
+```python
+from app.analytics import generate_synthetic_feedback
+
+# Generate 1000 synthetic feedback entries
+synthetic_data = generate_synthetic_feedback(n_samples=1000)
+```
+
+### Roadmap Status
+
+- [x] Export to cloud storage (Microsoft Fabric) - `fabric_export.py`
+- [ ] Build dashboards to track search quality
+- [x] ML models for weight learning - `ml_trainer.py` (logistic regression with cross-validation)
+- [x] Weight optimization - `weight_optimizer.py`
+- [ ] Automated feedback loop to update `scoring_version.py`
 
 
 ---
@@ -619,9 +701,13 @@ def mock_youtube():
 |--------|-------|----------------|
 | `test_query_utils.py` | 21 | Query validation, URL parsing, edge cases |
 | `test_relevance.py` | 13 | Keyword matching, weights, empty inputs |
-| `test_youtube_api.py` | ~20 | Search results, channel stats, error handling |
-| `test_gemini_api.py` | ~15 | AI scoring, summary generation, API failures |
-| `test_pipeline.py` | ~25 | Full pipeline, filters, early exits, callbacks |
+| `test_youtube_api.py` | 29 | Search results, channel stats, error handling |
+| `test_gemini_api.py` | 31 | AI scoring, summary generation, API failures |
+| `test_pipeline.py` | 26 | Full pipeline, filters, early exits, callbacks |
+| `test_seed_topics.py` | 46 | Seed topic extraction, language detection |
+| `test_analytics.py` | 27 | ML training, weight optimization |
+| `test_feedback_tracker.py` | 27 | Feedback persistence, export |
+| `test_scoring_version.py` | 26 | Scoring weights, version management |
 
 ### Running Tests
 
@@ -641,7 +727,7 @@ pytest tests/ --cov=app/core
 
 ---
 
-## Seed Topic Extraction (`seed_topics_v2.py`)
+## Seed Topic Extraction (`app/core/seed_topics.py`)
 
 ### Language Detection
 

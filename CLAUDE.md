@@ -66,7 +66,7 @@ CCSeeker/
 │   ├── feedback_tracker.py       # User feedback collection
 │   └── smart_cache.py            # Per-channel video caching (24h TTL)
 │
-├── tests/                        # Unit test suite (216 tests total)
+├── tests/                        # Unit test suite (262 tests total)
 │   ├── test_query_utils.py       # 21 tests for query utilities
 │   ├── test_relevance.py         # 13 tests for relevance scoring
 │   ├── test_youtube_api.py       # 29 tests for YouTube API wrappers
@@ -75,7 +75,8 @@ CCSeeker/
 │   ├── test_seed_topics.py       # 46 tests for seed topic extraction
 │   ├── test_analytics.py         # 27 tests for analytics module
 │   ├── test_feedback_tracker.py  # 27 tests for feedback tracking
-│   └── test_scoring_version.py   # 26 tests for scoring version
+│   ├── test_scoring_version.py   # 26 tests for scoring version
+│   └── test_performance.py       # 16 tests for performance benchmarks
 │
 ├── docs/                         # Icons and screenshots
 ├── .streamlit/config.toml        # Streamlit configuration

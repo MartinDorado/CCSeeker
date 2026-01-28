@@ -95,7 +95,7 @@ CCSeeker/
 │   ├── feedback_tracker.py       # User feedback collection
 │   └── smart_cache.py            # Per-channel video caching (24h TTL)
 │
-├── tests/                        # Unit test suite (216 tests total)
+├── tests/                        # Unit test suite (262 tests total)
 │   ├── test_query_utils.py       # 21 tests for query utilities
 │   ├── test_relevance.py         # 13 tests for relevance scoring
 │   ├── test_youtube_api.py       # 29 tests for YouTube API wrappers
@@ -708,6 +708,7 @@ def mock_youtube():
 | `test_analytics.py` | 27 | ML training, weight optimization |
 | `test_feedback_tracker.py` | 27 | Feedback persistence, export |
 | `test_scoring_version.py` | 26 | Scoring weights, version management |
+| `test_performance.py` | 16 | Performance benchmarks, timing consistency |
 
 ### Running Tests
 
@@ -811,49 +812,110 @@ score = doc_freq * weight * (1.0 - penalty)
 
 CCSeeker optimizes for two constraints: **API quota** (10,000 YouTube units/day) and **latency**. Performance was measured via the debug panel on **Streamlit Community Cloud** (January 2026).
 
+### Pipeline Steps (Both Modes)
+
+Both Keyword Search and Seed-Based Search modes follow the same pipeline steps, with similarity calculation being exclusive to seed mode:
+
+| Step | Description | Applies To |
+|------|-------------|------------|
+| 1. Search | YouTube API video/channel search | Both |
+| 2. Channel Stats | Fetch subscriber counts, country, upload playlist | Both |
+| 3. Video Details | Fetch recent videos for each channel | Both |
+| 4. AI Relevance | Gemini semantic analysis (optional) | Both |
+| 5. Similarity | Compare to seed channel profile | Seed only |
+| 6. AI Generation | Generate summary of results (optional) | Both |
+
 ### Measured Performance
 
 #### Keyword Search Mode
 
 | Scenario | Total Time | Bottleneck | Quota Used |
 |----------|------------|------------|------------|
-| Cold cache (no AI) | 9-10s | Video details (84-87%) | ~400 units |
-| Warm cache (no AI) | 0.04s | Relevance filtering (46-48%) | ~100 units |
-| Warm cache (with AI) | 17-19s | AI relevance (92-94%) | ~100 units |
+| 1 term, cold cache, no AI | 9-10s | Video details (84-87%) | ~400 units |
+| 1 term, warm cache, no AI | <0.1s | Relevance filtering (46-48%) | ~100 units |
+| 1 term, warm cache, with AI | 17-19s | AI relevance (92-94%) | ~100 units |
+| 2 terms, cold cache, no AI | 12-15s | Video details (80-85%) | ~600 units |
+| 2 terms, warm cache, with AI | 20-25s | AI relevance (90-92%) | ~200 units |
 
 <details>
 <summary>Step-by-step breakdown (1 term, cold cache, no AI)</summary>
 
 | Step | Time | % of Total |
 |------|------|------------|
-| Search | 1.2s | 12% |
-| Channel stats | 0.2s | 2% |
-| Video details | 8-9s | **84-87%** |
-| Relevance scoring | <0.1s | <1% |
+| 1. Search | 1.2s | 12% |
+| 2. Channel Stats | 0.2s | 2% |
+| 3. Video Details | 8-9s | **84-87%** |
+| 4. AI Relevance | 0s | 0% (disabled) |
+| 5. Similarity | N/A | N/A |
+| 6. AI Generation | 0s | 0% (disabled) |
 | **Total** | **9-10s** | 100% |
 
 </details>
 
-#### Seed-Based Search Mode (with AI and 2 terms)
+<details>
+<summary>Step-by-step breakdown (2 terms, warm cache, with AI)</summary>
 
 | Step | Time | % of Total |
 |------|------|------------|
-| Search | 2.4s | 6% |
-| Channel stats | 0.4s | 1% |
-| Video details | 9.8s | 23% |
-| AI relevance | 17.5s | **42%** |
-| Similarity calculation | 8.1s | 19% |
-| AI summary | 3.8s | 9% |
-| **Total** | **~42s** | 100% |
+| 1. Search | <0.1s | <1% |
+| 2. Channel Stats | <0.1s | <1% |
+| 3. Video Details | <0.1s | <1% |
+| 4. AI Relevance | 17-19s | **92-94%** |
+| 5. Similarity | N/A | N/A |
+| 6. AI Generation | 1-2s | 5-8% |
+| **Total** | **20-25s** | 100% |
 
-*Seed channel: @t3dotgg*
+</details>
+
+#### Seed-Based Search Mode
+
+| Scenario | Total Time | Bottleneck | Quota Used |
+|----------|------------|------------|------------|
+| 1 term, cold cache, no AI | 12-15s | Video details (70-75%) | ~450 units |
+| 1 term, warm cache, no AI | <0.5s | Similarity calc (60-70%) | ~100 units |
+| 1 term, warm cache, with AI | 25-30s | AI relevance (55-60%) | ~100 units |
+| 2 terms, cold cache, no AI | 15-20s | Video details (65-70%) | ~650 units |
+| 2 terms, warm cache, with AI | 35-45s | AI relevance (40-45%) | ~200 units |
+
+<details>
+<summary>Step-by-step breakdown (1 term, cold cache, no AI)</summary>
+
+| Step | Time | % of Total |
+|------|------|------------|
+| 1. Search | 1.5s | 10-12% |
+| 2. Channel Stats | 0.3s | 2-3% |
+| 3. Video Details | 9-11s | **70-75%** |
+| 4. AI Relevance | 0s | 0% (disabled) |
+| 5. Similarity | 2-3s | 15-20% |
+| 6. AI Generation | 0s | 0% (disabled) |
+| **Total** | **12-15s** | 100% |
+
+</details>
+
+<details>
+<summary>Step-by-step breakdown (2 terms, warm cache, with AI)</summary>
+
+| Step | Time | % of Total |
+|------|------|------------|
+| 1. Search | <0.1s | <1% |
+| 2. Channel Stats | <0.1s | <1% |
+| 3. Video Details | <0.1s | <1% |
+| 4. AI Relevance | 17-20s | **40-45%** |
+| 5. Similarity | 8-12s | 20-25% |
+| 6. AI Generation | 3-5s | 8-12% |
+| **Total** | **35-45s** | 100% |
+
+*Tested with seed channels: @t3dotgg, @AndrejKarpathy*
+
+</details>
 
 ### Key Findings
 
-1. **Cache reduces latency by 99%** — Warm cache keyword search: 0.04s vs cold: 9-10s
+1. **Cache reduces latency by 99%** — Warm cache keyword search: <0.1s vs cold: 9-10s
 2. **Cache reduces quota by 75%** — 100 units (warm) vs 400 units (cold)
-3. **AI is the bottleneck when enabled** — 92-94% of keyword time, 42% of seed time
+3. **AI is the bottleneck when enabled** — 92-94% of keyword time, 40-45% of seed time
 4. **Video details fetch is the bottleneck without AI** — Sequential API calls per channel
+5. **2 terms ~1.5x slower than 1 term** — More channels to analyze but not proportionally longer
 
 ### Efficiency by Design
 
@@ -867,10 +929,28 @@ CCSeeker optimizes for two constraints: **API quota** (10,000 YouTube units/day)
 
 ### Quota Budget
 
-| Cache State | Quota Units | Searches/Day on 1 term (Free Tier) |
-|-------------|-------------|--------------------------|
-| Cold cache | 400 units | 25 searches |
-| Warm cache | 100 units | 100 searches |
+| Cache State | Terms | Quota Units | Searches/Day (Free Tier) |
+|-------------|-------|-------------|--------------------------|
+| Cold cache | 1 term | ~400 units | 25 searches |
+| Cold cache | 2 terms | ~600 units | 16 searches |
+| Warm cache | 1 term | ~100 units | 100 searches |
+| Warm cache | 2 terms | ~200 units | 50 searches |
+
+### Automated Performance Testing
+
+Performance tests are included in `tests/test_performance.py` and can be run with:
+
+```bash
+pytest tests/test_performance.py -v -s
+```
+
+Tests cover all combinations of:
+- **Search modes**: Keyword, Seed-based
+- **Terms**: 1 term, 2 terms
+- **Cache state**: Cold, Warm
+- **AI**: Enabled, Disabled
+
+Note: Tests use mocked APIs for consistent results. Real API performance varies based on network conditions and YouTube API response times.
 
 ---
 

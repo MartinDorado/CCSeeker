@@ -309,6 +309,7 @@ pytest tests/ -v
 | `test_analytics.py` | 27 | ML training, weight optimization |
 | `test_feedback_tracker.py` | 27 | Feedback persistence, export |
 | `test_scoring_version.py` | 26 | Scoring weights, version management |
+| `test_performance.py` | 16 | Performance benchmarks, timing consistency |
 
 All tests use mocked API clients - no actual API calls needed.
 
@@ -431,7 +432,7 @@ CCSeeker/
 │   ├── main.py         # UI and integration
 │   └── *.py            # Utilities (similarity, debug, feedback)
 │
-├── tests/              # Unit tests (216 tests, mocked APIs)
+├── tests/              # Unit tests (262 tests, mocked APIs)
 ├── docs/               # Icons and screenshots
 ├── ARCHITECTURE.md     # Technical deep dive (scoring, caching, pipelines)
 ├── CLAUDE.md           # Developer quick reference
@@ -502,13 +503,40 @@ Enable debug mode to see real-time usage.
 
 Measured via debug panel (January 2026):
 
-- **Keyword search**: 9-10s cold cache, <1s warm cache (without AI)
-- **Seed-based search**: 42s with full AI similarity analysis and cold cache
-- **AI overhead**: +17s when AI relevance scoring enabled
-- **Cache benefit**: 99% faster, 75% less quota on repeat searches
-- **Quota usage**: 400 units cold / 100 units warm (25-100 one term searches/day on free tier)
+### Keyword Search Mode
 
-**Bottlenecks**: Video details fetch (without AI) · AI relevance scoring (with AI)
+| Scenario | Total Time | Quota Used |
+|----------|------------|------------|
+| 1 term, cold cache, no AI | 9-10s | ~400 units |
+| 1 term, warm cache, no AI | <0.1s | ~100 units |
+| 1 term, warm cache, with AI | 17-19s | ~100 units |
+| 2 terms, warm cache, with AI | 20-25s | ~200 units |
+
+### Seed-Based Search Mode
+
+| Scenario | Total Time | Quota Used |
+|----------|------------|------------|
+| 1 term, cold cache, no AI | 12-15s | ~450 units |
+| 1 term, warm cache, no AI | <0.5s | ~100 units |
+| 2 terms, warm cache, with AI | 35-45s | ~200 units |
+
+### Key Insights
+
+- **Cache benefit**: 99% faster, 75% less quota on repeat searches
+- **AI overhead**: +17-20s when AI relevance scoring enabled
+- **Bottlenecks**: Video details fetch (without AI) · AI relevance scoring (with AI)
+- **Searches/day**: 25-100 on free tier (depending on terms and cache state)
+
+### Pipeline Steps (Both Modes)
+
+| Step | Description |
+|------|-------------|
+| 1. Search | YouTube API video/channel search |
+| 2. Channel Stats | Fetch subscriber counts, country |
+| 3. Video Details | Fetch recent videos per channel |
+| 4. AI Relevance | Gemini semantic analysis (optional) |
+| 5. Similarity | Compare to seed profile (seed mode only) |
+| 6. AI Generation | Generate summary (optional) |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md#performance--efficiency) for detailed breakdown.
 

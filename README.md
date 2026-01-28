@@ -133,7 +133,7 @@ Toggle debug mode to see:
 <details>
 <summary><strong>📈 Feedback & Analytics</strong></summary>
 
-CCSeeker includes a feedback collection system to track search quality and enable future improvements.
+CCSeeker includes a feedback collection system and ML-powered analytics to track and improve search quality.
 
 ### How It Works
 
@@ -156,21 +156,30 @@ Feedback, reason, Filter settings, AI enabled flag
 ### Analytics Use Cases
 
 - **Satisfaction tracking** - Positive vs. negative feedback ratio by search mode
-- **Failure analysis** - Which reason appear most frequently
+- **Failure analysis** - Which reasons appear most frequently
 - **Score calibration** - What scores correlate with user satisfaction
 - **Filter effectiveness** - Which filter combinations yield better results
 - **AI Lift** - Gemini correlation with satisfaction
 
 Export feedback to CSV via the debug panel for external analysis.
 
-### Future Roadmap
+### ML Analytics Module (`app/analytics/`)
 
-The feedback system is designed to enable future enhancements:
+CCSeeker includes an analytics module for learning optimal scoring weights from feedback data:
 
-1. Export to cloud storage (Microsoft Fabric)
-2. Builds dashboards to track search quality
-3. Uses simple ML models to learn optimal scoring weights 
-4. Creates a feedback loop to improve the app over time
+| Module | Purpose |
+|--------|---------|
+| `synthetic_data_generator.py` | Generate synthetic feedback for testing ML pipelines |
+| `ml_trainer.py` | Train logistic regression models with cross-validation |
+| `weight_optimizer.py` | Optimize similarity scoring weights based on feedback |
+| `fabric_export.py` | Export data to Microsoft Fabric/Power BI formats |
+
+### Roadmap
+
+- [x] Export to cloud storage (Microsoft Fabric)
+- [ ] Build dashboards to track search quality
+- [x] ML models to learn optimal scoring weights (logistic regression with cross-validation)
+- [ ] Automated feedback loop to improve scoring over time
 
 </details>
 
@@ -289,13 +298,18 @@ pytest tests/ -v
 
 ### Test Coverage
 
-| Module | Coverage |
-|--------|-------|
-| `test_query_utils.py` | Query validation, URL parsing, edge cases |
-| `test_relevance.py` | Keyword matching, weights, empty inputs |
-| `test_youtube_api.py` | Search results, channel stats, error handling |
-| `test_gemini_api.py` | AI scoring, summary generation, API failures |
-| `test_pipeline.py` | Full pipeline, filters, early exits, callbacks |
+| Module | Tests | Coverage |
+|--------|-------|----------|
+| `test_query_utils.py` | 21 | Query validation, URL parsing, edge cases |
+| `test_relevance.py` | 13 | Keyword matching, weights, empty inputs |
+| `test_youtube_api.py` | 29 | Search results, channel stats, error handling |
+| `test_gemini_api.py` | 31 | AI scoring, summary generation, API failures |
+| `test_pipeline.py` | 26 | Full pipeline, filters, early exits, callbacks |
+| `test_seed_topics.py` | 46 | Seed topic extraction, language detection |
+| `test_analytics.py` | 27 | ML training, weight optimization |
+| `test_feedback_tracker.py` | 27 | Feedback persistence, export |
+| `test_scoring_version.py` | 26 | Scoring weights, version management |
+| `test_performance.py` | 16 | Performance benchmarks, timing consistency |
 
 All tests use mocked API clients - no actual API calls needed.
 
@@ -414,10 +428,11 @@ CCSeeker/
 ├── app/
 │   ├── core/           # Pure business logic (Streamlit-agnostic, testable)
 │   ├── cache/          # Streamlit caching wrappers
+│   ├── analytics/      # ML training, weight optimization, Fabric export
 │   ├── main.py         # UI and integration
-│   └── *.py            # Utilities (seed analysis, similarity, debug, feedback)
+│   └── *.py            # Utilities (similarity, debug, feedback)
 │
-├── tests/              # Unit tests (mocked APIs, no real calls needed)
+├── tests/              # Unit tests (262 tests, mocked APIs)
 ├── docs/               # Icons and screenshots
 ├── ARCHITECTURE.md     # Technical deep dive (scoring, caching, pipelines)
 ├── CLAUDE.md           # Developer quick reference
@@ -429,8 +444,9 @@ CCSeeker/
 | Function | Location | Purpose |
 |----------|----------|---------|
 | `run_search_pipeline()` | `app/core/pipeline.py` | Main search orchestration |
-| `analyze_seed_channel_v2()` | `app/seed_topics_v2.py` | Seed channel topic extraction |
+| `analyze_seed_channel()` | `app/core/seed_topics.py` | Seed channel topic extraction |
 | `calculate_similarity_score()` | `app/similarity_engine.py` | Multi-factor channel comparison |
+| `get_weight_config()` | `app/core/scoring_version.py` | Centralized scoring weights |
 
 See [CLAUDE.md](CLAUDE.md) for full module reference and [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design docs.
 
@@ -487,13 +503,40 @@ Enable debug mode to see real-time usage.
 
 Measured via debug panel (January 2026):
 
-- **Keyword search**: 9-10s cold cache, <1s warm cache (without AI)
-- **Seed-based search**: 42s with full AI similarity analysis and cold cache
-- **AI overhead**: +17s when AI relevance scoring enabled
-- **Cache benefit**: 99% faster, 75% less quota on repeat searches
-- **Quota usage**: 400 units cold / 100 units warm (25-100 one term searches/day on free tier)
+### Keyword Search Mode
 
-**Bottlenecks**: Video details fetch (without AI) · AI relevance scoring (with AI)
+| Scenario | Total Time | Quota Used |
+|----------|------------|------------|
+| 1 term, cold cache, no AI | 9-10s | ~400 units |
+| 1 term, warm cache, no AI | <0.1s | ~100 units |
+| 1 term, warm cache, with AI | 17-19s | ~100 units |
+| 2 terms, warm cache, with AI | 20-25s | ~200 units |
+
+### Seed-Based Search Mode
+
+| Scenario | Total Time | Quota Used |
+|----------|------------|------------|
+| 1 term, cold cache, no AI | 12-15s | ~450 units |
+| 1 term, warm cache, no AI | <0.5s | ~100 units |
+| 2 terms, warm cache, with AI | 35-45s | ~200 units |
+
+### Key Insights
+
+- **Cache benefit**: 99% faster, 75% less quota on repeat searches
+- **AI overhead**: +17-20s when AI relevance scoring enabled
+- **Bottlenecks**: Video details fetch (without AI) · AI relevance scoring (with AI)
+- **Searches/day**: 25-100 on free tier (depending on terms and cache state)
+
+### Pipeline Steps (Both Modes)
+
+| Step | Description |
+|------|-------------|
+| 1. Search | YouTube API video/channel search |
+| 2. Channel Stats | Fetch subscriber counts, country |
+| 3. Video Details | Fetch recent videos per channel |
+| 4. AI Relevance | Gemini semantic analysis (optional) |
+| 5. Similarity | Compare to seed profile (seed mode only) |
+| 6. AI Generation | Generate summary (optional) |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md#performance--efficiency) for detailed breakdown.
 

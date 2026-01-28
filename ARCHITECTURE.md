@@ -58,7 +58,8 @@ CCSeeker is an AI-powered YouTube creator discovery tool that automates finding 
 | **Presentation** | `app/main.py` | UI rendering, user input, session state, progress display |
 | **Cache** | `app/cache/` | Streamlit caching wrappers, TTL configuration |
 | **Core** | `app/core/` | Pure business logic, API wrappers, pipeline orchestration |
-| **Utilities** | `app/*.py` | Seed analysis, similarity scoring, debug tracking, feedback collection |
+| **Utilities** | `app/*.py` | Similarity scoring, debug tracking, feedback collection |
+| **Analytics** | `app/analytics/` | ML training, weight optimization, Fabric export |
 
 ---
 
@@ -68,30 +69,42 @@ CCSeeker is an AI-powered YouTube creator discovery tool that automates finding 
 CCSeeker/
 ├── app/
 │   ├── core/                     # Pure business logic (Streamlit-agnostic)
-│   │   ├── __init__.py           # Public API exports (~30 functions/classes)
+│   │   ├── __init__.py           # Public API exports (~33 functions/classes)
 │   │   ├── query_utils.py        # Query validation, URL parsing, channel ID resolution
 │   │   ├── relevance.py          # Keyword relevance scoring
 │   │   ├── youtube_api.py        # YouTube Data API wrappers
 │   │   ├── gemini_api.py         # Gemini AI API wrappers
-│   │   └── pipeline.py           # Search pipeline orchestration
+│   │   ├── pipeline.py           # Search pipeline orchestration
+│   │   ├── scoring_version.py    # Centralized scoring weights and version management
+│   │   └── seed_topics.py        # Seed channel topic extraction and profiling
 │   │
 │   ├── cache/                    # Centralized caching layer
 │   │   ├── __init__.py           # Cache exports and TTL constants
 │   │   └── cache_layer.py        # Streamlit @cache_data wrappers
 │   │
-│   ├── main.py                   # Streamlit UI (~1467 lines)
-│   ├── seed_topics_v2.py         # Seed channel topic extraction
+│   ├── analytics/                # ML and analytics module
+│   │   ├── __init__.py           # Analytics exports (14 functions/classes)
+│   │   ├── synthetic_data_generator.py  # Synthetic feedback generation
+│   │   ├── ml_trainer.py         # ML model training (logistic regression, cross-validation)
+│   │   ├── weight_optimizer.py   # Weight optimization algorithms
+│   │   └── fabric_export.py      # Microsoft Fabric/Power BI export
+│   │
+│   ├── main.py                   # Streamlit UI (~1675 lines)
 │   ├── similarity_engine.py      # Multi-factor similarity scoring
 │   ├── debug_tracker.py          # API usage tracking, quota monitoring
 │   ├── feedback_tracker.py       # User feedback collection
 │   └── smart_cache.py            # Per-channel video caching (24h TTL)
 │
-├── tests/                        # Unit test suite
-│   ├── test_query_utils.py       # Query validation tests
-│   ├── test_relevance.py         # Relevance scoring tests
-│   ├── test_youtube_api.py       # YouTube API wrapper tests
-│   ├── test_gemini_api.py        # Gemini API wrapper tests
-│   └── test_pipeline.py          # Pipeline integration tests
+├── tests/                        # Unit test suite (262 tests total)
+│   ├── test_query_utils.py       # 21 tests for query utilities
+│   ├── test_relevance.py         # 13 tests for relevance scoring
+│   ├── test_youtube_api.py       # 29 tests for YouTube API wrappers
+│   ├── test_gemini_api.py        # 31 tests for Gemini API wrappers
+│   ├── test_pipeline.py          # 26 tests for search pipeline
+│   ├── test_seed_topics.py       # 46 tests for seed topic extraction
+│   ├── test_analytics.py         # 27 tests for analytics module
+│   ├── test_feedback_tracker.py  # 27 tests for feedback tracking
+│   └── test_scoring_version.py   # 26 tests for scoring version
 │
 ├── docs/                         # Documentation assets
 ├── .streamlit/config.toml        # Streamlit configuration
@@ -138,6 +151,8 @@ The core layer contains pure business logic extracted from the original monolith
 | `youtube_api.py` | 483 | `SearchResult`, `ChannelStatsResult`, `VideoDetailsResult`, `search_channels_hybrid()`, `get_channel_stats()`, `get_video_details()` |
 | `gemini_api.py` | 290 | `OutreachDraft`, `SummaryResult`, `generate_ai_relevance_score()`, `generate_summary()`, `generate_outreach_drafts()` |
 | `pipeline.py` | 753 | `PipelineResult`, `PipelineConfig`, `run_search_pipeline()` |
+| `scoring_version.py` | ~200 | `SCORING_VERSION`, weight constants, `get_weight_config()` |
+| `seed_topics.py` | ~400 | `SeedProfile`, `SeedAnalysisResult`, `analyze_seed_channel()` |
 
 ### Design Patterns
 
@@ -509,7 +524,7 @@ CCSeeker uses local JSON files for persistence (git-ignored):
 
 ### Purpose
 
-Collects user feedback on search quality to enable future improvements to similarity and relevance scoring algorithms.
+Collects user feedback on search quality to enable improvements to similarity and relevance scoring algorithms through ML-powered weight optimization.
 
 ### Data Flow
 
@@ -526,6 +541,13 @@ User Search → Results Displayed → Feedback UI (👍/👎)
                               ┌─────────────────────┐
                               │ .feedback_data.json │
                               │   (local storage)   │
+                              └─────────────────────┘
+                                        │
+                                        ▼
+                              ┌─────────────────────┐
+                              │   app/analytics/     │
+                              │  ML Training &       │
+                              │  Weight Optimization │
                               └─────────────────────┘
 ```
 
@@ -585,14 +607,74 @@ The export includes 31 columns covering:
 - **No authentication**: Can't tie feedback to specific users
 - **Manual export**: Requires debug panel access to export CSV
 
-### Future Roadmap
+---
 
-1. Export to cloud storage (Microsoft Fabric)
-2. Builds dashboards to track search quality
-3. Uses simple ML models to learn optimal scoring weights 
-    A. Logistic Regression for weight learning
-    B. Linear Regression for score calibration
-4. Creates a feedback loop to improve the app over time
+## Analytics Module (`app/analytics/`)
+
+The analytics module provides ML-powered tools for learning optimal scoring weights from feedback data.
+
+### Module Overview
+
+| Module | Purpose | Key Functions |
+|--------|---------|---------------|
+| `synthetic_data_generator.py` | Generate synthetic feedback for testing | `generate_synthetic_feedback()` |
+| `ml_trainer.py` | Train ML models on feedback data | `train_model()`, `cross_validate()` |
+| `weight_optimizer.py` | Optimize similarity scoring weights | `optimize_weights()`, `evaluate_weights()` |
+| `fabric_export.py` | Export to Microsoft Fabric/Power BI | `export_to_fabric()`, `format_for_powerbi()` |
+
+### ML Training Pipeline
+
+```
+Feedback Data (.json)
+        │
+        ▼
+┌─────────────────────────┐
+│  Feature Extraction     │
+│  - Component scores     │
+│  - Filter settings      │
+│  - AI enabled flag      │
+└─────────────────────────┘
+        │
+        ▼
+┌─────────────────────────┐
+│  Model Training         │
+│  - Logistic Regression  │
+│  - Cross-validation     │
+│  - Hyperparameter tuning│
+└─────────────────────────┘
+        │
+        ▼
+┌─────────────────────────┐
+│  Weight Optimization    │
+│  - Learn optimal weights│
+│  - Validate on holdout  │
+└─────────────────────────┘
+        │
+        ▼
+┌─────────────────────────┐
+│  scoring_version.py     │
+│  (Update weights)       │
+└─────────────────────────┘
+```
+
+### Synthetic Data Generation
+
+For testing ML pipelines without real feedback data:
+
+```python
+from app.analytics import generate_synthetic_feedback
+
+# Generate 1000 synthetic feedback entries
+synthetic_data = generate_synthetic_feedback(n_samples=1000)
+```
+
+### Roadmap Status
+
+- [x] Export to cloud storage (Microsoft Fabric) - `fabric_export.py`
+- [ ] Build dashboards to track search quality
+- [x] ML models for weight learning - `ml_trainer.py` (logistic regression with cross-validation)
+- [x] Weight optimization - `weight_optimizer.py`
+- [ ] Automated feedback loop to update `scoring_version.py`
 
 
 ---
@@ -619,9 +701,14 @@ def mock_youtube():
 |--------|-------|----------------|
 | `test_query_utils.py` | 21 | Query validation, URL parsing, edge cases |
 | `test_relevance.py` | 13 | Keyword matching, weights, empty inputs |
-| `test_youtube_api.py` | ~20 | Search results, channel stats, error handling |
-| `test_gemini_api.py` | ~15 | AI scoring, summary generation, API failures |
-| `test_pipeline.py` | ~25 | Full pipeline, filters, early exits, callbacks |
+| `test_youtube_api.py` | 29 | Search results, channel stats, error handling |
+| `test_gemini_api.py` | 31 | AI scoring, summary generation, API failures |
+| `test_pipeline.py` | 26 | Full pipeline, filters, early exits, callbacks |
+| `test_seed_topics.py` | 46 | Seed topic extraction, language detection |
+| `test_analytics.py` | 27 | ML training, weight optimization |
+| `test_feedback_tracker.py` | 27 | Feedback persistence, export |
+| `test_scoring_version.py` | 26 | Scoring weights, version management |
+| `test_performance.py` | 16 | Performance benchmarks, timing consistency |
 
 ### Running Tests
 
@@ -641,7 +728,7 @@ pytest tests/ --cov=app/core
 
 ---
 
-## Seed Topic Extraction (`seed_topics_v2.py`)
+## Seed Topic Extraction (`app/core/seed_topics.py`)
 
 ### Language Detection
 
@@ -725,49 +812,110 @@ score = doc_freq * weight * (1.0 - penalty)
 
 CCSeeker optimizes for two constraints: **API quota** (10,000 YouTube units/day) and **latency**. Performance was measured via the debug panel on **Streamlit Community Cloud** (January 2026).
 
+### Pipeline Steps (Both Modes)
+
+Both Keyword Search and Seed-Based Search modes follow the same pipeline steps, with similarity calculation being exclusive to seed mode:
+
+| Step | Description | Applies To |
+|------|-------------|------------|
+| 1. Search | YouTube API video/channel search | Both |
+| 2. Channel Stats | Fetch subscriber counts, country, upload playlist | Both |
+| 3. Video Details | Fetch recent videos for each channel | Both |
+| 4. AI Relevance | Gemini semantic analysis (optional) | Both |
+| 5. Similarity | Compare to seed channel profile | Seed only |
+| 6. AI Generation | Generate summary of results (optional) | Both |
+
 ### Measured Performance
 
 #### Keyword Search Mode
 
 | Scenario | Total Time | Bottleneck | Quota Used |
 |----------|------------|------------|------------|
-| Cold cache (no AI) | 9-10s | Video details (84-87%) | ~400 units |
-| Warm cache (no AI) | 0.04s | Relevance filtering (46-48%) | ~100 units |
-| Warm cache (with AI) | 17-19s | AI relevance (92-94%) | ~100 units |
+| 1 term, cold cache, no AI | 9-10s | Video details (84-87%) | ~400 units |
+| 1 term, warm cache, no AI | <0.1s | Relevance filtering (46-48%) | ~100 units |
+| 1 term, warm cache, with AI | 17-19s | AI relevance (92-94%) | ~100 units |
+| 2 terms, cold cache, no AI | 12-15s | Video details (80-85%) | ~600 units |
+| 2 terms, warm cache, with AI | 20-25s | AI relevance (90-92%) | ~200 units |
 
 <details>
 <summary>Step-by-step breakdown (1 term, cold cache, no AI)</summary>
 
 | Step | Time | % of Total |
 |------|------|------------|
-| Search | 1.2s | 12% |
-| Channel stats | 0.2s | 2% |
-| Video details | 8-9s | **84-87%** |
-| Relevance scoring | <0.1s | <1% |
+| 1. Search | 1.2s | 12% |
+| 2. Channel Stats | 0.2s | 2% |
+| 3. Video Details | 8-9s | **84-87%** |
+| 4. AI Relevance | 0s | 0% (disabled) |
+| 5. Similarity | N/A | N/A |
+| 6. AI Generation | 0s | 0% (disabled) |
 | **Total** | **9-10s** | 100% |
 
 </details>
 
-#### Seed-Based Search Mode (with AI and 2 terms)
+<details>
+<summary>Step-by-step breakdown (2 terms, warm cache, with AI)</summary>
 
 | Step | Time | % of Total |
 |------|------|------------|
-| Search | 2.4s | 6% |
-| Channel stats | 0.4s | 1% |
-| Video details | 9.8s | 23% |
-| AI relevance | 17.5s | **42%** |
-| Similarity calculation | 8.1s | 19% |
-| AI summary | 3.8s | 9% |
-| **Total** | **~42s** | 100% |
+| 1. Search | <0.1s | <1% |
+| 2. Channel Stats | <0.1s | <1% |
+| 3. Video Details | <0.1s | <1% |
+| 4. AI Relevance | 17-19s | **92-94%** |
+| 5. Similarity | N/A | N/A |
+| 6. AI Generation | 1-2s | 5-8% |
+| **Total** | **20-25s** | 100% |
 
-*Seed channel: @t3dotgg*
+</details>
+
+#### Seed-Based Search Mode
+
+| Scenario | Total Time | Bottleneck | Quota Used |
+|----------|------------|------------|------------|
+| 1 term, cold cache, no AI | 12-15s | Video details (70-75%) | ~450 units |
+| 1 term, warm cache, no AI | <0.5s | Similarity calc (60-70%) | ~100 units |
+| 1 term, warm cache, with AI | 25-30s | AI relevance (55-60%) | ~100 units |
+| 2 terms, cold cache, no AI | 15-20s | Video details (65-70%) | ~650 units |
+| 2 terms, warm cache, with AI | 35-45s | AI relevance (40-45%) | ~200 units |
+
+<details>
+<summary>Step-by-step breakdown (1 term, cold cache, no AI)</summary>
+
+| Step | Time | % of Total |
+|------|------|------------|
+| 1. Search | 1.5s | 10-12% |
+| 2. Channel Stats | 0.3s | 2-3% |
+| 3. Video Details | 9-11s | **70-75%** |
+| 4. AI Relevance | 0s | 0% (disabled) |
+| 5. Similarity | 2-3s | 15-20% |
+| 6. AI Generation | 0s | 0% (disabled) |
+| **Total** | **12-15s** | 100% |
+
+</details>
+
+<details>
+<summary>Step-by-step breakdown (2 terms, warm cache, with AI)</summary>
+
+| Step | Time | % of Total |
+|------|------|------------|
+| 1. Search | <0.1s | <1% |
+| 2. Channel Stats | <0.1s | <1% |
+| 3. Video Details | <0.1s | <1% |
+| 4. AI Relevance | 17-20s | **40-45%** |
+| 5. Similarity | 8-12s | 20-25% |
+| 6. AI Generation | 3-5s | 8-12% |
+| **Total** | **35-45s** | 100% |
+
+*Tested with seed channels: @t3dotgg, @AndrejKarpathy*
+
+</details>
 
 ### Key Findings
 
-1. **Cache reduces latency by 99%** — Warm cache keyword search: 0.04s vs cold: 9-10s
+1. **Cache reduces latency by 99%** — Warm cache keyword search: <0.1s vs cold: 9-10s
 2. **Cache reduces quota by 75%** — 100 units (warm) vs 400 units (cold)
-3. **AI is the bottleneck when enabled** — 92-94% of keyword time, 42% of seed time
+3. **AI is the bottleneck when enabled** — 92-94% of keyword time, 40-45% of seed time
 4. **Video details fetch is the bottleneck without AI** — Sequential API calls per channel
+5. **2 terms ~1.5x slower than 1 term** — More channels to analyze but not proportionally longer
 
 ### Efficiency by Design
 
@@ -781,10 +929,28 @@ CCSeeker optimizes for two constraints: **API quota** (10,000 YouTube units/day)
 
 ### Quota Budget
 
-| Cache State | Quota Units | Searches/Day on 1 term (Free Tier) |
-|-------------|-------------|--------------------------|
-| Cold cache | 400 units | 25 searches |
-| Warm cache | 100 units | 100 searches |
+| Cache State | Terms | Quota Units | Searches/Day (Free Tier) |
+|-------------|-------|-------------|--------------------------|
+| Cold cache | 1 term | ~400 units | 25 searches |
+| Cold cache | 2 terms | ~600 units | 16 searches |
+| Warm cache | 1 term | ~100 units | 100 searches |
+| Warm cache | 2 terms | ~200 units | 50 searches |
+
+### Automated Performance Testing
+
+Performance tests are included in `tests/test_performance.py` and can be run with:
+
+```bash
+pytest tests/test_performance.py -v -s
+```
+
+Tests cover all combinations of:
+- **Search modes**: Keyword, Seed-based
+- **Terms**: 1 term, 2 terms
+- **Cache state**: Cold, Warm
+- **AI**: Enabled, Disabled
+
+Note: Tests use mocked APIs for consistent results. Real API performance varies based on network conditions and YouTube API response times.
 
 ---
 

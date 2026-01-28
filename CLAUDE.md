@@ -40,31 +40,43 @@ pytest tests/
 CCSeeker/
 ├── app/
 │   ├── core/                     # Pure business logic (Streamlit-agnostic)
-│   │   ├── __init__.py           # Public API exports (~35 functions/classes)
+│   │   ├── __init__.py           # Public API exports (~33 functions/classes)
 │   │   ├── query_utils.py        # Query validation, URL parsing, channel ID resolution
 │   │   ├── relevance.py          # Keyword relevance scoring
 │   │   ├── youtube_api.py        # YouTube Data API wrappers
 │   │   ├── gemini_api.py         # Gemini AI API wrappers
 │   │   ├── pipeline.py           # Search pipeline orchestration
+│   │   ├── scoring_version.py    # Centralized scoring weights and version management
 │   │   └── seed_topics.py        # Seed channel topic extraction and profiling
 │   │
 │   ├── cache/                    # Centralized caching layer
 │   │   ├── __init__.py           # Cache exports and TTL constants
 │   │   └── cache_layer.py        # Streamlit @cache_data wrappers
 │   │
-│   ├── main.py                   # Streamlit UI and integration (~1500 lines)
+│   ├── analytics/                # ML and analytics module
+│   │   ├── __init__.py           # Analytics exports (14 functions/classes)
+│   │   ├── synthetic_data_generator.py  # Synthetic feedback generation
+│   │   ├── ml_trainer.py         # ML model training (logistic regression, cross-validation)
+│   │   ├── weight_optimizer.py   # Weight optimization algorithms
+│   │   └── fabric_export.py      # Microsoft Fabric/Power BI export
+│   │
+│   ├── main.py                   # Streamlit UI and integration (~1675 lines)
 │   ├── similarity_engine.py      # Multi-factor similarity scoring
 │   ├── debug_tracker.py          # API usage tracking, quota monitoring
 │   ├── feedback_tracker.py       # User feedback collection
 │   └── smart_cache.py            # Per-channel video caching (24h TTL)
 │
-├── tests/                        # Unit test suite
+├── tests/                        # Unit test suite (262 tests total)
 │   ├── test_query_utils.py       # 21 tests for query utilities
 │   ├── test_relevance.py         # 13 tests for relevance scoring
-│   ├── test_youtube_api.py       # YouTube API wrapper tests
-│   ├── test_gemini_api.py        # Gemini API wrapper tests
-│   ├── test_pipeline.py          # Search pipeline tests
-│   └── test_seed_topics.py       # Seed topic extraction tests
+│   ├── test_youtube_api.py       # 29 tests for YouTube API wrappers
+│   ├── test_gemini_api.py        # 31 tests for Gemini API wrappers
+│   ├── test_pipeline.py          # 26 tests for search pipeline
+│   ├── test_seed_topics.py       # 46 tests for seed topic extraction
+│   ├── test_analytics.py         # 27 tests for analytics module
+│   ├── test_feedback_tracker.py  # 27 tests for feedback tracking
+│   ├── test_scoring_version.py   # 26 tests for scoring version
+│   └── test_performance.py       # 16 tests for performance benchmarks
 │
 ├── docs/                         # Icons and screenshots
 ├── .streamlit/config.toml        # Streamlit configuration
@@ -115,6 +127,7 @@ Final similarity = 80% algorithmic + 20% Gemini "vibe" analysis (when API key av
 | `youtube_api.py` | `search_channels_hybrid()`, `get_channel_stats()`, `get_video_details()` |
 | `gemini_api.py` | `generate_ai_relevance_score()`, `generate_summary()`, `generate_outreach_drafts()` |
 | `pipeline.py` | `run_search_pipeline()` - main search orchestration |
+| `scoring_version.py` | Centralized scoring weights (`SCORING_VERSION`, weight constants, `get_weight_config()`) |
 | `seed_topics.py` | `analyze_seed_channel()` - topic extraction from seed channels |
 
 ### Cache Layer (`app/cache/`)
@@ -124,6 +137,7 @@ Final similarity = 80% algorithmic + 20% Gemini "vibe" analysis (when API key av
 | `get_channel_stats_cached()` | Cached channel statistics fetch |
 | `get_video_details_cached()` | Cached video details fetch |
 | `search_channels_cached()` | Cached search results |
+| `search_channels_hybrid_cached()` | Cached hybrid search results |
 | `CacheFunctionsAdapter` | Adapter for pipeline integration |
 
 ### Application Layer (`app/`)
@@ -134,6 +148,15 @@ Final similarity = 80% algorithmic + 20% Gemini "vibe" analysis (when API key av
 | `similarity_engine.py` | `calculate_similarity_score()` - multi-factor channel comparison |
 | `debug_tracker.py` | `track_api_call()`, quota monitoring, performance timing |
 | `feedback_tracker.py` | `save_feedback()`, `get_feedback_stats()`, `export_feedback_csv()`, `get_negative_feedback_entries()` - user feedback persistence |
+
+### Analytics Layer (`app/analytics/`)
+
+| Module | Purpose |
+|--------|---------|
+| `synthetic_data_generator.py` | Generate synthetic feedback data for ML training |
+| `ml_trainer.py` | Train ML models (logistic regression with cross-validation) |
+| `weight_optimizer.py` | Optimize scoring weights based on feedback data |
+| `fabric_export.py` | Export data to Microsoft Fabric/Power BI formats |
 
 ## API Quotas
 
@@ -196,12 +219,14 @@ pytest tests/ -v
 | Task | Where to Look |
 |------|---------------|
 | Add a new search filter | `app/core/pipeline.py` - modify `run_search_pipeline()` |
-| Change similarity weights | `app/similarity_engine.py` - edit weight constants |
+| Change similarity weights | `app/core/scoring_version.py` - edit weight constants, bump `SCORING_VERSION` |
 | Add new YouTube API call | `app/core/youtube_api.py` - add function, update `__init__.py` |
 | Add new Gemini feature | `app/core/gemini_api.py` - add function, update `__init__.py` |
 | Add caching for new function | `app/cache/cache_layer.py` - add cached wrapper |
 | Track new API call type | `app/debug_tracker.py` - add to tracking |
 | Add new test | `tests/test_<module>.py` - follow existing patterns |
+| Add analytics feature | `app/analytics/` - add module, update `__init__.py` |
+| Train/optimize ML model | `app/analytics/ml_trainer.py` or `weight_optimizer.py` |
 
 ## Modification Guidelines
 
@@ -212,6 +237,7 @@ Follow these rules to maintain architectural integrity:
 3. **Update tests when changing scoring** - Modify `tests/test_relevance.py` or `tests/test_pipeline.py`
 4. **Update docs when changing constraints** - If you change max terms, max channels, TTLs, update README + ARCHITECTURE
 5. **Export new functions from `__init__.py`** - When adding to `app/core/`, update `app/core/__init__.py`
+6. **Bump SCORING_VERSION when changing weights** - Update version in `app/core/scoring_version.py` to invalidate cached scores
 
 ## Known Limitations
 

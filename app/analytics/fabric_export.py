@@ -18,7 +18,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
 
-from feedback_tracker import get_training_data, get_feedback_stats, _load_feedback_data
+try:
+    from .feedback_tracker import get_training_data, get_feedback_stats, _load_feedback_data
+except ImportError:
+    from feedback_tracker import get_training_data, get_feedback_stats, _load_feedback_data
 
 
 def export_to_parquet(output_path: str = None, mode: str = "all") -> bool:

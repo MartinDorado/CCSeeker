@@ -26,8 +26,15 @@ from sklearn.model_selection import cross_val_score, train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
-from core.scoring_version import SEED_WEIGHTS
-from feedback_tracker import get_training_data
+try:
+    from ..core.scoring_version import SEED_WEIGHTS
+except ImportError:
+    from core.scoring_version import SEED_WEIGHTS
+
+try:
+    from .feedback_tracker import get_training_data
+except ImportError:
+    from feedback_tracker import get_training_data
 
 
 @dataclass

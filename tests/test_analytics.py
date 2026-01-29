@@ -325,7 +325,7 @@ class TestFabricExport:
     def test_export_to_csv_no_data(self):
         """Should handle empty data gracefully."""
         from analytics.fabric_export import export_to_csv  # type: ignore[import-not-found]
-        from feedback_tracker import clear_all_feedback  # type: ignore[import-not-found]
+        from analytics.feedback_tracker import clear_all_feedback  # type: ignore[import-not-found]
 
         # Ensure no data
         clear_all_feedback()
@@ -338,7 +338,7 @@ class TestFabricExport:
     def test_get_fabric_ready_dataframe_empty(self):
         """Should return empty DataFrame when no data."""
         from analytics.fabric_export import get_fabric_ready_dataframe  # type: ignore[import-not-found]
-        from feedback_tracker import clear_all_feedback  # type: ignore[import-not-found]
+        from analytics.feedback_tracker import clear_all_feedback  # type: ignore[import-not-found]
 
         clear_all_feedback()
 

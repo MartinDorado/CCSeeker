@@ -77,6 +77,26 @@ from .seed_topics import (
     calculate_subscriber_tier,
 )
 
+from .similarity import (
+    # Callback interface
+    SimilarityCallbacks,
+    # Similarity metrics
+    jaccard_similarity,
+    overlap_count,
+    # Subscriber utilities
+    get_subscriber_similarity,
+    is_within_tier_range,
+    # Scoring functions
+    calculate_similarity_score,
+    gemini_similarity_analysis,
+    calculate_final_score,
+    # Batch operations
+    rank_channels_by_similarity,
+    filter_by_subscriber_range,
+    # Explanation
+    generate_match_explanation,
+)
+
 __all__ = [
     # Constants
     "MAX_SEARCH_TERMS",
@@ -121,4 +141,16 @@ __all__ = [
     "analyze_seed_channel",
     "detect_language",
     "calculate_subscriber_tier",
+    # Similarity module
+    "SimilarityCallbacks",
+    "jaccard_similarity",
+    "overlap_count",
+    "get_subscriber_similarity",
+    "is_within_tier_range",
+    "calculate_similarity_score",
+    "gemini_similarity_analysis",
+    "calculate_final_score",
+    "rank_channels_by_similarity",
+    "filter_by_subscriber_range",
+    "generate_match_explanation",
 ]

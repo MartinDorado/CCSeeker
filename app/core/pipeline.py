@@ -32,6 +32,7 @@ from .gemini_api import (
     generate_summary as _generate_summary,
     SummaryResult,
 )
+from .similarity import SimilarityCallbacks
 
 
 # ============================================================================
@@ -610,12 +611,23 @@ def run_search_pipeline(
             # Get GEMINI_API_KEY for similarity engine (passed via config)
             gemini_api_key = config.seed_profile.get('gemini_api_key')
 
+            # Create callbacks for similarity engine
+            # Captures warnings in the warnings list, tracks API calls via callback
+            similarity_callbacks = SimilarityCallbacks(
+                on_info=lambda msg: search_log.append(msg),
+                on_warning=lambda msg: warnings.append(msg),
+                on_success=lambda msg: search_log.append(msg),
+                on_api_call=on_api_call,
+                debug_mode=True
+            )
+
             ranked = similarity_engine.rank_channels_by_similarity(
                 candidates,
                 config.seed_profile,
                 gemini_api_key=gemini_api_key,
                 gemini_limit=10,
-                debug=True  # Enable breakdown for feedback analytics
+                debug=True,  # Enable breakdown for feedback analytics
+                callbacks=similarity_callbacks
             )
 
             top_channels = pd.DataFrame(ranked)

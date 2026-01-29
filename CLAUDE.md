@@ -40,41 +40,44 @@ pytest tests/
 CCSeeker/
 ├── app/
 │   ├── core/                     # Pure business logic (Streamlit-agnostic)
-│   │   ├── __init__.py           # Public API exports (~33 functions/classes)
+│   │   ├── __init__.py           # Public API exports (~45 functions/classes)
 │   │   ├── query_utils.py        # Query validation, URL parsing, channel ID resolution
 │   │   ├── relevance.py          # Keyword relevance scoring
 │   │   ├── youtube_api.py        # YouTube Data API wrappers
 │   │   ├── gemini_api.py         # Gemini AI API wrappers
 │   │   ├── pipeline.py           # Search pipeline orchestration
 │   │   ├── scoring_version.py    # Centralized scoring weights and version management
-│   │   └── seed_topics.py        # Seed channel topic extraction and profiling
+│   │   ├── seed_topics.py        # Seed channel topic extraction and profiling
+│   │   └── similarity.py         # Multi-factor similarity scoring (Streamlit-agnostic)
 │   │
 │   ├── cache/                    # Centralized caching layer
 │   │   ├── __init__.py           # Cache exports and TTL constants
-│   │   └── cache_layer.py        # Streamlit @cache_data wrappers
+│   │   ├── cache_layer.py        # Streamlit @cache_data wrappers
+│   │   └── smart_cache.py        # Per-channel video caching (24h TTL)
 │   │
-│   ├── analytics/                # ML and analytics module
-│   │   ├── __init__.py           # Analytics exports (14 functions/classes)
+│   ├── analytics/                # ML, analytics, and tracking module
+│   │   ├── __init__.py           # Analytics exports (~30 functions/classes)
 │   │   ├── synthetic_data_generator.py  # Synthetic feedback generation
 │   │   ├── ml_trainer.py         # ML model training (logistic regression, cross-validation)
 │   │   ├── weight_optimizer.py   # Weight optimization algorithms
-│   │   └── fabric_export.py      # Microsoft Fabric/Power BI export
+│   │   ├── fabric_export.py      # Microsoft Fabric/Power BI export
+│   │   ├── feedback_tracker.py   # User feedback collection and persistence
+│   │   └── quota_tracker.py      # API usage tracking, quota monitoring (pure logic)
 │   │
 │   ├── main.py                   # Streamlit UI and integration (~1675 lines)
-│   ├── similarity_engine.py      # Multi-factor similarity scoring
-│   ├── debug_tracker.py          # API usage tracking, quota monitoring
-│   ├── feedback_tracker.py       # User feedback collection
-│   └── smart_cache.py            # Per-channel video caching (24h TTL)
+│   └── debug_ui.py               # Streamlit debug panel UI (uses quota_tracker)
 │
-├── tests/                        # Unit test suite (262 tests total)
+├── tests/                        # Unit test suite (367 tests total)
 │   ├── test_query_utils.py       # 21 tests for query utilities
 │   ├── test_relevance.py         # 13 tests for relevance scoring
 │   ├── test_youtube_api.py       # 29 tests for YouTube API wrappers
 │   ├── test_gemini_api.py        # 31 tests for Gemini API wrappers
 │   ├── test_pipeline.py          # 26 tests for search pipeline
 │   ├── test_seed_topics.py       # 46 tests for seed topic extraction
+│   ├── test_similarity.py        # 63 tests for similarity scoring
 │   ├── test_analytics.py         # 27 tests for analytics module
 │   ├── test_feedback_tracker.py  # 27 tests for feedback tracking
+│   ├── test_quota_tracker.py     # 42 tests for quota tracking
 │   ├── test_scoring_version.py   # 26 tests for scoring version
 │   └── test_performance.py       # 16 tests for performance benchmarks
 │
@@ -129,25 +132,21 @@ Final similarity = 80% algorithmic + 20% Gemini "vibe" analysis (when API key av
 | `pipeline.py` | `run_search_pipeline()` - main search orchestration |
 | `scoring_version.py` | Centralized scoring weights (`SCORING_VERSION`, weight constants, `get_weight_config()`) |
 | `seed_topics.py` | `analyze_seed_channel()` - topic extraction from seed channels |
+| `similarity.py` | `calculate_similarity_score()`, `rank_channels_by_similarity()` - multi-factor channel comparison (Streamlit-agnostic with callbacks) |
 
 ### Cache Layer (`app/cache/`)
 
-| Function | Purpose |
-|----------|---------|
-| `get_channel_stats_cached()` | Cached channel statistics fetch |
-| `get_video_details_cached()` | Cached video details fetch |
-| `search_channels_cached()` | Cached search results |
-| `search_channels_hybrid_cached()` | Cached hybrid search results |
-| `CacheFunctionsAdapter` | Adapter for pipeline integration |
+| Module | Purpose |
+|--------|---------|
+| `cache_layer.py` | `get_channel_stats_cached()`, `get_video_details_cached()`, `search_channels_cached()`, `CacheFunctionsAdapter` |
+| `smart_cache.py` | `ChannelVideoCache`, `get_video_details_smart()` - per-channel video caching (24h TTL) |
 
 ### Application Layer (`app/`)
 
 | Module | Purpose |
 |--------|---------|
 | `main.py` | Streamlit UI, user interactions, result display |
-| `similarity_engine.py` | `calculate_similarity_score()` - multi-factor channel comparison |
-| `debug_tracker.py` | `track_api_call()`, quota monitoring, performance timing |
-| `feedback_tracker.py` | `save_feedback()`, `get_feedback_stats()`, `export_feedback_csv()`, `get_negative_feedback_entries()` - user feedback persistence |
+| `debug_ui.py` | Streamlit debug panel UI - `initialize_debug_tracking()`, `track_api_call()`, `display_debug_panel()` |
 
 ### Analytics Layer (`app/analytics/`)
 
@@ -157,6 +156,8 @@ Final similarity = 80% algorithmic + 20% Gemini "vibe" analysis (when API key av
 | `ml_trainer.py` | Train ML models (logistic regression with cross-validation) |
 | `weight_optimizer.py` | Optimize scoring weights based on feedback data |
 | `fabric_export.py` | Export data to Microsoft Fabric/Power BI formats |
+| `feedback_tracker.py` | `save_channel_feedback()`, `get_feedback_stats()`, `export_feedback_csv()` - user feedback persistence |
+| `quota_tracker.py` | `DebugData`, `DailyQuota`, `calculate_youtube_quota_used()`, `load_daily_quota()` - API usage tracking (pure logic) |
 
 ## API Quotas
 
@@ -183,8 +184,8 @@ These files are created at runtime and are git-ignored:
 
 | File | Created By | Purpose |
 |------|------------|---------|
-| `.quota_cache.json` | `debug_tracker.py` | Daily API quota tracking, resets at midnight PT |
-| `.feedback_data.json` | `feedback_tracker.py` | User feedback storage for analytics |
+| `.quota_cache.json` | `app/analytics/quota_tracker.py` | Daily API quota tracking, resets at midnight PT |
+| `.feedback_data.json` | `app/analytics/feedback_tracker.py` | User feedback storage for analytics |
 
 **Note:** On Streamlit Cloud, these files are ephemeral and reset on app restarts.
 
@@ -220,10 +221,11 @@ pytest tests/ -v
 |------|---------------|
 | Add a new search filter | `app/core/pipeline.py` - modify `run_search_pipeline()` |
 | Change similarity weights | `app/core/scoring_version.py` - edit weight constants, bump `SCORING_VERSION` |
+| Modify similarity scoring | `app/core/similarity.py` - edit scoring functions, update tests |
 | Add new YouTube API call | `app/core/youtube_api.py` - add function, update `__init__.py` |
 | Add new Gemini feature | `app/core/gemini_api.py` - add function, update `__init__.py` |
 | Add caching for new function | `app/cache/cache_layer.py` - add cached wrapper |
-| Track new API call type | `app/debug_tracker.py` - add to tracking |
+| Track new API call type | `app/analytics/quota_tracker.py` - add to tracking, `app/debug_ui.py` for UI |
 | Add new test | `tests/test_<module>.py` - follow existing patterns |
 | Add analytics feature | `app/analytics/` - add module, update `__init__.py` |
 | Train/optimize ML model | `app/analytics/ml_trainer.py` or `weight_optimizer.py` |

@@ -19,6 +19,11 @@ from .cache_layer import (
     CacheFunctionsAdapter,
 )
 
+from .smart_cache import (
+    ChannelVideoCache,
+    get_video_details_smart,
+)
+
 __all__ = [
     # Constants
     "CACHE_TTL_CHANNEL_STATS",
@@ -31,4 +36,7 @@ __all__ = [
     "search_channels_hybrid_cached",
     # Adapter
     "CacheFunctionsAdapter",
+    # Smart cache
+    "ChannelVideoCache",
+    "get_video_details_smart",
 ]

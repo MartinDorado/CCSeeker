@@ -13,14 +13,14 @@ from datetime import datetime
 from typing import Optional, Literal
 
 try:
-    from core.scoring_version import (
+    from ..core.scoring_version import (
         CHANNEL_FEEDBACK_REASONS,
         VALID_RATINGS,
         get_scoring_version,
         is_version_compatible,
     )
 except ImportError:
-    from .core.scoring_version import (
+    from core.scoring_version import (
         CHANNEL_FEEDBACK_REASONS,
         VALID_RATINGS,
         get_scoring_version,
@@ -28,7 +28,7 @@ except ImportError:
     )
 
 # Feedback storage file path (in app directory)
-FEEDBACK_FILE = os.path.join(os.path.dirname(__file__), ".feedback_data.json")
+FEEDBACK_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".feedback_data.json")
 
 # Schema version for this feedback format
 FEEDBACK_SCHEMA_VERSION = "2.0.0"

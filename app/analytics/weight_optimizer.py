@@ -3,7 +3,7 @@ weight_optimizer.py - Convert ML coefficients to scoring weights
 
 This module takes the coefficients from a trained logistic regression
 model and converts them into adjusted scoring weights that can be
-used by similarity_engine.py.
+used by similarity.py (in app/core/).
 
 The key insight: softmax(coefficients) gives relative importance,
 which we can scale to sum to the target total (100 points).
@@ -21,8 +21,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 
-from core.scoring_version import SEED_WEIGHTS, SCORING_VERSION
-from analytics.ml_trainer import TrainedModel
+try:
+    from ..core.scoring_version import SEED_WEIGHTS, SCORING_VERSION
+except ImportError:
+    from core.scoring_version import SEED_WEIGHTS, SCORING_VERSION
+
+try:
+    from .ml_trainer import TrainedModel
+except ImportError:
+    from ml_trainer import TrainedModel
 
 
 @dataclass

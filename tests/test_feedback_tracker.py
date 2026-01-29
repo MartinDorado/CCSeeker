@@ -21,7 +21,7 @@ from unittest.mock import patch
 # Add app directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.feedback_tracker import (
+from app.analytics.feedback_tracker import (
     FEEDBACK_SCHEMA_VERSION,
     save_channel_feedback,
     build_channel_feedback_entry,
@@ -42,7 +42,7 @@ def temp_feedback_file(tmp_path):
     """Create a temporary feedback file for testing."""
     feedback_file = tmp_path / ".feedback_data.json"
     # Patch the FEEDBACK_FILE constant
-    with patch("app.feedback_tracker.FEEDBACK_FILE", str(feedback_file)):
+    with patch("app.analytics.feedback_tracker.FEEDBACK_FILE", str(feedback_file)):
         yield feedback_file
 
 

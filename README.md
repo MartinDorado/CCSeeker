@@ -306,8 +306,10 @@ pytest tests/ -v
 | `test_gemini_api.py` | 31 | AI scoring, summary generation, API failures |
 | `test_pipeline.py` | 26 | Full pipeline, filters, early exits, callbacks |
 | `test_seed_topics.py` | 46 | Seed topic extraction, language detection |
+| `test_similarity.py` | 63 | Similarity scoring, callbacks, Gemini integration |
 | `test_analytics.py` | 27 | ML training, weight optimization |
 | `test_feedback_tracker.py` | 27 | Feedback persistence, export |
+| `test_quota_tracker.py` | 42 | Quota calculations, persistence, tracking |
 | `test_scoring_version.py` | 26 | Scoring weights, version management |
 | `test_performance.py` | 16 | Performance benchmarks, timing consistency |
 
@@ -445,7 +447,7 @@ CCSeeker/
 |----------|----------|---------|
 | `run_search_pipeline()` | `app/core/pipeline.py` | Main search orchestration |
 | `analyze_seed_channel()` | `app/core/seed_topics.py` | Seed channel topic extraction |
-| `calculate_similarity_score()` | `app/similarity_engine.py` | Multi-factor channel comparison |
+| `calculate_similarity_score()` | `app/core/similarity.py` | Multi-factor channel comparison |
 | `get_weight_config()` | `app/core/scoring_version.py` | Centralized scoring weights |
 
 See [CLAUDE.md](CLAUDE.md) for full module reference and [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design docs.

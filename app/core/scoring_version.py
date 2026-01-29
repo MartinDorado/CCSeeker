@@ -8,7 +8,7 @@ CCSeeker's relevance and similarity calculations. It provides:
 2. Weight constants for seed mode (similarity scoring)
 3. Version signature generation for ML training data compatibility
 
-All scoring modules (relevance.py, similarity_engine.py) should import
+All scoring modules (relevance.py, similarity.py) should import
 weights from here rather than defining them locally.
 
 This module is Streamlit-agnostic and can be unit tested independently.
@@ -51,7 +51,7 @@ KEYWORD_WEIGHTS = KeywordWeights()
 
 
 # ============================================================================
-# SEED MODE WEIGHTS (used by similarity_engine.py)
+# SEED MODE WEIGHTS (used by similarity.py)
 # ============================================================================
 
 @dataclass(frozen=True)
@@ -132,7 +132,7 @@ def generate_pipeline_hash() -> str:
     scoring_files = [
         os.path.join(core_dir, "scoring_version.py"),
         os.path.join(core_dir, "relevance.py"),
-        os.path.join(app_dir, "similarity_engine.py"),
+        os.path.join(core_dir, "similarity.py"),
     ]
 
     # Combine hashes

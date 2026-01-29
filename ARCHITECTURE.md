@@ -55,11 +55,10 @@ CCSeeker is an AI-powered YouTube creator discovery tool that automates finding 
 
 | Layer | Location | Responsibility |
 |-------|----------|----------------|
-| **Presentation** | `app/main.py` | UI rendering, user input, session state, progress display |
-| **Cache** | `app/cache/` | Streamlit caching wrappers, TTL configuration |
-| **Core** | `app/core/` | Pure business logic, API wrappers, pipeline orchestration |
-| **Utilities** | `app/*.py` | Similarity scoring, debug tracking, feedback collection |
-| **Analytics** | `app/analytics/` | ML training, weight optimization, Fabric export |
+| **Presentation** | `app/main.py`, `app/debug_ui.py` | UI rendering, user input, session state, progress display |
+| **Cache** | `app/cache/` | Streamlit caching wrappers, TTL configuration, per-channel video caching |
+| **Core** | `app/core/` | Pure business logic, API wrappers, pipeline orchestration, similarity scoring |
+| **Analytics** | `app/analytics/` | ML training, weight optimization, Fabric export, feedback & quota tracking |
 
 ---
 
@@ -69,42 +68,46 @@ CCSeeker is an AI-powered YouTube creator discovery tool that automates finding 
 CCSeeker/
 ├── app/
 │   ├── core/                     # Pure business logic (Streamlit-agnostic)
-│   │   ├── __init__.py           # Public API exports (~33 functions/classes)
+│   │   ├── __init__.py           # Public API exports (~45 functions/classes)
 │   │   ├── query_utils.py        # Query validation, URL parsing, channel ID resolution
 │   │   ├── relevance.py          # Keyword relevance scoring
 │   │   ├── youtube_api.py        # YouTube Data API wrappers
 │   │   ├── gemini_api.py         # Gemini AI API wrappers
 │   │   ├── pipeline.py           # Search pipeline orchestration
 │   │   ├── scoring_version.py    # Centralized scoring weights and version management
-│   │   └── seed_topics.py        # Seed channel topic extraction and profiling
+│   │   ├── seed_topics.py        # Seed channel topic extraction and profiling
+│   │   └── similarity.py         # Multi-factor similarity scoring (Streamlit-agnostic)
 │   │
 │   ├── cache/                    # Centralized caching layer
 │   │   ├── __init__.py           # Cache exports and TTL constants
-│   │   └── cache_layer.py        # Streamlit @cache_data wrappers
+│   │   ├── cache_layer.py        # Streamlit @cache_data wrappers
+│   │   └── smart_cache.py        # Per-channel video caching (24h TTL)
 │   │
-│   ├── analytics/                # ML and analytics module
-│   │   ├── __init__.py           # Analytics exports (14 functions/classes)
+│   ├── analytics/                # ML, analytics, and tracking module
+│   │   ├── __init__.py           # Analytics exports (~30 functions/classes)
 │   │   ├── synthetic_data_generator.py  # Synthetic feedback generation
 │   │   ├── ml_trainer.py         # ML model training (logistic regression, cross-validation)
 │   │   ├── weight_optimizer.py   # Weight optimization algorithms
-│   │   └── fabric_export.py      # Microsoft Fabric/Power BI export
+│   │   ├── fabric_export.py      # Microsoft Fabric/Power BI export
+│   │   ├── feedback_tracker.py   # User feedback collection and persistence
+│   │   └── quota_tracker.py      # API usage tracking, quota monitoring (pure logic)
 │   │
 │   ├── main.py                   # Streamlit UI (~1675 lines)
-│   ├── similarity_engine.py      # Multi-factor similarity scoring
-│   ├── debug_tracker.py          # API usage tracking, quota monitoring
-│   ├── feedback_tracker.py       # User feedback collection
-│   └── smart_cache.py            # Per-channel video caching (24h TTL)
+│   └── debug_ui.py               # Streamlit debug panel UI (uses quota_tracker)
 │
-├── tests/                        # Unit test suite (262 tests total)
+├── tests/                        # Unit test suite (367 tests total)
 │   ├── test_query_utils.py       # 21 tests for query utilities
 │   ├── test_relevance.py         # 13 tests for relevance scoring
 │   ├── test_youtube_api.py       # 29 tests for YouTube API wrappers
 │   ├── test_gemini_api.py        # 31 tests for Gemini API wrappers
 │   ├── test_pipeline.py          # 26 tests for search pipeline
 │   ├── test_seed_topics.py       # 46 tests for seed topic extraction
+│   ├── test_similarity.py        # 63 tests for similarity scoring
 │   ├── test_analytics.py         # 27 tests for analytics module
 │   ├── test_feedback_tracker.py  # 27 tests for feedback tracking
-│   └── test_scoring_version.py   # 26 tests for scoring version
+│   ├── test_quota_tracker.py     # 42 tests for quota tracking
+│   ├── test_scoring_version.py   # 26 tests for scoring version
+│   └── test_performance.py       # 16 tests for performance benchmarks
 │
 ├── docs/                         # Documentation assets
 ├── .streamlit/config.toml        # Streamlit configuration
@@ -153,6 +156,7 @@ The core layer contains pure business logic extracted from the original monolith
 | `pipeline.py` | 753 | `PipelineResult`, `PipelineConfig`, `run_search_pipeline()` |
 | `scoring_version.py` | ~200 | `SCORING_VERSION`, weight constants, `get_weight_config()` |
 | `seed_topics.py` | ~400 | `SeedProfile`, `SeedAnalysisResult`, `analyze_seed_channel()` |
+| `similarity.py` | ~600 | `SimilarityCallbacks`, `calculate_similarity_score()`, `rank_channels_by_similarity()`, `filter_by_subscriber_range()` |
 
 ### Design Patterns
 
@@ -283,7 +287,7 @@ User Input: youtube.com/@channel
          ▼
 ┌─────────────────────────────────────────┐
 │ SIMILARITY SCORING                      │
-│ (similarity_engine.py)                  │
+│ (app/core/similarity.py)                │
 │                                         │
 │ For each candidate channel:             │
 │ ┌─────────────────────────────────────┐ │
@@ -705,8 +709,10 @@ def mock_youtube():
 | `test_gemini_api.py` | 31 | AI scoring, summary generation, API failures |
 | `test_pipeline.py` | 26 | Full pipeline, filters, early exits, callbacks |
 | `test_seed_topics.py` | 46 | Seed topic extraction, language detection |
+| `test_similarity.py` | 63 | Similarity scoring, callbacks, Gemini integration |
 | `test_analytics.py` | 27 | ML training, weight optimization |
 | `test_feedback_tracker.py` | 27 | Feedback persistence, export |
+| `test_quota_tracker.py` | 42 | Quota calculations, persistence, tracking |
 | `test_scoring_version.py` | 26 | Scoring weights, version management |
 | `test_performance.py` | 16 | Performance benchmarks, timing consistency |
 

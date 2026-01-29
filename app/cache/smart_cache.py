@@ -3,8 +3,7 @@ smart_cache.py - Per-channel video caching for better hit rates
 """
 import streamlit as st
 import time
-from typing import List, Dict, Any, Tuple
-from googleapiclient.errors import HttpError
+from typing import List, Dict, Any, Tuple, Optional, Callable
 
 
 class ChannelVideoCache:
@@ -40,6 +39,8 @@ class ChannelVideoCache:
             so was_fresh will still be True from the original call - but
             we detect cache hits by timing the function execution.
         """
+        from googleapiclient.errors import HttpError
+
         try:
             # Fetch video IDs from uploads playlist
             playlist_response = _youtube_service.playlistItems().list(
@@ -81,7 +82,13 @@ class ChannelVideoCache:
             return [], True  # Fresh call, but errored
 
 
-def get_video_details_smart(youtube_service, channel_data: List[Dict], max_videos: int) -> List[Dict]:
+def get_video_details_smart(
+    youtube_service,
+    channel_data: List[Dict],
+    max_videos: int,
+    debug_mode: bool = False,
+    on_api_call: Optional[Callable[[str], None]] = None
+) -> List[Dict]:
     """
     Fetch video details with per-channel caching.
 
@@ -89,6 +96,8 @@ def get_video_details_smart(youtube_service, channel_data: List[Dict], max_video
         youtube_service: YouTube API service instance
         channel_data: List of dicts with 'channel_id' and 'uploads_playlist_id'
         max_videos: Videos to fetch per channel
+        debug_mode: Whether to track API calls for debugging
+        on_api_call: Optional callback to track API calls (call_type: str) -> None
 
     Returns:
         List of all video dicts
@@ -98,11 +107,6 @@ def get_video_details_smart(youtube_service, channel_data: List[Dict], max_video
         - Cache hits (< 50ms per channel) are not counted toward quota
         - Fresh API calls (typically 200ms+) are tracked accurately
     """
-    try:
-        from . import debug_tracker
-    except ImportError:
-        import debug_tracker
-
     # Threshold for detecting cache hits (in seconds)
     # Fresh API calls typically take 200ms+, cache hits are < 10ms
     CACHE_HIT_THRESHOLD = 0.05  # 50ms
@@ -136,12 +140,13 @@ def get_video_details_smart(youtube_service, channel_data: List[Dict], max_video
         # Cache hits return almost instantly (< 50ms), fresh API calls take 200ms+
         is_cache_hit = elapsed < CACHE_HIT_THRESHOLD
 
-        if st.session_state.get('debug_mode', False) and videos and not is_cache_hit:
+        if debug_mode and videos and not is_cache_hit:
             # Each channel makes 2 API calls:
             # 1. playlistItems.list (get video IDs)
             # 2. videos.list (get video details)
-            debug_tracker.track_api_call('youtube_playlist')
-            debug_tracker.track_api_call('youtube_video')
+            if on_api_call:
+                on_api_call('youtube_playlist')
+                on_api_call('youtube_video')
 
         if videos:
             all_videos.extend(videos)

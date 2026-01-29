@@ -53,13 +53,25 @@ except ImportError:
 # Add parent directory for imports when running standalone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.scoring_version import (
-    SEED_WEIGHTS,
-    CHANNEL_FEEDBACK_REASONS,
-    VALID_RATINGS,
-    get_scoring_version,
-)
-from feedback_tracker import save_channel_feedback, build_channel_feedback_entry
+try:
+    from ..core.scoring_version import (
+        SEED_WEIGHTS,
+        CHANNEL_FEEDBACK_REASONS,
+        VALID_RATINGS,
+        get_scoring_version,
+    )
+except ImportError:
+    from core.scoring_version import (
+        SEED_WEIGHTS,
+        CHANNEL_FEEDBACK_REASONS,
+        VALID_RATINGS,
+        get_scoring_version,
+    )
+
+try:
+    from .feedback_tracker import save_channel_feedback, build_channel_feedback_entry
+except ImportError:
+    from feedback_tracker import save_channel_feedback, build_channel_feedback_entry
 
 
 def _clip(value: float, min_val: float, max_val: float) -> float:

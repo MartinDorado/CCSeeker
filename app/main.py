@@ -11,13 +11,13 @@ from dotenv import load_dotenv
 try:
     # Try relative import (when run as module)
     from .core import analyze_seed_channel, SeedAnalysisResult
-    from . import similarity_engine
-    from . import feedback_tracker
+    from .core import similarity as similarity_engine
+    from .analytics import feedback_tracker
 except ImportError:
     # Fallback for direct execution
     from core import analyze_seed_channel, SeedAnalysisResult
-    import similarity_engine
-    import feedback_tracker
+    from core import similarity as similarity_engine
+    from analytics import feedback_tracker
 
 try:
     import pycountry
@@ -35,9 +35,9 @@ except Exception:
         "United States (US)",
     ]
 try:
-    from . import debug_tracker
+    from . import debug_ui as debug_tracker
 except ImportError:
-    import debug_tracker
+    import debug_ui as debug_tracker
 
 # Core module imports (extracted pure functions)
 try:
@@ -113,7 +113,7 @@ except ImportError:
 # ────────────────────────────────────────────────────────────────────────────
 #   - Standard library imports
 #   - Third-party imports (streamlit, pandas, google APIs)
-#   - Local module imports (core, cache, similarity_engine)
+#   - Local module imports (core, cache, core.similarity)
 #   - Configuration constants (search params, cache TTLs, similarity weights)
 #   - API key loading (_get_secret)
 #
@@ -229,8 +229,8 @@ MAX_CHANNELS_TO_ANALYZE = 50  # Cap channels for deep analysis to control quota
 # Default values are defined in the STREAMLIT UI SETUP section.
 
 # Similarity Scoring Weights (total: 100 points)
-# These weights are hardcoded in similarity_engine.py on calculate_similarity_score(). Refactoring to make them configurable would require significant changes for minimal practical benefit.
-# Changing these requires modifying multiple lines in that function.
+# These weights are defined in app/core/scoring_version.py (SEED_WEIGHTS dataclass).
+# The similarity scoring logic is in app/core/similarity.py.
 SIMILARITY_WEIGHTS = {
     'tag_overlap': 30,        # Tag Jaccard similarity (most reliable signal)
     'keyword_match': 30,      # Topic presence in titles
@@ -240,7 +240,7 @@ SIMILARITY_WEIGHTS = {
 }
 # Total must equal 100
 
-# For implementation details, see similarity_engine.py lines 137-260
+# For implementation details, see app/core/similarity.py calculate_similarity_score()
 
 # --- Secure API Key Loading ---
 

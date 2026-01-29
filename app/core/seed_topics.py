@@ -132,7 +132,7 @@ class SeedProfile:
     channel_keywords: list[str] = field(default_factory=list)   # From brandingSettings
 
     def to_dict(self) -> dict:
-        """Convert to dictionary for backward compatibility with similarity_engine.py."""
+        """Convert to dictionary for backward compatibility with similarity.py."""
         return asdict(self)
 
 

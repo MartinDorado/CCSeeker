@@ -67,9 +67,9 @@ def _get_youtube():
 def _get_api_tracker() -> Callable[[str], None] | None:
     """Get API call tracker callback if debug mode is enabled."""
     try:
-        from .. import debug_tracker
+        from .. import debug_ui as debug_tracker
     except ImportError:
-        import debug_tracker
+        import debug_ui as debug_tracker
 
     if st.session_state.get('debug_mode', False):
         return debug_tracker.track_api_call
@@ -124,10 +124,7 @@ def get_video_details_cached(channel_ids_tuple: tuple, max_videos: int = 10) -> 
         - Delegates to smart_cache.py which has 24-hour per-channel caching
         - Tracking happens inside smart_cache.py
     """
-    try:
-        from ..smart_cache import get_video_details_smart
-    except ImportError:
-        from smart_cache import get_video_details_smart
+    from .smart_cache import get_video_details_smart
 
     youtube = _get_youtube()
 
@@ -147,7 +144,15 @@ def get_video_details_cached(channel_ids_tuple: tuple, max_videos: int = 10) -> 
         })
 
     # Smart caching handles tracking internally
-    return get_video_details_smart(youtube, channel_data_full, max_videos)
+    debug_mode = st.session_state.get('debug_mode', False)
+    on_api_call = _get_api_tracker() if debug_mode else None
+    return get_video_details_smart(
+        youtube,
+        channel_data_full,
+        max_videos,
+        debug_mode=debug_mode,
+        on_api_call=on_api_call
+    )
 
 
 @st.cache_data(ttl=CACHE_TTL_SEARCH)  # 3 days

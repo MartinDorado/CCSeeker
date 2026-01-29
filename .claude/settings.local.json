@@ -6,7 +6,9 @@
       "Bash(wc:*)",
       "Bash(du:*)",
       "Bash(python:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(ls -la \"C:\\\\Users\\\\marti\\\\OneDrive\\\\Escritorio\\\\Martin\\\\Formacion\\\\AI\\\\CCSeeker\\\\app\"\" | grep -E \"^d \")",
+      "Bash(find:*)"
     ]
   }
 }

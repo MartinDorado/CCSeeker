@@ -27,3 +27,9 @@ Thumbs.db
 
 # Claude Code temporary files
 tmpclaude-*
+
+# Local tool settings
+.claude/settings.local.json
+
+# Local website workspace
+websiteCCSeeker/

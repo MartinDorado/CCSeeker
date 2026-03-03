@@ -1,5 +1,5 @@
 # CCSeeker Production Dependencies
-# Last tested: 2025-11-05
+# Last tested: 2026-03-02
 # Python 3.11
 # 
 # This file uses exact version pinning for reproducible deployments.
@@ -8,7 +8,7 @@
 # ============================================================================
 # CORE APPLICATION FRAMEWORK
 # ============================================================================
-streamlit==1.49.0
+streamlit==1.54.0
 
 # ============================================================================
 # GOOGLE APIs - YOUTUBE DATA
@@ -43,7 +43,7 @@ scikit-learn==1.6.1
 # STREAMLIT DEPENDENCIES (charts, UI components)
 # ============================================================================
 altair==5.5.0
-pillow==11.3.0
+pillow==12.1.1
 pyarrow==21.0.0
 pydeck==0.9.1
 
@@ -51,7 +51,7 @@ pydeck==0.9.1
 # NETWORKING & HTTP
 # ============================================================================
 requests==2.32.5
-urllib3==2.5.0
+urllib3==2.6.3
 certifi==2025.8.3
 charset-normalizer==3.4.3
 httplib2==0.22.0
@@ -63,7 +63,7 @@ idna==3.10
 grpcio==1.74.0
 grpcio-status==1.71.2
 proto-plus==1.26.1
-protobuf==5.29.5
+protobuf==5.29.6
 cachetools==5.5.2
 
 # ============================================================================
@@ -123,5 +123,5 @@ smmap==5.0.2
 # CRYPTOGRAPHY & SECURITY
 # ============================================================================
 rsa==4.9.1
-pyasn1==0.6.1
+pyasn1==0.6.2
 pyasn1_modules==0.4.2

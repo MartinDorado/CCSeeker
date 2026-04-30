@@ -42,7 +42,6 @@ except ImportError:
 # CONFIGURATION
 # ============================================================================
 
-YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
 YOUTUBE_API_SERVICE_NAME = "youtube"
 YOUTUBE_API_VERSION = "v3"
 
@@ -53,15 +52,15 @@ CACHE_TTL_VIDEO = 86400           # 24 hours (used by smart_cache.py)
 
 
 # ============================================================================
-# YOUTUBE SERVICE (cached)
+# YOUTUBE SERVICE (cached per API key)
 # ============================================================================
 
 @st.cache_resource(show_spinner=False)
-def _get_youtube():
-    """Create and cache a YouTube Data API client."""
-    if not YOUTUBE_API_KEY:
+def _get_youtube(api_key: str):
+    """Create and cache a YouTube Data API client per unique key."""
+    if not api_key:
         raise ValueError("YOUTUBE_API_KEY is not configured")
-    return build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, developerKey=YOUTUBE_API_KEY)
+    return build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, developerKey=api_key)
 
 
 def _get_api_tracker() -> Callable[[str], None] | None:
@@ -81,26 +80,30 @@ def _get_api_tracker() -> Callable[[str], None] | None:
 # ============================================================================
 
 @st.cache_data(ttl=CACHE_TTL_CHANNEL_STATS)  # 7 days
-def get_channel_stats_cached(channel_ids_tuple: tuple) -> list[dict]:
+def get_channel_stats_cached(
+    channel_ids_tuple: tuple,
+    key_fingerprint: str = "",
+    _api_key: str = "",
+) -> list[dict]:
     """
     Fetch channel statistics with 7-day caching.
 
     Args:
         channel_ids_tuple: Tuple of channel IDs (must be tuple for cache key)
+        key_fingerprint: Opaque hash of the active API key — differentiates cache
+            buckets between users without exposing the raw key.
+        _api_key: The actual YouTube API key (underscore prefix = excluded from
+            Streamlit cache key; used only to build the service client).
 
     Returns:
         List of channel stats dicts
-
-    Notes:
-        - Input is normalized (sorted, deduplicated) to maximize cache hits
-        - Uses core.youtube_api.get_channel_stats for actual API call
     """
     # Normalize order to maximize cache hits and avoid duplicate fetches
     channel_ids = tuple(sorted(set(channel_ids_tuple)))
     if not channel_ids:
         return []
 
-    youtube = _get_youtube()
+    youtube = _get_youtube(_api_key)
     result = _get_channel_stats_core(
         youtube_service=youtube,
         channel_ids=list(channel_ids),
@@ -109,24 +112,27 @@ def get_channel_stats_cached(channel_ids_tuple: tuple) -> list[dict]:
     return result.stats
 
 
-def get_video_details_cached(channel_ids_tuple: tuple, max_videos: int = 10) -> list[dict]:
+def get_video_details_cached(
+    channel_ids_tuple: tuple,
+    max_videos: int = 10,
+    key_fingerprint: str = "",
+    _api_key: str = "",
+) -> list[dict]:
     """
     Fetch video details with per-channel caching (via smart_cache.py).
 
     Args:
         channel_ids_tuple: Tuple of channel IDs
         max_videos: Maximum videos per channel
+        key_fingerprint: Opaque key hash for cache-key isolation between users.
+        _api_key: Raw API key passed through to the YouTube service client.
 
     Returns:
         List of video detail dicts
-
-    Notes:
-        - Delegates to smart_cache.py which has 24-hour per-channel caching
-        - Tracking happens inside smart_cache.py
     """
     from .smart_cache import get_video_details_smart
 
-    youtube = _get_youtube()
+    youtube = _get_youtube(_api_key)
 
     # Normalize order to improve cache hits downstream and deduplicate
     channel_ids_norm = tuple(sorted(set(channel_ids_tuple)))
@@ -134,7 +140,7 @@ def get_video_details_cached(channel_ids_tuple: tuple, max_videos: int = 10) -> 
         return []
 
     # Get channel stats to get uploads playlist IDs
-    stats = get_channel_stats_cached(channel_ids_norm)
+    stats = get_channel_stats_cached(channel_ids_norm, key_fingerprint, _api_key)
     channel_data_full = []
 
     for stat in stats:
@@ -150,6 +156,7 @@ def get_video_details_cached(channel_ids_tuple: tuple, max_videos: int = 10) -> 
         youtube,
         channel_data_full,
         max_videos,
+        key_fingerprint=key_fingerprint,
         debug_mode=debug_mode,
         on_api_call=on_api_call
     )
@@ -161,6 +168,8 @@ def _search_channels_hybrid_cached(
     region_code: str,
     max_videos: int,
     max_channels: int,
+    key_fingerprint: str = "",
+    _api_key: str = "",
 ) -> tuple[list[dict], list[str]]:
     """
     Internal cached hybrid search. Returns (channels, warnings).
@@ -168,7 +177,7 @@ def _search_channels_hybrid_cached(
     Separated from the public function to allow caching without
     displaying warnings on cache hits.
     """
-    youtube = _get_youtube()
+    youtube = _get_youtube(_api_key)
     result = _search_channels_hybrid_core(
         youtube_service=youtube,
         query=query,
@@ -185,6 +194,8 @@ def search_channels_hybrid_cached(
     region_code: str,
     max_videos: int = 100,
     max_channels: int = 50,
+    key_fingerprint: str = "",
+    _api_key: str = "",
 ) -> list[dict]:
     """
     Hybrid search: Find channels by VIDEO content (primary) + channel names (secondary).
@@ -194,21 +205,16 @@ def search_channels_hybrid_cached(
         region_code: YouTube region code (e.g., 'US')
         max_videos: Max videos to search per term
         max_channels: Max channels to return
+        key_fingerprint: Opaque key hash for per-user cache isolation.
+        _api_key: Raw API key for building the YouTube client.
 
     Returns:
         List[dict] with keys 'channel_id', 'channel_title', 'match_score'
-
-    Notes:
-        - Results cached for ~3 days
-        - Warnings are displayed via st.warning on first call (not on cache hits)
     """
     channels, warnings = _search_channels_hybrid_cached(
-        query, region_code, max_videos, max_channels
+        query, region_code, max_videos, max_channels, key_fingerprint, _api_key
     )
 
-    # Display any warnings that occurred (only on first call, not cache hits)
-    # Note: This relies on Streamlit's behavior where cached functions
-    # don't re-execute, so warnings only show on actual API calls
     for warning in warnings:
         st.warning(warning)
 
@@ -221,6 +227,8 @@ def search_channels_cached(
     region_code: str,
     max_videos: int = 100,
     cache_bust: str = "v2-no-early-cap",
+    key_fingerprint: str = "",
+    _api_key: str = "",
 ) -> list[dict]:
     """
     Cached multi-term channel search.
@@ -230,14 +238,11 @@ def search_channels_cached(
         region_code: YouTube region code
         max_videos: Max videos per term
         cache_bust: String to invalidate cache when search logic changes
+        key_fingerprint: Opaque key hash for per-user cache isolation.
+        _api_key: Raw API key for building the YouTube client.
 
     Returns:
         List of channel dicts with 'channel_id', 'channel_title', 'match_score'
-
-    Notes:
-        - Query terms are normalized (sorted, deduplicated) for stable cache keys
-        - Multi-term queries search each term separately and merge results
-        - cache_bust is only used to affect the cache key, not in logic
     """
     # Normalize query terms for a stable cache key (order-agnostic)
     terms = [t.strip() for t in (query or "").split(',') if t.strip()]
@@ -249,17 +254,19 @@ def search_channels_cached(
     # For single term, use hybrid search directly
     if len(terms) == 1:
         return search_channels_hybrid_cached(
-            terms[0], region_code, max_videos
+            terms[0], region_code, max_videos,
+            key_fingerprint=key_fingerprint, _api_key=_api_key,
         )
 
-    # Multiple terms: search each, then merge
-    # Limit to 2 terms (enforced here, not in UI)
+    # Multiple terms: search each, then merge (capped at 2)
     terms_to_search = canonical_terms[:2]
-
-    all_channels = {}  # {channel_id: {'title': str, 'total_score': int}}
+    all_channels: dict = {}
 
     for term in terms_to_search:
-        results = search_channels_hybrid_cached(term, region_code, max_videos)
+        results = search_channels_hybrid_cached(
+            term, region_code, max_videos,
+            key_fingerprint=key_fingerprint, _api_key=_api_key,
+        )
         for channel in results:
             channel_id = channel['channel_id']
             if channel_id not in all_channels:
@@ -269,7 +276,6 @@ def search_channels_cached(
                 }
             all_channels[channel_id]['total_score'] += channel['match_score']
 
-    # Convert back to list format and sort by score
     merged = [
         {
             'channel_id': ch_id,
@@ -297,13 +303,29 @@ class CacheFunctionsAdapter:
 
     This bridges the Streamlit-cached functions in this module
     to the pure pipeline that expects a cache interface.
+
+    Args:
+        key_fingerprint: Opaque 8-char hex hash of the active YouTube API key.
+            Differentiates cache buckets between users without embedding the
+            raw key in Streamlit cache metadata.
+        api_key: The raw YouTube API key passed through (as a non-hashed arg)
+            so cached functions can build the correct API client.
     """
 
+    def __init__(self, key_fingerprint: str = "", api_key: str = "") -> None:
+        self._fp = key_fingerprint
+        self._key = api_key
+
     def get_channel_stats_cached(self, channel_ids: tuple) -> list[dict]:
-        return get_channel_stats_cached(channel_ids)
+        return get_channel_stats_cached(channel_ids, self._fp, self._key)
 
     def get_video_details_cached(self, channel_ids: tuple, max_videos: int) -> list[dict]:
-        return get_video_details_cached(channel_ids, max_videos)
+        return get_video_details_cached(channel_ids, max_videos, self._fp, self._key)
 
     def search_channels_cached(self, query: str, region: str, max_videos: int) -> list[dict]:
-        return search_channels_cached(query, region, max_videos, cache_bust="mt-search-v2")
+        return search_channels_cached(
+            query, region, max_videos,
+            cache_bust="mt-search-v2",
+            key_fingerprint=self._fp,
+            _api_key=self._key,
+        )

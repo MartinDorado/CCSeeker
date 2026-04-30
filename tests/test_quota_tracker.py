@@ -43,6 +43,8 @@ from app.analytics.quota_tracker import (
     track_similarity_scores,
     accumulate_to_daily_quota,
     create_empty_debug_data,
+    # BYOK helpers
+    key_fingerprint,
 )
 
 
@@ -75,6 +77,39 @@ class TestQuotaCostConstants:
         assert 'flash' in GEMINI_COSTS
         assert 'input' in GEMINI_COSTS['flash']
         assert 'output' in GEMINI_COSTS['flash']
+
+
+# ============================================================================
+# TEST: Key Fingerprint Helper
+# ============================================================================
+
+class TestKeyFingerprint:
+    """Tests for key_fingerprint helper function."""
+
+    def test_empty_key_returns_empty(self):
+        """Empty string should return empty string."""
+        assert key_fingerprint("") == ""
+
+    def test_none_key_returns_empty(self):
+        """None should return empty string."""
+        assert key_fingerprint(None) == ""
+
+    def test_returns_8_char_hex(self):
+        """Non-empty key should return 8-character hex string."""
+        result = key_fingerprint("somekey")
+        assert isinstance(result, str)
+        assert len(result) == 8
+        assert all(c in "0123456789abcdef" for c in result)
+
+    def test_same_key_same_fingerprint(self):
+        """Same input should always produce the same fingerprint."""
+        assert key_fingerprint("myapikey") == key_fingerprint("myapikey")
+
+    def test_different_keys_different_fingerprints(self):
+        """Distinct keys should produce distinct fingerprints."""
+        fp1 = key_fingerprint("key-alpha")
+        fp2 = key_fingerprint("key-beta")
+        assert fp1 != fp2
 
 
 # ============================================================================
@@ -474,3 +509,54 @@ class TestCreateEmptyDebugData:
         assert result['youtube_search_calls'] == 0
         assert result['gemini_summary_calls'] == 0
         assert result['timings']['total'] == 0.0
+
+
+# ============================================================================
+# TEST: Per-Key Quota Isolation
+# ============================================================================
+
+class TestPerKeyQuota:
+    """Tests for per-key quota bucketing via load/save_daily_quota with fingerprint."""
+
+    def test_fingerprint_bucket_isolated(self):
+        """Saving under fingerprint A should not affect fingerprint B's bucket."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, 'quota.json')
+            fp_a = key_fingerprint("key-a")
+            fp_b = key_fingerprint("key-b")
+
+            # Load and mutate bucket for fingerprint A
+            bucket_a = load_daily_quota(filepath, fp_a)
+            bucket_a['youtube_units'] = 50
+            save_daily_quota(bucket_a, filepath, fp_a)
+
+            # Load bucket for fingerprint B — should be untouched
+            bucket_b = load_daily_quota(filepath, fp_b)
+            assert bucket_b['youtube_units'] == 0
+
+    def test_fingerprint_round_trip(self):
+        """Saved per-key bucket values should be reloaded correctly."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, 'quota.json')
+            fp = key_fingerprint("roundtrip-key")
+
+            bucket = load_daily_quota(filepath, fp)
+            bucket['youtube_calls'] = 7
+            bucket['gemini_calls'] = 3
+            bucket['youtube_units'] = 210
+            bucket['gemini_cost_usd'] = 0.05
+            save_daily_quota(bucket, filepath, fp)
+
+            reloaded = load_daily_quota(filepath, fp)
+            assert reloaded['youtube_calls'] == 7
+            assert reloaded['gemini_calls'] == 3
+            assert reloaded['youtube_units'] == 210
+            assert reloaded['gemini_cost_usd'] == 0.05
+
+    def test_no_fingerprint_uses_legacy_path(self):
+        """load_daily_quota without fingerprint should return a flat dict with youtube_calls."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, 'quota.json')
+            result = load_daily_quota(filepath)
+            assert 'youtube_calls' in result
+            assert 'date' in result

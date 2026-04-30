@@ -1,4 +1,5 @@
-﻿import pandas as pd
+﻿import hashlib
+import pandas as pd
 import streamlit as st
 from googleapiclient.discovery import build
 import re
@@ -263,6 +264,23 @@ def _get_secret(name: str) -> str | None:
 YOUTUBE_API_KEY = _get_secret("YOUTUBE_API_KEY")
 GEMINI_API_KEY = _get_secret("GEMINI_API_KEY")
 
+
+def resolve_youtube_key() -> str | None:
+    """Return the active YouTube key: user's BYOK value first, then env/secrets fallback."""
+    return st.session_state.get('user_youtube_key') or YOUTUBE_API_KEY
+
+
+def resolve_gemini_key() -> str | None:
+    """Return the active Gemini key: user's BYOK value first, then env/secrets fallback."""
+    return st.session_state.get('user_gemini_key') or GEMINI_API_KEY
+
+
+def _key_fingerprint(api_key: str | None) -> str:
+    """Return an 8-char hex fingerprint of an API key for cache scoping."""
+    if not api_key:
+        return ""
+    return hashlib.sha256(api_key.encode()).hexdigest()[:8]
+
 # ============================================================================
 # SECTION 2: UI HELPER FUNCTIONS
 # ============================================================================
@@ -309,34 +327,40 @@ def render_term_counter(current_query: str) -> None:
 # ============================================================================
 
 @st.cache_resource(show_spinner=False)
-def get_youtube() -> "googleapiclient.discovery.Resource":
-    """Create and cache a YouTube Data API client using the env API key.
+def get_youtube(api_key: str = "") -> "googleapiclient.discovery.Resource":
+    """Create and cache a YouTube Data API client.
 
-    Returns:
-        googleapiclient.discovery.Resource: Authenticated YouTube API client.
+    Cached per unique api_key so BYOK users each get their own client.
+
+    Args:
+        api_key: YouTube Data API key. Defaults to env/secrets fallback.
 
     Raises:
-        ValueError: If YOUTUBE_API_KEY is not configured.
+        ValueError: If no API key is available.
     """
-    if not YOUTUBE_API_KEY:
+    key = api_key or YOUTUBE_API_KEY
+    if not key:
         raise ValueError("YOUTUBE_API_KEY is not configured")
-    return build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, developerKey=YOUTUBE_API_KEY)
+    return build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, developerKey=key)
 
-def get_gemini_model(temperature: float | None = None) -> "genai.GenerativeModel":
+
+def get_gemini_model(
+    temperature: float | None = None,
+    api_key: str | None = None,
+) -> "genai.GenerativeModel":
     """Configure and return a Gemini model for content generation.
 
     Args:
-        temperature: Optional generation temperature (0.0-1.0). Higher = more creative.
-
-    Returns:
-        genai.GenerativeModel: Configured Gemini model instance.
+        temperature: Optional generation temperature (0.0-1.0).
+        api_key: Gemini API key. Defaults to env/secrets fallback.
 
     Raises:
-        ValueError: If GEMINI_API_KEY is not configured.
+        ValueError: If no API key is available.
     """
-    if not GEMINI_API_KEY:
+    key = api_key or GEMINI_API_KEY
+    if not key:
         raise ValueError("GEMINI_API_KEY is not configured")
-    genai.configure(api_key=GEMINI_API_KEY)
+    genai.configure(api_key=key)
     cfg = {}
     if temperature is not None:
         cfg["generation_config"] = {"temperature": float(temperature)}
@@ -444,7 +468,7 @@ def generate_summary(df_results: pd.DataFrame, query: str) -> str:
     Returns:
         Summary text from Gemini, or error message if generation failed.
     """
-    model = get_gemini_model()
+    model = get_gemini_model(api_key=resolve_gemini_key())
 
     # Get seed channel name if in seed-based mode
     seed_channel_name = None
@@ -549,12 +573,16 @@ def run_search(
         """Callback to update progress UI."""
         progress_placeholder.progress(percentage, text=message)
 
+    # Resolve active API keys (BYOK takes priority over env/secrets)
+    active_yt_key = resolve_youtube_key() or ""
+    active_gemini_key = resolve_gemini_key()
+    yt_fingerprint = _key_fingerprint(active_yt_key)
+
     # Build pipeline configuration
     seed_profile = st.session_state.get('seed_profile')
     if seed_profile:
-        # Pass GEMINI_API_KEY through seed_profile for similarity engine
         seed_profile = seed_profile.copy()
-        seed_profile['gemini_api_key'] = GEMINI_API_KEY
+        seed_profile['gemini_api_key'] = active_gemini_key
 
     config = PipelineConfig(
         max_videos_per_term=MAX_VIDEOS_PER_TERM,
@@ -564,8 +592,8 @@ def run_search(
         min_subscribers=min_subs_input,
         country_filter=country_filter_input if country_filter_input else None,
         months_ago=months_ago_input,
-        enable_ai_relevance=bool(GEMINI_API_KEY) and enable_ai,
-        enable_ai_summary=bool(GEMINI_API_KEY) and enable_ai,
+        enable_ai_relevance=bool(active_gemini_key) and enable_ai,
+        enable_ai_summary=bool(active_gemini_key) and enable_ai,
         seed_profile=seed_profile,
     )
 
@@ -577,14 +605,14 @@ def run_search(
             'months_ago': months_ago_input,
             'region': region_input if region_input else None
         },
-        'ai_enabled': bool(GEMINI_API_KEY) and enable_ai
+        'ai_enabled': bool(active_gemini_key) and enable_ai
     }
 
     # Get Gemini model if configured
     gemini_model = None
-    if GEMINI_API_KEY:
+    if active_gemini_key:
         try:
-            gemini_model = get_gemini_model()
+            gemini_model = get_gemini_model(api_key=active_gemini_key)
         except Exception:
             pass
 
@@ -596,7 +624,10 @@ def run_search(
         config=config,
         gemini_model=gemini_model,
         similarity_engine=similarity_engine if seed_profile else None,
-        cache_functions=CacheFunctionsAdapter(),
+        cache_functions=CacheFunctionsAdapter(
+            key_fingerprint=yt_fingerprint,
+            api_key=active_yt_key,
+        ),
         on_progress=on_progress,
         on_api_call=_get_api_tracker(),
     )
@@ -725,17 +756,79 @@ with col_title:
     st.title("CCSeeker")
     st.markdown("*Discover Niche YouTube Creators*")  # Slogan in italic
 
-# Debug mode toggle (sidebar)
+# Sidebar: BYOK and debug controls
 with st.sidebar:
-    st.markdown("---")  # Visual separator
-    
+    st.markdown("---")
+
+    with st.expander("🔑 API Keys", expanded=not bool(YOUTUBE_API_KEY)):
+        st.caption(
+            "Enter your own keys to use your quota. Leave blank to use the "
+            "app's shared keys (if configured). Keys are session-only and never stored."
+        )
+        yt_input = st.text_input(
+            "YouTube API Key",
+            value=st.session_state.get('user_youtube_key', ''),
+            type="password",
+            key="byok_yt_input",
+            placeholder="AIza...",
+        )
+        gemini_input = st.text_input(
+            "Gemini API Key",
+            value=st.session_state.get('user_gemini_key', ''),
+            type="password",
+            key="byok_gemini_input",
+            placeholder="AIza...",
+        )
+
+        col_save, col_test = st.columns(2)
+        with col_save:
+            if st.button("Save", key="byok_save", use_container_width=True):
+                st.session_state['user_youtube_key'] = yt_input.strip() or None
+                st.session_state['user_gemini_key'] = gemini_input.strip() or None
+                st.rerun()
+
+        with col_test:
+            if st.button("Test", key="byok_test", use_container_width=True):
+                test_yt_key = yt_input.strip() or YOUTUBE_API_KEY
+                test_gemini_key = gemini_input.strip() or GEMINI_API_KEY
+
+                # Test YouTube key
+                if test_yt_key:
+                    try:
+                        _test_yt = build(
+                            YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION,
+                            developerKey=test_yt_key
+                        )
+                        _test_yt.channels().list(
+                            part="id", forUsername="GoogleDevelopers"
+                        ).execute()
+                        st.success("YouTube ✅")
+                    except Exception as exc:
+                        st.error(f"YouTube ❌ {exc}")
+                else:
+                    st.warning("YouTube — no key")
+
+                # Test Gemini key
+                if test_gemini_key:
+                    try:
+                        import google.generativeai as _genai_test
+                        _genai_test.configure(api_key=test_gemini_key)
+                        _genai_test.GenerativeModel('gemini-2.0-flash-lite').generate_content("hi")
+                        st.success("Gemini ✅")
+                    except Exception as exc:
+                        st.error(f"Gemini ❌ {exc}")
+                else:
+                    st.warning("Gemini — no key")
+
+    st.markdown("---")
+
     # Toggle with explanation
     debug_enabled = st.toggle(
         "🔍 Debug Mode",
         value=st.session_state.get('debug_mode', False),
         help="Show API usage, performance metrics, and detailed similarity scores"
     )
-    
+
     # Update session state
     st.session_state.debug_mode = debug_enabled
 
@@ -863,7 +956,7 @@ if search_method:
                 )
 
             # AI Enhancement toggle (only show if Gemini API key is configured)
-            if GEMINI_API_KEY:
+            if resolve_gemini_key():
                 enable_ai = st.checkbox(
                     "Enable AI Enhancement",
                     value=True,
@@ -893,11 +986,13 @@ if submitted:
     # Reset feedback state for new search
     st.session_state['feedback_submitted'] = False
     st.session_state['show_reason_selector'] = False
-    if not YOUTUBE_API_KEY:
+    _active_yt_key = resolve_youtube_key()
+    _active_gemini_key = resolve_gemini_key()
+    if not _active_yt_key:
         st.error("YouTube API key not configured.")
-        st.markdown("**Setup:** Create a `.env` file with `YOUTUBE_API_KEY=your_key`. Get a free API key at [Google Cloud Console](https://console.cloud.google.com/apis/credentials).")
+        st.markdown("**Setup:** Enter your key in the **API Keys** panel in the sidebar, or create a `.env` file with `YOUTUBE_API_KEY=your_key`. Get a free key at [Google Cloud Console](https://console.cloud.google.com/apis/credentials).")
     else:
-        youtube = get_youtube()
+        youtube = get_youtube(api_key=_active_yt_key)
         final_query = ""
 
         if search_method == "Channel-as-Seed":
@@ -915,11 +1010,10 @@ if submitted:
 
             if seed_channel_id:
                 # Analyze seed channel to extract complete profile
-                # Get Gemini model for AI summary (optional)
                 seed_gemini_model = None
-                if GEMINI_API_KEY:
+                if _active_gemini_key:
                     try:
-                        seed_gemini_model = get_gemini_model()
+                        seed_gemini_model = get_gemini_model(api_key=_active_gemini_key)
                     except Exception:
                         pass
 
@@ -1075,7 +1169,7 @@ if st.session_state.get('seed_profile'):
         )
 
     # AI Enhancement toggle (only show if Gemini API key is configured)
-    if GEMINI_API_KEY:
+    if resolve_gemini_key():
         enable_ai = st.checkbox(
             "Enable AI Enhancement",
             value=True,
@@ -1154,7 +1248,7 @@ if st.session_state.get('seed_profile'):
         # Get the built query and run search
         if st.session_state.get('built_query') and st.session_state.get('seed_profile'):
             
-            youtube = get_youtube()
+            youtube = get_youtube(api_key=resolve_youtube_key() or "")
             query = st.session_state['built_query']
             
             st.info(f"🔎 Searching for channels similar to: **{st.session_state['seed_profile']['channel_name']}**")
@@ -1643,9 +1737,9 @@ if 'top_channels_for_outreach' in st.session_state and not st.session_state['top
     lang_code = "es" if lang_label == "Español" else "en"
 
     if st.button("Generate Outreach Drafts", key="btn_outreach"):
-        if not GEMINI_API_KEY:
+        if not resolve_gemini_key():
             st.error("Gemini API key not configured.")
-            st.markdown("**Setup:** Add `GEMINI_API_KEY=your_key` to your `.env` file. Get a free API key at [Google AI Studio](https://aistudio.google.com/apikey).")
+            st.markdown("**Setup:** Enter your key in the **API Keys** panel in the sidebar, or add `GEMINI_API_KEY=your_key` to your `.env` file. Get a free key at [Google AI Studio](https://aistudio.google.com/apikey).")
         else:
             with st.spinner("Generating outreach drafts..."):
                 try:

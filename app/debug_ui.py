@@ -237,7 +237,8 @@ def display_debug_panel():
 
         st.markdown("---")
 
-        st.markdown("**Today's Total:**")
+        key_label = "(your key)" if st.session_state.get('user_youtube_key') else "(shared key)"
+        st.markdown(f"**Today's Total** {key_label}:")
 
         total_youtube_units = daily.get('youtube_units', 0) + this_search_youtube
         total_gemini_cost = daily.get('gemini_cost_usd', 0.0) + this_search_gemini

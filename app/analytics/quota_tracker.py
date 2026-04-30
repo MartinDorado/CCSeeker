@@ -9,11 +9,31 @@ Pure business logic for tracking:
 This module is Streamlit-agnostic and can be used independently.
 """
 
+import hashlib
 import json
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, List
+
+
+# ============================================================================
+# KEY FINGERPRINT HELPER
+# ============================================================================
+
+def key_fingerprint(api_key: str) -> str:
+    """
+    Return an 8-character hex fingerprint of an API key for per-key quota tracking.
+
+    Args:
+        api_key: The API key to fingerprint
+
+    Returns:
+        Empty string if api_key is falsy, otherwise first 8 hex chars of SHA-256 hash
+    """
+    if not api_key:
+        return ""
+    return hashlib.sha256(api_key.encode()).hexdigest()[:8]
 
 
 # ============================================================================
@@ -257,56 +277,117 @@ def get_next_reset_time() -> str:
 # FILE PERSISTENCE
 # ============================================================================
 
-def load_daily_quota(filepath: str = DEFAULT_QUOTA_CACHE_FILE) -> dict:
+def _empty_bucket() -> dict:
+    """Return a fresh per-key quota bucket."""
+    return {
+        'youtube_calls': 0,
+        'gemini_calls': 0,
+        'youtube_units': 0,
+        'gemini_cost_usd': 0.0,
+    }
+
+
+def load_daily_quota(filepath: str = DEFAULT_QUOTA_CACHE_FILE, key_fingerprint: str = "") -> dict:
     """
     Load daily quota from disk, or create new if expired/missing.
 
     Args:
         filepath: Path to quota cache file
+        key_fingerprint: If provided, returns the per-key bucket for this fingerprint.
+                         If falsy, returns the legacy top-level dict (old behavior).
 
     Returns:
-        Daily quota dict with keys: date, youtube_calls, gemini_calls,
-        youtube_units, gemini_cost_usd
+        Daily quota dict. When key_fingerprint is falsy: top-level dict with keys
+        date, youtube_calls, gemini_calls, youtube_units, gemini_cost_usd.
+        When key_fingerprint is truthy: per-key bucket dict with the same quota keys
+        (no date field).
     """
+    if not key_fingerprint:
+        # Legacy path: return top-level dict
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, 'r') as f:
+                    data = json.load(f)
+
+                # Check if it's from today (Pacific Time)
+                saved_date = data.get('date', '')
+                today = get_current_date_pt()
+
+                if saved_date == today:
+                    return data
+
+            except Exception:
+                pass  # Fall through to create new
+
+        # Create new daily quota
+        return {
+            'date': get_current_date_pt(),
+            'youtube_calls': 0,
+            'gemini_calls': 0,
+            'youtube_units': 0,
+            'gemini_cost_usd': 0.0
+        }
+
+    # Per-key path
+    file_data = {}
     if os.path.exists(filepath):
         try:
             with open(filepath, 'r') as f:
-                data = json.load(f)
-
-            # Check if it's from today (Pacific Time)
-            saved_date = data.get('date', '')
-            today = get_current_date_pt()
-
-            if saved_date == today:
-                return data
-
+                file_data = json.load(f)
         except Exception:
-            pass  # Fall through to create new
+            file_data = {}
 
-    # Create new daily quota
-    return {
-        'date': get_current_date_pt(),
-        'youtube_calls': 0,
-        'gemini_calls': 0,
-        'youtube_units': 0,
-        'gemini_cost_usd': 0.0
-    }
+    # Reset top-level date if stale
+    today = get_current_date_pt()
+    if file_data.get('date', '') != today:
+        file_data = {'date': today, 'by_key': {}}
+
+    # Return (or create) the bucket for this fingerprint
+    return file_data.setdefault('by_key', {}).setdefault(key_fingerprint, _empty_bucket())
 
 
-def save_daily_quota(data: dict, filepath: str = DEFAULT_QUOTA_CACHE_FILE) -> bool:
+def save_daily_quota(data: dict, filepath: str = DEFAULT_QUOTA_CACHE_FILE, key_fingerprint: str = "") -> bool:
     """
     Save daily quota to disk.
 
     Args:
-        data: Daily quota dict
+        data: Daily quota dict (top-level or per-key bucket)
         filepath: Path to quota cache file
+        key_fingerprint: If provided, updates only the per-key bucket for this
+                         fingerprint and writes back the whole file.
+                         If falsy, writes data directly (old behavior).
 
     Returns:
         True if saved successfully, False otherwise
     """
     try:
+        if not key_fingerprint:
+            # Legacy path: write data as-is
+            with open(filepath, 'w') as f:
+                json.dump(data, f, indent=2)
+            return True
+
+        # Per-key path: load existing file, update only our bucket, write back
+        file_data = {}
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, 'r') as f:
+                    file_data = json.load(f)
+            except Exception:
+                file_data = {}
+
+        # Preserve the top-level date
+        today = get_current_date_pt()
+        if file_data.get('date', '') != today:
+            file_data = {'date': today, 'by_key': {}}
+
+        if 'by_key' not in file_data:
+            file_data['by_key'] = {}
+
+        file_data['by_key'][key_fingerprint] = data
+
         with open(filepath, 'w') as f:
-            json.dump(data, f, indent=2)
+            json.dump(file_data, f, indent=2)
         return True
     except Exception:
         return False
@@ -382,7 +463,8 @@ def track_similarity_scores(data: dict, channels_with_scores: list) -> dict:
 def accumulate_to_daily_quota(
     debug_data: dict,
     daily_quota: dict,
-    filepath: str = DEFAULT_QUOTA_CACHE_FILE
+    filepath: str = DEFAULT_QUOTA_CACHE_FILE,
+    key_fingerprint: str = ""
 ) -> dict:
     """
     Add current search's API usage to the daily total and save.
@@ -391,6 +473,7 @@ def accumulate_to_daily_quota(
         debug_data: Current search debug data dict
         daily_quota: Daily quota dict
         filepath: Path to quota cache file
+        key_fingerprint: If provided, saves under the per-key bucket for this fingerprint.
 
     Returns:
         Updated daily quota dict
@@ -408,7 +491,7 @@ def accumulate_to_daily_quota(
     daily_quota['gemini_cost_usd'] += gemini_cost
 
     # Save to disk
-    save_daily_quota(daily_quota, filepath)
+    save_daily_quota(daily_quota, filepath, key_fingerprint)
 
     return daily_quota
 

@@ -10,7 +10,7 @@ Schema version: 2.0.0 - Per-channel feedback with version signatures
 import json
 import os
 from datetime import datetime
-from typing import Optional, Literal
+from typing import Optional, Literal, Protocol, runtime_checkable
 
 try:
     from ..core.scoring_version import (
@@ -34,27 +34,266 @@ FEEDBACK_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".feedb
 FEEDBACK_SCHEMA_VERSION = "2.0.0"
 
 
+# ---------------------------------------------------------------------------
+# FeedbackStore Protocol
+# ---------------------------------------------------------------------------
+
+@runtime_checkable
+class FeedbackStore(Protocol):
+    def save_entry(self, entry: dict) -> bool: ...
+    def load_entries(self, mode: str | None = None) -> list[dict]: ...
+    def clear_all(self) -> bool: ...
+    def clear_incompatible(self) -> int: ...
+
+
+# ---------------------------------------------------------------------------
+# JSONFeedbackStore — file-based implementation
+# ---------------------------------------------------------------------------
+
+class JSONFeedbackStore:
+    """File-based feedback store backed by a local JSON file."""
+
+    def __init__(self, filepath: str = None):
+        self._filepath = filepath if filepath is not None else FEEDBACK_FILE
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _load(self) -> dict:
+        """Load raw JSON data from file."""
+        if os.path.exists(self._filepath):
+            try:
+                with open(self._filepath, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, IOError):
+                return {"schema_version": FEEDBACK_SCHEMA_VERSION, "feedback_entries": []}
+        return {"schema_version": FEEDBACK_SCHEMA_VERSION, "feedback_entries": []}
+
+    def _dump(self, data: dict) -> bool:
+        """Write raw JSON data to file."""
+        try:
+            with open(self._filepath, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            return True
+        except IOError:
+            return False
+
+    # ------------------------------------------------------------------
+    # Protocol implementation
+    # ------------------------------------------------------------------
+
+    def save_entry(self, entry: dict) -> bool:
+        """Append an entry to the JSON file."""
+        data = self._load()
+        data["feedback_entries"].append(entry)
+        return self._dump(data)
+
+    def load_entries(self, mode: str | None = None) -> list[dict]:
+        """Load all entries, optionally filtered by search_mode."""
+        data = self._load()
+        entries = data.get("feedback_entries", [])
+        if mode is not None:
+            entries = [e for e in entries if e.get("search_mode") == mode]
+        return entries
+
+    def clear_all(self) -> bool:
+        """Reset the store to an empty state."""
+        data = {"schema_version": FEEDBACK_SCHEMA_VERSION, "feedback_entries": []}
+        return self._dump(data)
+
+    def clear_incompatible(self) -> int:
+        """Remove entries incompatible with the current scoring version. Returns count removed."""
+        data = self._load()
+        entries = data.get("feedback_entries", [])
+        original_count = len(entries)
+        compatible = [
+            e for e in entries
+            if is_version_compatible(
+                e.get("scoring_version", {}),
+                e.get("search_mode", "keyword"),
+            )
+        ]
+        data["feedback_entries"] = compatible
+        self._dump(data)
+        return original_count - len(compatible)
+
+
+# ---------------------------------------------------------------------------
+# SupabaseFeedbackStore — Supabase/Postgres backend
+# ---------------------------------------------------------------------------
+
+class SupabaseFeedbackStore:
+    """
+    Supabase (Postgres) backend for feedback.
+
+    Requires two env vars: SUPABASE_URL and SUPABASE_SERVICE_KEY.
+    If the supabase package is not installed, raises ImportError.
+
+    Two-table schema:
+    - feedback_entries  (parent — one row per search submission)
+    - channel_feedback  (child  — one row per channel rating, FK entry_id)
+
+    The 'channel_feedback' column in the joined result is the list of
+    per-channel dicts, identical in shape to the JSON format.
+    """
+
+    def __init__(self, url: str, key: str):
+        from supabase import create_client  # noqa: PLC0415 — ImportError intentional
+        self._db = create_client(url, key)
+
+    def save_entry(self, entry: dict) -> bool:
+        """Insert a feedback entry (and its per-channel rows) into Supabase."""
+        try:
+            parent_row = {
+                "timestamp": entry.get("timestamp"),
+                "search_mode": entry.get("search_mode"),
+                "query": entry.get("query"),
+                "results_count": entry.get("results_count"),
+                "scoring_version": entry.get("scoring_version"),
+                "seed_channel_id": entry.get("seed_channel_id"),
+                "seed_channel_name": entry.get("seed_channel_name"),
+                "filters": entry.get("filters"),
+                "ai_enabled": entry.get("ai_enabled"),
+            }
+            resp = self._db.table("feedback_entries").insert(parent_row).execute()
+            entry_id = resp.data[0]["id"]
+
+            cf_list = entry.get("channel_feedback", [])
+            if cf_list:
+                cf_rows = [
+                    {
+                        "entry_id": entry_id,
+                        "channel_id": cf.get("channel_id"),
+                        "channel_name": cf.get("channel_name"),
+                        "channel_url": cf.get("channel_url"),
+                        "presented_rank": cf.get("presented_rank"),
+                        "presented_score": cf.get("presented_score"),
+                        "rating": cf.get("rating"),
+                        "reason": cf.get("reason"),
+                        "component_scores": cf.get("component_scores"),
+                    }
+                    for cf in cf_list
+                ]
+                self._db.table("channel_feedback").insert(cf_rows).execute()
+
+            return True
+        except Exception:
+            return False
+
+    def load_entries(self, mode: str | None = None) -> list[dict]:
+        """Load all entries from Supabase, optionally filtered by search_mode."""
+        try:
+            if mode is not None:
+                resp = (
+                    self._db
+                    .table("feedback_entries")
+                    .select("*, channel_feedback(*)")
+                    .eq("search_mode", mode)
+                    .execute()
+                )
+            else:
+                resp = (
+                    self._db
+                    .table("feedback_entries")
+                    .select("*, channel_feedback(*)")
+                    .execute()
+                )
+
+            results = []
+            for row in resp.data:
+                entry = {
+                    "timestamp": row.get("timestamp"),
+                    "search_mode": row.get("search_mode"),
+                    "query": row.get("query"),
+                    "results_count": row.get("results_count"),
+                    "scoring_version": row.get("scoring_version"),
+                    "channel_feedback": row.get("channel_feedback", []),
+                }
+                if row.get("seed_channel_id") is not None:
+                    entry["seed_channel_id"] = row["seed_channel_id"]
+                if row.get("seed_channel_name") is not None:
+                    entry["seed_channel_name"] = row["seed_channel_name"]
+                if row.get("filters") is not None:
+                    entry["filters"] = row["filters"]
+                if row.get("ai_enabled") is not None:
+                    entry["ai_enabled"] = row["ai_enabled"]
+                results.append(entry)
+            return results
+        except Exception:
+            return []
+
+    def clear_all(self) -> bool:
+        """Delete all rows from both tables."""
+        try:
+            self._db.table("channel_feedback").delete().neq("id", 0).execute()
+            self._db.table("feedback_entries").delete().neq("id", 0).execute()
+            return True
+        except Exception:
+            return False
+
+    def clear_incompatible(self) -> int:
+        """Remove entries incompatible with the current scoring version. Returns count removed."""
+        try:
+            entries = self.load_entries()
+            incompatible_ids = []
+            for row in entries:
+                if not is_version_compatible(
+                    row.get("scoring_version", {}),
+                    row.get("search_mode", "keyword"),
+                ):
+                    incompatible_ids.append(row.get("_id"))
+
+            if not incompatible_ids:
+                return 0
+
+            for row_id in incompatible_ids:
+                if row_id is not None:
+                    self._db.table("channel_feedback").delete().eq("entry_id", row_id).execute()
+                    self._db.table("feedback_entries").delete().eq("id", row_id).execute()
+
+            return len(incompatible_ids)
+        except Exception:
+            return 0
+
+
+# ---------------------------------------------------------------------------
+# Module-level store selector
+# ---------------------------------------------------------------------------
+
+def _get_supabase_secret(name: str) -> str | None:
+    """Return a Supabase secret from environment."""
+    return os.getenv(name)
+
+
+def _get_store() -> FeedbackStore:
+    """Return the active FeedbackStore based on environment."""
+    url = _get_supabase_secret("SUPABASE_URL")
+    key = _get_supabase_secret("SUPABASE_SERVICE_KEY")
+    if url and key:
+        return SupabaseFeedbackStore(url, key)
+    return JSONFeedbackStore()
+
+
+# ---------------------------------------------------------------------------
+# Thin wrappers kept for backward-compatibility (tests import these)
+# ---------------------------------------------------------------------------
+
 def _load_feedback_data() -> dict:
     """Load existing feedback data from JSON file."""
-    if os.path.exists(FEEDBACK_FILE):
-        try:
-            with open(FEEDBACK_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError):
-            # Corrupted or unreadable file - start fresh
-            return {"schema_version": FEEDBACK_SCHEMA_VERSION, "feedback_entries": []}
-    return {"schema_version": FEEDBACK_SCHEMA_VERSION, "feedback_entries": []}
+    store = JSONFeedbackStore(FEEDBACK_FILE)
+    return store._load()
 
 
 def _save_feedback_data(data: dict) -> bool:
     """Save feedback data to JSON file."""
-    try:
-        with open(FEEDBACK_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        return True
-    except IOError:
-        return False
+    store = JSONFeedbackStore(FEEDBACK_FILE)
+    return store._dump(data)
 
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 def save_channel_feedback(
     search_mode: Literal["seed", "keyword"],
@@ -107,9 +346,6 @@ def save_channel_feedback(
     --------
     bool: True if saved successfully
     """
-    data = _load_feedback_data()
-
-    # Get current scoring version signature
     scoring_version = get_scoring_version(search_mode)
 
     entry = {
@@ -121,22 +357,17 @@ def save_channel_feedback(
         "channel_feedback": channel_feedback,
     }
 
-    # Add seed info if applicable
     if search_mode == "seed":
         entry["seed_channel_id"] = seed_channel_id
         entry["seed_channel_name"] = seed_channel_name
 
-    # Add filter settings if provided
     if filters:
         entry["filters"] = filters
 
-    # Add AI enabled flag if provided
     if ai_enabled is not None:
         entry["ai_enabled"] = ai_enabled
 
-    data["feedback_entries"].append(entry)
-
-    return _save_feedback_data(data)
+    return _get_store().save_entry(entry)
 
 
 def build_channel_feedback_entry(
@@ -221,8 +452,7 @@ def get_feedback_stats() -> dict:
         - by_search_mode: dict[str, dict]
         - compatible_entries: int (entries compatible with current scoring version)
     """
-    data = _load_feedback_data()
-    entries = data.get("feedback_entries", [])
+    entries = _get_store().load_entries()
 
     stats = {
         "total_entries": len(entries),
@@ -256,7 +486,6 @@ def get_feedback_stats() -> dict:
         if mode in stats["by_search_mode"]:
             stats["by_search_mode"][mode]["entries"] += 1
 
-        # Check version compatibility
         if is_version_compatible(scoring_version, mode):
             stats["compatible_entries"][mode] += 1
 
@@ -308,14 +537,10 @@ def get_training_data(
         - query: str
         - timestamp: str
     """
-    data = _load_feedback_data()
-    entries = data.get("feedback_entries", [])
+    entries = _get_store().load_entries(mode=mode)
     training_data = []
 
     for entry in entries:
-        if entry.get("search_mode") != mode:
-            continue
-
         scoring_version = entry.get("scoring_version", {})
         if only_compatible and not is_version_compatible(scoring_version, mode):
             continue
@@ -326,7 +551,6 @@ def get_training_data(
         for cf in entry.get("channel_feedback", []):
             rating = cf.get("rating")
 
-            # Skip 'skip' ratings - no signal
             if rating == "skip":
                 continue
 
@@ -341,7 +565,6 @@ def get_training_data(
                 "reason": cf.get("reason"),
             }
 
-            # Flatten component scores
             component_scores = cf.get("component_scores", {})
             for key, value in component_scores.items():
                 record[f"component_{key}"] = value
@@ -365,10 +588,8 @@ def get_negative_feedback_entries(limit: int = 50) -> list[dict]:
     List of feedback entries that contain at least one "not_relevant" rating,
     most recent first
     """
-    data = _load_feedback_data()
-    entries = data.get("feedback_entries", [])
+    entries = _get_store().load_entries()
 
-    # Filter to entries with at least one negative rating
     negative = [
         e for e in entries
         if any(
@@ -377,7 +598,6 @@ def get_negative_feedback_entries(limit: int = 50) -> list[dict]:
         )
     ]
 
-    # Sort by timestamp descending (most recent first)
     negative.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
 
     return negative[:limit]
@@ -401,8 +621,7 @@ def export_feedback_csv(filepath: str) -> bool:
     """
     import csv
 
-    data = _load_feedback_data()
-    entries = data.get("feedback_entries", [])
+    entries = _get_store().load_entries()
 
     if not entries:
         return False
@@ -457,7 +676,6 @@ def export_feedback_csv(filepath: str) -> bool:
                 filters = entry.get("filters", {})
                 scoring_version = entry.get("scoring_version", {})
 
-                # Base row data (entry-level)
                 base_row = {
                     "timestamp": entry.get("timestamp"),
                     "search_mode": entry.get("search_mode"),
@@ -476,7 +694,6 @@ def export_feedback_csv(filepath: str) -> bool:
                     "pipeline_hash": scoring_version.get("pipeline_hash"),
                 }
 
-                # One row per channel feedback
                 for cf in entry.get("channel_feedback", []):
                     component_scores = cf.get("component_scores", {})
 
@@ -522,24 +739,7 @@ def clear_incompatible_feedback() -> int:
     --------
     int: Number of entries removed
     """
-    data = _load_feedback_data()
-    entries = data.get("feedback_entries", [])
-
-    original_count = len(entries)
-
-    # Keep only compatible entries
-    compatible_entries = [
-        e for e in entries
-        if is_version_compatible(
-            e.get("scoring_version", {}),
-            e.get("search_mode", "keyword")
-        )
-    ]
-
-    data["feedback_entries"] = compatible_entries
-    _save_feedback_data(data)
-
-    return original_count - len(compatible_entries)
+    return _get_store().clear_incompatible()
 
 
 def clear_all_feedback() -> bool:
@@ -550,5 +750,4 @@ def clear_all_feedback() -> bool:
     --------
     bool: True if cleared successfully
     """
-    data = {"schema_version": FEEDBACK_SCHEMA_VERSION, "feedback_entries": []}
-    return _save_feedback_data(data)
+    return _get_store().clear_all()

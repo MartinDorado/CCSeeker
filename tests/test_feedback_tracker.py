@@ -8,6 +8,8 @@ Tests cover:
 - Training data extraction
 - CSV export format
 - Version compatibility filtering
+- SupabaseFeedbackStore (mocked client)
+- Integration roundtrip (skipped unless env vars are present)
 """
 
 import pytest
@@ -16,7 +18,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 # Add app directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -495,3 +497,123 @@ class TestValidRatingsAndReasons:
                 component_scores={},
             )
             assert entry["reason"] == reason_code
+
+
+# ---------------------------------------------------------------------------
+# SupabaseFeedbackStore — mocked-client tests
+# ---------------------------------------------------------------------------
+
+class TestSupabaseStoreMocked:
+    """Tests for SupabaseFeedbackStore using a mock supabase client."""
+
+    @pytest.fixture
+    def mock_db(self):
+        mock = Mock()
+        mock.table.return_value.insert.return_value.execute.return_value = Mock(data=[{"id": 1}])
+        mock.table.return_value.select.return_value.execute.return_value = Mock(data=[])
+        mock.table.return_value.select.return_value.eq.return_value.execute.return_value = Mock(data=[])
+        mock.table.return_value.delete.return_value.neq.return_value.execute.return_value = Mock(data=[])
+        mock.table.return_value.delete.return_value.eq.return_value.execute.return_value = Mock(data=[])
+        return mock
+
+    @pytest.fixture
+    def store(self, mock_db):
+        from app.analytics.feedback_tracker import SupabaseFeedbackStore
+        s = SupabaseFeedbackStore.__new__(SupabaseFeedbackStore)
+        s._db = mock_db
+        return s
+
+    def test_save_entry_calls_both_tables(self, store, mock_db, sample_channel_feedback):
+        """save_entry inserts into feedback_entries and channel_feedback tables."""
+        entry = {
+            "timestamp": "2024-01-01T00:00:00",
+            "search_mode": "seed",
+            "query": "test",
+            "results_count": 5,
+            "scoring_version": {},
+            "channel_feedback": sample_channel_feedback,
+        }
+        result = store.save_entry(entry)
+        assert result is True
+        # Should have called table() at least twice (parent insert + child insert)
+        assert mock_db.table.call_count >= 2
+
+    def test_save_entry_returns_false_on_exception(self, store, mock_db):
+        """save_entry returns False when an exception occurs."""
+        mock_db.table.side_effect = Exception("DB error")
+        entry = {
+            "timestamp": "2024-01-01T00:00:00",
+            "search_mode": "keyword",
+            "query": "test",
+            "results_count": 1,
+            "scoring_version": {},
+            "channel_feedback": [],
+        }
+        result = store.save_entry(entry)
+        assert result is False
+
+    def test_load_entries_calls_select(self, store, mock_db):
+        """load_entries queries feedback_entries with a join."""
+        store.load_entries()
+        mock_db.table.assert_called_with("feedback_entries")
+
+    def test_load_entries_with_mode_calls_eq(self, store, mock_db):
+        """load_entries with mode adds an eq filter."""
+        store.load_entries(mode="seed")
+        mock_db.table.assert_called_with("feedback_entries")
+        mock_db.table.return_value.select.return_value.eq.assert_called_once_with("search_mode", "seed")
+
+    def test_load_entries_returns_empty_on_exception(self, store, mock_db):
+        """load_entries returns [] on exception."""
+        mock_db.table.side_effect = Exception("DB error")
+        result = store.load_entries()
+        assert result == []
+
+    def test_clear_all_calls_delete_on_both_tables(self, store, mock_db):
+        """clear_all deletes from channel_feedback then feedback_entries."""
+        result = store.clear_all()
+        assert result is True
+        assert mock_db.table.call_count >= 2
+        table_calls = [call.args[0] for call in mock_db.table.call_args_list]
+        assert "channel_feedback" in table_calls
+        assert "feedback_entries" in table_calls
+
+    def test_clear_all_returns_false_on_exception(self, store, mock_db):
+        """clear_all returns False on exception."""
+        mock_db.table.side_effect = Exception("DB error")
+        result = store.clear_all()
+        assert result is False
+
+
+# ---------------------------------------------------------------------------
+# Integration test (skipped unless env vars present)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_supabase_integration_roundtrip(sample_channel_feedback):
+    """Integration: requires SUPABASE_URL and SUPABASE_SERVICE_KEY env vars."""
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_KEY")
+    if not url or not key:
+        pytest.skip("Supabase env vars not configured")
+
+    from app.analytics.feedback_tracker import SupabaseFeedbackStore
+    store = SupabaseFeedbackStore(url, key)
+
+    # Clean state
+    store.clear_all()
+
+    entry = {
+        "timestamp": "2024-01-01T00:00:00",
+        "search_mode": "seed",
+        "query": "test",
+        "results_count": 1,
+        "scoring_version": {},
+        "channel_feedback": sample_channel_feedback,
+    }
+    assert store.save_entry(entry)
+    entries = store.load_entries()
+    assert len(entries) == 1
+
+    # Clean up
+    store.clear_all()

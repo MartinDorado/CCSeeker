@@ -24,7 +24,8 @@ class ChannelVideoCache:
         channel_id: str,
         uploads_playlist_id: str,
         max_videos: int,
-        _youtube_service  # Underscore prevents hashing
+        key_fingerprint: str,    # Included in cache key — isolates results per API key
+        _youtube_service,        # Excluded from cache key (underscore prefix)
     ) -> Tuple[List[Dict[str, Any]], bool]:
         """
         Fetch and cache videos for a single channel.
@@ -86,6 +87,7 @@ def get_video_details_smart(
     youtube_service,
     channel_data: List[Dict],
     max_videos: int,
+    key_fingerprint: str = "",
     debug_mode: bool = False,
     on_api_call: Optional[Callable[[str], None]] = None
 ) -> List[Dict]:
@@ -125,6 +127,7 @@ def get_video_details_smart(
             channel_id,
             uploads_id,
             max_videos,
+            key_fingerprint,
             youtube_service
         )
 

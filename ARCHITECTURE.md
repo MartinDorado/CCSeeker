@@ -2,7 +2,7 @@
 
 ## System Overview
 
-CCSeeker is an AI-powered YouTube creator discovery tool that automates finding niche content creators. It reduces manual search time from hours to minutes through intelligent search and ranking algorithms.
+CCSeeker is an AI-powered YouTube creator discovery tool that automates finding niche content creators. It reduces manual search time from 30–45 minutes to under 5 minutes through intelligent search and ranking algorithms.
 
 **Core Design Philosophy:**
 - Minimize API calls through intelligent caching

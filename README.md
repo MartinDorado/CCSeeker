@@ -20,14 +20,14 @@
 
 ## 🎯 The Problem
 
-Digital marketers spend hours manually searching for niche content creators on YouTube:
-- **Time-intensive**: Manual channel discovery takes hours per campaign
+Digital marketers spend 30–45 minutes manually searching for niche content creators on YouTube:
+- **Time-intensive**: Manual channel discovery takes 30–45 minutes per campaign
 - **Limited tools**: Existing solutions are expensive or lack depth
 - **Knowledge gap**: Finding creators when you don't know the exact terminology of the niche is difficult
 
 ## 💡 The Solution
 
-CCSeeker automates niche creator discovery turning hours of manual search into a few minutes with two intelligent search approaches:
+CCSeeker automates niche creator discovery turning 30–45 minutes of manual search into under 5 minutes with two intelligent search approaches:
 
 1. **🔑 Keyword Search** - Search by topic using hybrid video + channel name matching
 2. **📺 Channel-as-Seed** - Find similar creators by analyzing an example channel's content

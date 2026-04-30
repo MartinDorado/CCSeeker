@@ -306,11 +306,11 @@ def run_search_pipeline(
             enriched_channel_data['subscribers'] >= config.min_subscribers
         ].copy()
 
-        # Filter by country (if specified)
+        # Filter by country (if specified); channels with no country set pass through
         if config.country_filter:
-            filtered_channels = filtered_channels[
-                filtered_channels['country'] == config.country_filter.upper()
-            ]
+            target = config.country_filter.upper()
+            mask = (filtered_channels['country'] == target) | filtered_channels['country'].isna()
+            filtered_channels = filtered_channels[mask]
 
         timings['filtering'] = time.time() - step_start
 
@@ -479,6 +479,11 @@ def run_search_pipeline(
         # Fill NaN relevance scores with 0
         final_channels['relevance_score'] = final_channels['relevance_score'].fillna(0)
 
+        # Drop channels that scored exactly 0 in keyword-only mode — they matched no criteria.
+        # In seed mode the similarity step re-scores channels, so we keep them all here.
+        if not config.seed_profile:
+            final_channels = final_channels[final_channels['relevance_score'] > 0]
+
         # Sort by relevance then engagement
         final_channels_sorted = final_channels.sort_values(
             by=['relevance_score', 'engagement_rate'],
@@ -641,6 +646,9 @@ def run_search_pipeline(
             )
 
             top_channels = top_channels.sort_values('similarity_score', ascending=False)
+
+            # Drop channels that scored exactly 0 — no meaningful similarity detected
+            top_channels = top_channels[top_channels['similarity_score'] > 0]
 
             timings['similarity'] = time.time() - step_start
 

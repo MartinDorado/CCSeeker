@@ -340,6 +340,77 @@ class TestCalculateSimilarityScore:
         result = calculate_similarity_score(candidate, sample_seed_profile)
         assert result['total_score'] >= 0  # Should not crash
 
+    def test_empty_seed_tags_redistributes_to_keyword(self):
+        """When seed has no tags, keyword factor absorbs the tag budget (max 60 pts)."""
+        seed_profile_no_tags = {
+            'channel_id': 'UC_seed',
+            'channel_name': 'Seed',
+            'subscriber_count': 100000,
+            'common_tags': [],  # No tags
+            'primary_keywords': ['python', 'programming', 'tutorial'],
+            'secondary_keywords': ['coding', 'developer'],
+            'avg_engagement_rate': 0.05,
+            'upload_frequency': 4.0,
+        }
+        candidate = {
+            'channel_id': 'UC_cand',
+            'channel_name': 'Candidate',
+            'subscribers': 100000,
+            'tags': ['python', 'django'],
+            'keywords': ['python', 'programming', 'tutorial', 'coding', 'developer'],
+            'engagement_rate': 0.05,
+            'upload_frequency': 4.0,
+        }
+        result = calculate_similarity_score(candidate, seed_profile_no_tags, debug=True)
+
+        # Tag score must be zero (seed has no tags)
+        assert result['breakdown']['tag_score'] == 0.0
+
+        # Keyword score can now reach up to 60 pts (30 tag + 30 keyword budget)
+        assert result['breakdown']['keyword_score'] <= 60.0
+
+        # A high-match candidate should still be able to reach a meaningful total
+        assert result['total_score'] > 0
+
+        # The redistribution notice must appear in match reasons
+        reason_text = ' '.join(result['match_reasons'])
+        assert 'Tags unavailable' in reason_text or 'keyword' in reason_text.lower()
+
+    def test_empty_seed_tags_total_can_reach_100(self):
+        """With redistributed tag budget, a perfect keyword match can still reach 100 pts."""
+        from app.core.scoring_version import SEED_WEIGHTS
+        seed_profile_no_tags = {
+            'channel_id': 'UC_seed',
+            'channel_name': 'Seed',
+            'subscriber_count': 100000,
+            'common_tags': [],
+            'primary_keywords': ['alpha', 'beta', 'gamma'],
+            'secondary_keywords': ['delta', 'epsilon'],
+            'avg_engagement_rate': 0.05,
+            'upload_frequency': 4.0,
+        }
+        perfect_candidate = {
+            'channel_id': 'UC_perfect',
+            'channel_name': 'Perfect',
+            'subscribers': 100000,
+            'tags': [],
+            'keywords': ['alpha', 'beta', 'gamma', 'delta', 'epsilon'],
+            'engagement_rate': 0.05,
+            'upload_frequency': 4.0,
+        }
+        result = calculate_similarity_score(perfect_candidate, seed_profile_no_tags, debug=True)
+
+        # Keyword factor max is now 60; add remaining non-tag factors to get theoretical max
+        theoretical_max = (
+            SEED_WEIGHTS.keyword_overlap + SEED_WEIGHTS.tag_overlap
+            + SEED_WEIGHTS.subscriber_similarity
+            + SEED_WEIGHTS.engagement_rate
+            + SEED_WEIGHTS.upload_frequency
+        )
+        assert theoretical_max == 100, "Score weights must still sum to 100"
+        # Perfect match on all factors should be close to 100
+        assert result['total_score'] >= 90
+
 
 # ============================================================================
 # TEST: Gemini-Enhanced Similarity

@@ -241,6 +241,10 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
     if not isinstance(seed_tags, list):
         seed_tags = []
 
+    # When the seed has no tags, tag points are redistributed to keyword overlap
+    # so channels can still reach a meaningful total score.
+    seed_has_tags = bool(seed_tags)
+
     # If either has no tags, this factor scores 0
     if not candidate_tags or not seed_tags:
         tag_score = 0.0
@@ -267,7 +271,9 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
     breakdown['common_tags'] = common_tag_count
 
     # ========================================================================
-    # FACTOR 2: Keyword Overlap (30 points)
+    # FACTOR 2: Keyword Overlap (30 points, or 60 when seed has no tags)
+    # When the seed channel has no tags the 30-point tag budget is folded into
+    # this factor so the total can still reach 100.
     # ========================================================================
 
     # Safety check
@@ -278,6 +284,12 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
     seed_keywords = (
         seed_profile.get('primary_keywords', []) +
         seed_profile.get('secondary_keywords', [])
+    )
+
+    keyword_max = (
+        SEED_WEIGHTS.keyword_overlap + SEED_WEIGHTS.tag_overlap
+        if not seed_has_tags
+        else SEED_WEIGHTS.keyword_overlap
     )
 
     if not candidate_keywords or not seed_keywords:
@@ -291,9 +303,12 @@ def calculate_similarity_score(candidate: dict, seed_profile: dict, debug: bool 
         keyword_overlap = jaccard_similarity(candidate_keywords_set, seed_keywords_set)
         common_keyword_count = overlap_count(candidate_keywords_set, seed_keywords_set)
 
-        keyword_score = keyword_overlap * SEED_WEIGHTS.keyword_overlap
+        keyword_score = keyword_overlap * keyword_max
 
     score += keyword_score
+
+    if not seed_has_tags:
+        reasons.append("Tags unavailable — keyword overlap weighted higher")
 
     if keyword_overlap >= 0.5:
         reasons.append(f"High keyword overlap ({keyword_overlap:.0%})")

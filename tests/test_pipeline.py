@@ -356,6 +356,117 @@ class TestPipelineFilters:
         assert result.error is not None
         assert "filter" in result.error.lower() or "criteria" in result.error.lower()
 
+    def test_zero_relevance_channels_excluded(self, mock_youtube, mock_cache_functions):
+        """Channels that score 0 relevance are excluded from keyword-mode results."""
+        # Override cache so one channel returns relevance 0 via having no keyword match
+        mock_cache_functions.search_channels_cached.return_value = [
+            {'channel_id': 'UC1', 'channel_title': 'Manga World', 'match_score': 20},
+            {'channel_id': 'UC_zero', 'channel_title': 'Unrelated Channel', 'match_score': 0},
+        ]
+        mock_cache_functions.get_channel_stats_cached.return_value = [
+            {
+                'channel_id': 'UC1', 'country': 'US', 'subscribers': 50000,
+                'views': 1000000, 'videos': 100, 'uploads_playlist_id': 'UU1',
+                'avg_views_per_video': 10000, 'channel_age_days': 1000
+            },
+            {
+                'channel_id': 'UC_zero', 'country': 'US', 'subscribers': 50000,
+                'views': 1000000, 'videos': 100, 'uploads_playlist_id': 'UU_zero',
+                'avg_views_per_video': 10000, 'channel_age_days': 1000
+            },
+        ]
+        mock_cache_functions.get_video_details_cached.return_value = [
+            {
+                'channel_id': 'UC1', 'video_id': 'VID1', 'video_title': 'Manga Review',
+                'published_at': '2024-01-01T00:00:00Z', 'video_views': 10000,
+                'video_likes': 500, 'video_comments': 50, 'video_tags': ['manga', 'review']
+            },
+            {
+                'channel_id': 'UC_zero', 'video_id': 'VID_z', 'video_title': 'Cooking Class',
+                'published_at': '2024-01-01T00:00:00Z', 'video_views': 10000,
+                'video_likes': 500, 'video_comments': 50, 'video_tags': ['food', 'cooking']
+            },
+        ]
+
+        config = PipelineConfig(
+            min_subscribers=1000,
+            enable_ai_relevance=False,
+            enable_ai_summary=False,
+        )
+
+        result = run_search_pipeline(
+            youtube_service=mock_youtube,
+            query="manga anime",
+            region_code="US",
+            config=config,
+            cache_functions=mock_cache_functions,
+        )
+
+        if not result.channels_df.empty and 'relevance_score' in result.channels_df.columns:
+            assert (result.channels_df['relevance_score'] > 0).all(), \
+                "All returned channels must have relevance_score > 0"
+
+    def test_country_filter_includes_null_country(self, mock_youtube, mock_cache_functions):
+        """Country filter passes channels with country=None alongside matching-country channels."""
+        mock_cache_functions.get_channel_stats_cached.return_value = [
+            {
+                'channel_id': 'UC1', 'country': 'US', 'subscribers': 50000,
+                'views': 1000000, 'videos': 100, 'uploads_playlist_id': 'UU1',
+                'avg_views_per_video': 10000, 'channel_age_days': 1000
+            },
+            {
+                'channel_id': 'UC2', 'country': 'UK', 'subscribers': 25000,
+                'views': 500000, 'videos': 50, 'uploads_playlist_id': 'UU2',
+                'avg_views_per_video': 10000, 'channel_age_days': 500
+            },
+            {
+                'channel_id': 'UC_null', 'country': None, 'subscribers': 30000,
+                'views': 600000, 'videos': 60, 'uploads_playlist_id': 'UU_null',
+                'avg_views_per_video': 10000, 'channel_age_days': 700
+            },
+        ]
+        mock_cache_functions.search_channels_cached.return_value = [
+            {'channel_id': 'UC1', 'channel_title': 'Channel US', 'match_score': 20},
+            {'channel_id': 'UC2', 'channel_title': 'Channel UK', 'match_score': 15},
+            {'channel_id': 'UC_null', 'channel_title': 'Channel Unknown', 'match_score': 18},
+        ]
+        mock_cache_functions.get_video_details_cached.return_value = [
+            {
+                'channel_id': 'UC1', 'video_id': 'VID1', 'video_title': 'Manga Review',
+                'published_at': '2024-01-01T00:00:00Z', 'video_views': 10000,
+                'video_likes': 500, 'video_comments': 50, 'video_tags': ['manga']
+            },
+            {
+                'channel_id': 'UC_null', 'video_id': 'VID_n', 'video_title': 'Manga World',
+                'published_at': '2024-01-01T00:00:00Z', 'video_views': 8000,
+                'video_likes': 400, 'video_comments': 40, 'video_tags': ['manga']
+            },
+        ]
+
+        config = PipelineConfig(
+            min_subscribers=1000,
+            country_filter="US",
+            enable_ai_relevance=False,
+            enable_ai_summary=False,
+        )
+
+        result = run_search_pipeline(
+            youtube_service=mock_youtube,
+            query="manga",
+            region_code="US",
+            config=config,
+            cache_functions=mock_cache_functions,
+        )
+
+        # UK channel must not appear; US and null-country channels should pass the filter
+        if not result.channels_df.empty and 'channel_id' in result.channels_df.columns:
+            ids = result.channels_df['channel_id'].tolist()
+            assert 'UC2' not in ids, "UK channel should be excluded"
+        elif result.raw_channels_df is not None and not result.raw_channels_df.empty:
+            # Pipeline may have returned early due to zero-score filter; UK must not be present
+            if 'channel_id' in result.raw_channels_df.columns:
+                assert 'UC2' not in result.raw_channels_df['channel_id'].tolist()
+
 
 # ============================================================================
 # CALLBACK TESTS

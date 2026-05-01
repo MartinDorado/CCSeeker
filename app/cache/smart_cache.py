@@ -5,6 +5,8 @@ import streamlit as st
 import time
 from typing import List, Dict, Any, Tuple, Optional, Callable
 
+from app.core.youtube_api import _parse_iso8601_duration
+
 
 class ChannelVideoCache:
     """
@@ -64,8 +66,6 @@ class ChannelVideoCache:
                 part="snippet,statistics,contentDetails",
                 id=",".join(video_ids)
             ).execute()
-
-            from app.core.youtube_api import _parse_iso8601_duration
 
             videos = []
             for item in videos_response.get('items', []):

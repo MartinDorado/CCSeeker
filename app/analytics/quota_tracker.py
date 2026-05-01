@@ -71,6 +71,10 @@ class DebugData:
     gemini_outreach_calls: int = 0
     gemini_similarity_calls: int = 0
     gemini_relevance_calls: int = 0
+    # Transcript tracking (cache misses only; no YouTube/Gemini quota consumed)
+    transcript_fetches: int = 0
+    transcript_failures: int = 0
+    gemini_niche_calls: int = 0
 
     # Timing data (in seconds)
     timings: Dict[str, float] = field(default_factory=lambda: {
@@ -96,6 +100,9 @@ class DebugData:
             'gemini_outreach_calls': self.gemini_outreach_calls,
             'gemini_similarity_calls': self.gemini_similarity_calls,
             'gemini_relevance_calls': self.gemini_relevance_calls,
+            'transcript_fetches': self.transcript_fetches,
+            'transcript_failures': self.transcript_failures,
+            'gemini_niche_calls': self.gemini_niche_calls,
             'timings': self.timings.copy(),
             'similarity_details': self.similarity_details.copy(),
         }
@@ -112,6 +119,9 @@ class DebugData:
             gemini_outreach_calls=data.get('gemini_outreach_calls', 0),
             gemini_similarity_calls=data.get('gemini_similarity_calls', 0),
             gemini_relevance_calls=data.get('gemini_relevance_calls', 0),
+            transcript_fetches=data.get('transcript_fetches', 0),
+            transcript_failures=data.get('transcript_failures', 0),
+            gemini_niche_calls=data.get('gemini_niche_calls', 0),
             timings=data.get('timings', {
                 'search': 0.0,
                 'channel_stats': 0.0,
@@ -191,11 +201,16 @@ def calculate_gemini_cost_estimate(data: dict) -> float:
     outreach_calls = data.get('gemini_outreach_calls', 0)
     similarity_calls = data.get('gemini_similarity_calls', 0)
     relevance_calls = data.get('gemini_relevance_calls', 0)
+    niche_calls = data.get('gemini_niche_calls', 0)
 
-    # Estimate: ~500 tokens input + 200 tokens output per call
+    # Standard calls: ~500 tokens input + 200 tokens output
     cost_per_call = (500 * GEMINI_COSTS['flash']['input'] + 200 * GEMINI_COSTS['flash']['output']) / 1000
 
+    # Niche extraction call: ~12K input + 200 output tokens (corpus is much larger)
+    cost_per_niche_call = (12000 * GEMINI_COSTS['flash']['input'] + 200 * GEMINI_COSTS['flash']['output']) / 1000
+
     total = (summary_calls + outreach_calls + similarity_calls + relevance_calls) * cost_per_call
+    total += niche_calls * cost_per_niche_call
     return total
 
 
@@ -507,6 +522,9 @@ def create_empty_debug_data() -> dict:
         'gemini_outreach_calls': 0,
         'gemini_similarity_calls': 0,
         'gemini_relevance_calls': 0,
+        'transcript_fetches': 0,
+        'transcript_failures': 0,
+        'gemini_niche_calls': 0,
         'timings': {
             'search': 0.0,
             'channel_stats': 0.0,

@@ -967,3 +967,227 @@ class TestMetadataEnrichment:
             f"Candidate with matching topic_category tag should score higher: "
             f"{score_b:.1f} vs {score_a:.1f}"
         )
+
+
+# ============================================================================
+# TRANSCRIPTION INTEGRATION IN analyze_seed_channel
+# ============================================================================
+
+class TestAnalyzeSeedChannelTranscription:
+    """
+    Verify that analyze_seed_channel correctly integrates the transcription step:
+    - Calls fetcher when TranscriptionConfig.enabled=True and gemini_model is set
+    - Skips fetcher when TranscriptionConfig.enabled=False
+    - Populates transcript_niche_summary on success
+    - Sets transcript_niche_summary={} on zero-transcripts path (no Gemini call)
+    - Appends warning when circuit-breaker fires (3+ rate_limited results)
+    """
+
+    def _make_yt_service(self):
+        """Build a minimal mock YouTube service for seed analysis."""
+        service = MagicMock()
+
+        # channels().list().execute() → channel stats
+        channel_response = {
+            'items': [{
+                'id': 'UC_seed',
+                'statistics': {
+                    'subscriberCount': '50000',
+                    'viewCount': '1000000',
+                    'videoCount': '100',
+                    'hiddenSubscriberCount': False,
+                },
+                'topicDetails': {'topicCategories': ['https://en.wikipedia.org/wiki/Education']},
+                'brandingSettings': {'channel': {'keywords': 'python programming'}},
+                'contentDetails': {'relatedPlaylists': {'uploads': 'PLtest'}},
+                'status': {'madeForKids': False},
+                'snippet': {
+                    'defaultLanguage': 'en',
+                    'country': 'US',
+                    'description': 'A Python tutorial channel.',
+                },
+            }]
+        }
+        service.channels.return_value.list.return_value.execute.return_value = channel_response
+
+        # Snippet call for channel name
+        snippet_response = {
+            'items': [{
+                'snippet': {
+                    'title': 'Python Tutorials',
+                    'description': 'Learn Python programming.',
+                    'categoryId': '28',
+                }
+            }]
+        }
+        # Multiple execute calls — always return snippet_response for channels
+        service.channels.return_value.list.return_value.execute.side_effect = [
+            channel_response,
+            snippet_response,
+        ]
+
+        # playlistItems().list().execute() → video IDs
+        playlist_response = {
+            'items': [
+                {'snippet': {'resourceId': {'videoId': f'vid{i}'}, 'publishedAt': '2024-01-01T00:00:00Z'}}
+                for i in range(5)
+            ],
+            'nextPageToken': None,
+        }
+        service.playlistItems.return_value.list.return_value.execute.return_value = playlist_response
+
+        # videos().list().execute() → video details
+        video_response = {
+            'items': [
+                {
+                    'id': f'vid{i}',
+                    'snippet': {
+                        'title': f'Python Tutorial {i}',
+                        'description': f'Learn Python part {i}.',
+                        'tags': ['python', 'tutorial'],
+                        'channelId': 'UC_seed',
+                        'publishedAt': '2024-01-01T00:00:00Z',
+                    },
+                    'statistics': {'viewCount': '1000', 'likeCount': '100', 'commentCount': '10'},
+                    'contentDetails': {'duration': 'PT10M30S'},
+                }
+                for i in range(5)
+            ]
+        }
+        service.videos.return_value.list.return_value.execute.return_value = video_response
+
+        return service
+
+    def _make_gemini_model(self, niche_json: str = None):
+        """Build a minimal mock Gemini model."""
+        model = MagicMock()
+        resp = MagicMock()
+        if niche_json is None:
+            import json as _json
+            niche_json = _json.dumps({
+                'niche': 'Python programming tutorials',
+                'audience': 'developers',
+                'style': 'tutorial',
+                'topic_emphasis': ['python', 'coding'],
+                'tone': 'friendly',
+                'confidence': 'high',
+            })
+        resp.text = niche_json
+        model.generate_content.return_value = resp
+        return model
+
+    def test_transcription_called_when_enabled(self):
+        from app.core.transcription import TranscriptionConfig, FakeTranscriptFetcher, TranscriptResult
+
+        fetcher_calls = []
+
+        class _TrackingFetcher:
+            def fetch(self, video_id, language_pref):
+                fetcher_calls.append(video_id)
+                return TranscriptResult(video_id, 'UC_seed', 'en', f'transcript for {video_id}', 'ok')
+
+        service = self._make_yt_service()
+        model = self._make_gemini_model()
+        config = TranscriptionConfig(enabled=True, max_videos=5)
+
+        result = analyze_seed_channel(
+            youtube_service=service,
+            channel_id='UC_seed',
+            gemini_model=model,
+            transcription_config=config,
+            transcript_fetcher=_TrackingFetcher(),
+        )
+
+        assert result.error is None
+        assert len(fetcher_calls) > 0
+        assert result.profile.transcript_niche_summary != {}
+
+    def test_transcription_skipped_when_disabled(self):
+        from app.core.transcription import TranscriptionConfig
+
+        fetcher_calls = []
+
+        class _TrackingFetcher:
+            def fetch(self, video_id, language_pref):
+                fetcher_calls.append(video_id)
+
+        service = self._make_yt_service()
+        model = self._make_gemini_model()
+        config = TranscriptionConfig(enabled=False)
+
+        result = analyze_seed_channel(
+            youtube_service=service,
+            channel_id='UC_seed',
+            gemini_model=model,
+            transcription_config=config,
+            transcript_fetcher=_TrackingFetcher(),
+        )
+
+        assert result.error is None
+        assert len(fetcher_calls) == 0
+        assert result.profile.transcript_niche_summary == {}
+
+    def test_transcript_niche_summary_empty_when_no_gemini(self):
+        from app.core.transcription import TranscriptionConfig, FakeTranscriptFetcher, TranscriptResult
+
+        fetcher = FakeTranscriptFetcher({
+            f'vid{i}': TranscriptResult(f'vid{i}', 'UC_seed', 'en', f'text {i}', 'ok')
+            for i in range(5)
+        })
+
+        service = self._make_yt_service()
+        config = TranscriptionConfig(enabled=True)
+
+        result = analyze_seed_channel(
+            youtube_service=service,
+            channel_id='UC_seed',
+            gemini_model=None,  # No Gemini
+            transcription_config=config,
+            transcript_fetcher=fetcher,
+        )
+
+        assert result.error is None
+        assert result.profile.transcript_niche_summary == {}
+
+    def test_circuit_breaker_appends_warning(self):
+        from app.core.transcription import TranscriptionConfig, TranscriptResult
+
+        class _RateLimitedFetcher:
+            def fetch(self, video_id, language_pref):
+                return TranscriptResult(video_id, '', None, '', 'rate_limited')
+
+        service = self._make_yt_service()
+        model = self._make_gemini_model()
+        config = TranscriptionConfig(enabled=True, max_videos=8)
+
+        result = analyze_seed_channel(
+            youtube_service=service,
+            channel_id='UC_seed',
+            gemini_model=model,
+            transcription_config=config,
+            transcript_fetcher=_RateLimitedFetcher(),
+        )
+
+        assert result.error is None
+        # Warning about transcript service should be present
+        has_transcript_warning = any(
+            'transcript' in w.lower() or 'unavailable' in w.lower()
+            for w in result.warnings
+        )
+        assert has_transcript_warning
+        assert result.profile.transcript_niche_summary == {}
+
+    def test_profile_has_transcript_niche_summary_field(self):
+        """SeedProfile must always have transcript_niche_summary (default {})."""
+        from app.core.transcription import TranscriptionConfig
+
+        service = self._make_yt_service()
+        config = TranscriptionConfig(enabled=False)
+        result = analyze_seed_channel(
+            youtube_service=service,
+            channel_id='UC_seed',
+            transcription_config=config,
+        )
+        assert result.error is None
+        assert hasattr(result.profile, 'transcript_niche_summary')
+        assert isinstance(result.profile.transcript_niche_summary, dict)

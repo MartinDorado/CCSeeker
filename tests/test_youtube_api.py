@@ -28,6 +28,7 @@ from app.core.youtube_api import (
     search_channels_multi_term,
     get_channel_stats,
     get_video_details,
+    _parse_iso8601_duration,
 )
 
 
@@ -571,3 +572,148 @@ class TestGetVideoDetails:
         call_types = [call[0][0] for call in tracker.call_args_list]
         assert 'youtube_playlist' in call_types
         assert 'youtube_video' in call_types
+
+
+# ============================================================================
+# _parse_iso8601_duration TESTS
+# ============================================================================
+
+class TestParseIso8601Duration:
+    """Tests for the ISO-8601 duration parser."""
+
+    def test_minutes_and_seconds(self):
+        assert _parse_iso8601_duration("PT4M33S") == 273
+
+    def test_hours_minutes_seconds(self):
+        assert _parse_iso8601_duration("PT1H2M3S") == 3723
+
+    def test_seconds_only(self):
+        assert _parse_iso8601_duration("PT45S") == 45
+
+    def test_minutes_only(self):
+        assert _parse_iso8601_duration("PT10M") == 600
+
+    def test_hours_only(self):
+        assert _parse_iso8601_duration("PT1H") == 3600
+
+    def test_days_included(self):
+        assert _parse_iso8601_duration("P1DT2H") == 86400 + 7200
+
+    def test_empty_string_returns_none(self):
+        assert _parse_iso8601_duration("") is None
+
+    def test_none_like_garbage_returns_none(self):
+        assert _parse_iso8601_duration("garbage") is None
+
+    def test_short_video_under_60s(self):
+        """Shorts heuristic: < 60 seconds."""
+        assert _parse_iso8601_duration("PT59S") < 60
+
+    def test_non_short_video_at_least_60s(self):
+        assert _parse_iso8601_duration("PT1M") >= 60
+
+
+# ============================================================================
+# duration_seconds in get_video_details TESTS
+# ============================================================================
+
+class TestGetVideoDetailsDurationSeconds:
+    """Tests that get_video_details populates duration_seconds correctly."""
+
+    def _make_playlist_response(self, video_ids):
+        return {
+            'items': [
+                {'snippet': {'resourceId': {'videoId': vid}}}
+                for vid in video_ids
+            ]
+        }
+
+    def _make_video_response(self, video_id, duration):
+        return {
+            'items': [{
+                'id': video_id,
+                'snippet': {
+                    'title': 'Test Video',
+                    'publishedAt': '2024-01-01T00:00:00Z',
+                },
+                'statistics': {
+                    'viewCount': '100', 'likeCount': '10', 'commentCount': '1'
+                },
+                'contentDetails': {'duration': duration},
+            }]
+        }
+
+    def test_duration_seconds_parsed_from_content_details(self, mock_youtube):
+        """duration_seconds is correctly parsed from contentDetails.duration."""
+        mock_youtube.playlistItems().list().execute.return_value = (
+            self._make_playlist_response(['VID1'])
+        )
+        mock_youtube.videos().list().execute.return_value = (
+            self._make_video_response('VID1', 'PT4M33S')
+        )
+
+        result = get_video_details(
+            mock_youtube,
+            [{'channel_id': 'UC1', 'uploads_playlist_id': 'UU1'}],
+            10
+        )
+
+        assert result.videos[0]['duration_seconds'] == 273
+
+    def test_duration_seconds_none_when_content_details_absent(self, mock_youtube):
+        """duration_seconds is None when contentDetails is missing from response."""
+        mock_youtube.playlistItems().list().execute.return_value = (
+            self._make_playlist_response(['VID1'])
+        )
+        mock_youtube.videos().list().execute.return_value = {
+            'items': [{
+                'id': 'VID1',
+                'snippet': {'title': 'V1', 'publishedAt': '2024-01-01T00:00:00Z'},
+                'statistics': {'viewCount': '0', 'likeCount': '0', 'commentCount': '0'},
+                # No contentDetails key
+            }]
+        }
+
+        result = get_video_details(
+            mock_youtube,
+            [{'channel_id': 'UC1', 'uploads_playlist_id': 'UU1'}],
+            10
+        )
+
+        assert result.videos[0]['duration_seconds'] is None
+
+    def test_short_video_identified_by_duration_seconds(self, mock_youtube):
+        """Videos with duration_seconds < 60 can be identified as Shorts."""
+        mock_youtube.playlistItems().list().execute.return_value = (
+            self._make_playlist_response(['VID1'])
+        )
+        mock_youtube.videos().list().execute.return_value = (
+            self._make_video_response('VID1', 'PT45S')
+        )
+
+        result = get_video_details(
+            mock_youtube,
+            [{'channel_id': 'UC1', 'uploads_playlist_id': 'UU1'}],
+            10
+        )
+
+        assert result.videos[0]['duration_seconds'] < 60
+
+    def test_content_details_part_requested(self, mock_youtube):
+        """videos().list() is called with 'contentDetails' in the part parameter."""
+        mock_youtube.playlistItems().list().execute.return_value = (
+            self._make_playlist_response(['VID1'])
+        )
+        mock_youtube.videos().list().execute.return_value = (
+            self._make_video_response('VID1', 'PT5M')
+        )
+
+        get_video_details(
+            mock_youtube,
+            [{'channel_id': 'UC1', 'uploads_playlist_id': 'UU1'}],
+            10
+        )
+
+        calls = mock_youtube.videos().list.call_args_list
+        parts_used = [call.kwargs.get('part', '') for call in calls]
+        assert any('contentDetails' in p for p in parts_used)

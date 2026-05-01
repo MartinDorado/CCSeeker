@@ -401,6 +401,26 @@ def get_channel_stats(
 # VIDEO DETAILS
 # ============================================================================
 
+def _parse_iso8601_duration(duration: str) -> int | None:
+    """Parse ISO-8601 duration string (e.g. 'PT4M33S') to total seconds.
+
+    Returns None for empty/unparseable input so callers can distinguish
+    missing data from a genuinely zero-length video.
+    """
+    import re
+    if not duration:
+        return None
+    m = re.fullmatch(
+        r"P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?",
+        duration.strip(),
+    )
+    if not m:
+        return None
+    days, hours, minutes, seconds = (int(v) if v else 0 for v in m.groups())
+    total = days * 86400 + hours * 3600 + minutes * 60 + seconds
+    return total if m.group(0) != "P" else None
+
+
 def get_video_details(
     youtube_service,
     channel_data: list[dict],
@@ -425,6 +445,8 @@ def get_video_details(
     Each video dict contains:
         - channel_id, video_id, video_title, video_description, published_at
         - video_views, video_likes, video_comments, video_tags
+        - duration_seconds (int | None): total duration parsed from ISO-8601 contentDetails.duration;
+          None when field is absent (e.g., old cached entries). Use < 60 as a Shorts heuristic.
     """
     all_video_details = []
     warnings = []
@@ -475,9 +497,9 @@ def get_video_details(
         if not video_ids:
             continue
 
-        # Fetch video details
+        # Fetch video details (contentDetails added for duration/Shorts filtering)
         video_request = youtube_service.videos().list(
-            part="snippet,statistics",
+            part="snippet,statistics,contentDetails",
             id=",".join(video_ids)
         )
         video_response = video_request.execute()
@@ -486,6 +508,7 @@ def get_video_details(
             on_api_call('youtube_video')
 
         for item in video_response.get("items", []):
+            iso_duration = item.get("contentDetails", {}).get("duration", "")
             all_video_details.append({
                 "channel_id": channel_id,
                 "video_id": item["id"],
@@ -496,6 +519,7 @@ def get_video_details(
                 "video_likes": int(item["statistics"].get("likeCount", 0)),
                 "video_comments": int(item["statistics"].get("commentCount", 0)),
                 "video_tags": item["snippet"].get("tags", []),
+                "duration_seconds": _parse_iso8601_duration(iso_duration),
             })
 
     return VideoDetailsResult(

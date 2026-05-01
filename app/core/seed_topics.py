@@ -702,6 +702,26 @@ def analyze_seed_channel(
         n_videos=len(videos)
     )
 
+    # Enrich common_tags with channel-level metadata — zero extra API calls.
+    # topic_categories (YouTube's own topic taxonomy) and channel_keywords
+    # (from brandingSettings) are both already fetched; folding them in
+    # makes Jaccard tag-overlap more discriminating for seed mode.
+    meta_tags = [
+        t.lower().strip()
+        for t in (topic_categories + channel_keywords)
+        if t and len(t.strip()) >= MIN_TOKEN_LENGTH and t.strip().lower() not in name_tokens
+    ]
+    if meta_tags:
+        common_tags = list(dict.fromkeys(common_tags + meta_tags))[:MAX_COMMON_TAGS]
+
+    # Enrich secondary_keywords with tokenized channel_keywords.
+    existing_kws = set(primary_keywords + secondary_keywords)
+    for kw in channel_keywords:
+        for token in tokenize(kw, stopwords):
+            if token not in existing_kws and len(secondary_keywords) < MAX_SECONDARY_KEYWORDS:
+                secondary_keywords.append(token)
+                existing_kws.add(token)
+
     # ========================================================================
     # STEP 6: AI summary (optional)
     # ========================================================================

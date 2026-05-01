@@ -25,6 +25,7 @@ from app.core.gemini_api import (
     generate_ai_relevance_score,
     generate_summary,
     generate_outreach_drafts,
+    _build_relevance_prompt,
 )
 
 
@@ -432,3 +433,94 @@ class TestGenerateOutreachDrafts:
 
         call_args = mock_model.generate_content.call_args[0][0]
         assert "my audience's interests" in call_args
+
+
+# ============================================================================
+# _build_relevance_prompt / enriched prompt TESTS
+# ============================================================================
+
+class TestBuildRelevancePrompt:
+    """Tests for the enriched keyword-mode relevance prompt builder."""
+
+    def _base_channel_data(self, **kwargs):
+        data = {
+            'channel_title': 'Test Channel',
+            'video_titles': ['Video 1', 'Video 2'],
+        }
+        data.update(kwargs)
+        return data
+
+    def test_channel_description_included_when_present(self):
+        """Channel description appears in prompt when provided."""
+        cd = self._base_channel_data(channel_description='We cover DIY home projects.')
+        prompt = _build_relevance_prompt(cd, 'DIY')
+        assert 'We cover DIY home projects.' in prompt
+
+    def test_channel_description_omitted_when_empty(self):
+        """Description section is omitted when channel_description is empty."""
+        cd = self._base_channel_data(channel_description='')
+        prompt = _build_relevance_prompt(cd, 'DIY')
+        assert 'Description:' not in prompt
+
+    def test_topic_categories_included_when_present(self):
+        """Topic categories appear in prompt when provided."""
+        cd = self._base_channel_data(topic_categories=['Cooking', 'Food'])
+        prompt = _build_relevance_prompt(cd, 'cooking')
+        assert 'Cooking' in prompt
+        assert 'Food' in prompt
+
+    def test_topic_categories_omitted_when_empty(self):
+        """Topic section is omitted when topic_categories is empty."""
+        cd = self._base_channel_data(topic_categories=[])
+        prompt = _build_relevance_prompt(cd, 'test')
+        assert 'topic categories' not in prompt.lower()
+
+    def test_channel_keywords_included_when_present(self):
+        """Channel keywords appear in prompt when provided."""
+        cd = self._base_channel_data(channel_keywords=['diy', 'woodworking', 'tools'])
+        prompt = _build_relevance_prompt(cd, 'woodworking')
+        assert 'woodworking' in prompt
+
+    def test_channel_keywords_omitted_when_missing(self):
+        """Channel keywords section is omitted when field is absent."""
+        cd = self._base_channel_data()  # no channel_keywords key
+        prompt = _build_relevance_prompt(cd, 'test')
+        assert 'Channel keywords' not in prompt
+
+    def test_video_description_excerpt_appended_to_title(self):
+        """Video description excerpt is appended to the title line when available."""
+        cd = self._base_channel_data(
+            video_descriptions=['How to make bread at home', ''],
+        )
+        prompt = _build_relevance_prompt(cd, 'baking')
+        assert 'How to make bread at home' in prompt
+
+    def test_video_description_omitted_when_empty_string(self):
+        """Empty description excerpt is not appended."""
+        cd = self._base_channel_data(
+            video_titles=['Title Only'],
+            video_descriptions=[''],
+        )
+        prompt = _build_relevance_prompt(cd, 'test')
+        assert 'Title Only —' not in prompt  # separator not added for empty desc
+
+    def test_prompt_under_3kb_with_large_inputs(self):
+        """Prompt is capped at ~3 KB even with very long description."""
+        long_desc = 'x' * 2000
+        cd = self._base_channel_data(
+            channel_description=long_desc,
+            topic_categories=['Topic A', 'Topic B'],
+            channel_keywords=['kw'] * 20,
+            video_descriptions=['A long description excerpt. ' * 5] * 10,
+        )
+        prompt = _build_relevance_prompt(cd, 'query')
+        assert len(prompt) <= 3500  # generous headroom above 3 KB limit
+
+    def test_backward_compatible_with_titles_only(self, mock_model):
+        """Old callers that only pass channel_title + video_titles still work."""
+        mock_model.generate_content.return_value = Mock(text="7")
+        cd = {'channel_title': 'OldStyle', 'video_titles': ['V1', 'V2']}
+
+        score = generate_ai_relevance_score(mock_model, cd, 'query')
+
+        assert 0.0 <= score <= 1.0

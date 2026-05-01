@@ -23,6 +23,7 @@ from app.core.scoring_version import (
     VALID_RATINGS,
     get_scoring_version,
     is_version_compatible,
+    is_soft_compatible,
     generate_pipeline_hash,
     ScoringVersionSignature,
 )
@@ -184,13 +185,50 @@ class TestVersionCompatibility:
         sig["weights"]["tag_overlap"] = 999  # Changed weight
         assert not is_version_compatible(sig, "seed")
 
-    def test_same_major_version_compatible(self):
-        """Same major version with same weights is compatible."""
+    def test_same_major_minor_version_compatible(self):
+        """Same major.minor version (different patch) with same weights is compatible."""
         sig = get_scoring_version("seed").to_dict()
-        # Change minor/patch but keep major and weights the same
-        major = SCORING_VERSION.split(".")[0]
-        sig["version"] = f"{major}.99.99"
+        major, minor = SCORING_VERSION.split(".")[:2]
+        sig["version"] = f"{major}.{minor}.99"
         assert is_version_compatible(sig, "seed")
+
+    def test_different_minor_version_not_compatible(self):
+        """Different minor version within same major is NOT fully compatible."""
+        sig = get_scoring_version("seed").to_dict()
+        major = SCORING_VERSION.split(".")[0]
+        sig["version"] = f"{major}.99.0"
+        assert not is_version_compatible(sig, "seed")
+
+    def test_different_minor_version_is_soft_compatible(self):
+        """Different minor version with same major+weights is soft-compatible."""
+        sig = get_scoring_version("seed").to_dict()
+        major = SCORING_VERSION.split(".")[0]
+        sig["version"] = f"{major}.99.0"
+        assert is_soft_compatible(sig, "seed")
+
+    def test_soft_compatible_wrong_mode_false(self):
+        """is_soft_compatible returns False for wrong mode."""
+        sig = get_scoring_version("seed").to_dict()
+        assert not is_soft_compatible(sig, "keyword")
+
+    def test_soft_compatible_different_major_false(self):
+        """is_soft_compatible returns False for different major version."""
+        sig = get_scoring_version("seed").to_dict()
+        sig["version"] = "99.0.0"
+        assert not is_soft_compatible(sig, "seed")
+
+    def test_scoring_version_is_2_1_0(self):
+        """SCORING_VERSION bumped to 2.1.0 for richer metadata signals."""
+        assert SCORING_VERSION == "2.1.0"
+
+    def test_2_0_x_feedback_soft_compatible_under_2_1(self):
+        """2.0.x feedback with matching weights is soft-compatible under 2.1.x."""
+        sig = get_scoring_version("seed").to_dict()
+        sig["version"] = "2.0.0"
+        # Not fully compatible (different minor)
+        assert not is_version_compatible(sig, "seed")
+        # But usable for trend analysis
+        assert is_soft_compatible(sig, "seed")
 
 
 class TestDataclassesFrozen:

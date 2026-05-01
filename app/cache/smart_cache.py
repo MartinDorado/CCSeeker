@@ -5,7 +5,10 @@ import streamlit as st
 import time
 from typing import List, Dict, Any, Tuple, Optional, Callable
 
-from app.core.youtube_api import _parse_iso8601_duration
+try:
+    from ..core.youtube_api import _parse_iso8601_duration
+except ImportError:
+    from core.youtube_api import _parse_iso8601_duration
 
 
 class ChannelVideoCache:

@@ -25,6 +25,12 @@ except ImportError:
     dateutil_parser = None
 
 from .youtube_api import get_channel_stats, get_video_details
+from .transcription import (
+    TranscriptionConfig,
+    YouTubeTranscriptFetcher,
+    fetch_transcripts_parallel,
+    extract_niche_summary,
+)
 
 
 # ============================================================================
@@ -130,6 +136,9 @@ class SeedProfile:
     # Enhanced data from YouTube API (unused before, now captured)
     topic_categories: list[str] = field(default_factory=list)   # YouTube's topic classification
     channel_keywords: list[str] = field(default_factory=list)   # From brandingSettings
+
+    # Transcript-derived niche profile (seed mode only, {} when unavailable)
+    transcript_niche_summary: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Convert to dictionary for backward compatibility with similarity.py."""
@@ -521,6 +530,9 @@ def analyze_seed_channel(
     gemini_model=None,
     on_progress: Callable[[str, float], None] | None = None,
     on_api_call: Callable[[str], None] | None = None,
+    transcription_config: TranscriptionConfig | None = None,
+    transcript_fetcher=None,
+    transcript_store=None,
 ) -> SeedAnalysisResult:
     """
     Extract comprehensive profile from seed channel.
@@ -740,6 +752,73 @@ def analyze_seed_channel(
             progress("AI-enhanced analysis complete", 0.95)
 
     # ========================================================================
+    # STEP 6b: Transcript niche extraction (seed mode, optional)
+    # ========================================================================
+
+    transcript_niche_summary: dict = {}
+    tc = transcription_config if transcription_config is not None else TranscriptionConfig()
+
+    if tc.enabled and gemini_model:
+        try:
+            # Filter to non-Shorts videos (duration_seconds must be >= 60 or unknown)
+            candidate_videos = [
+                v for v in videos
+                if not tc.skip_shorts
+                or v.get('duration_seconds', 9999) >= 60
+            ]
+            fetch_videos = candidate_videos[:tc.max_videos]
+            video_ids = [v['video_id'] for v in fetch_videos if v.get('video_id')]
+
+            if video_ids:
+                fetcher = transcript_fetcher
+                if fetcher is None:
+                    import os as _os
+                    proxy_url = _os.getenv("TRANSCRIPT_PROXY_URL")
+                    fetcher = YouTubeTranscriptFetcher(
+                        channel_id=channel_id,
+                        proxy_url=proxy_url,
+                    )
+
+                progress("Fetching transcripts for niche analysis...", 0.88)
+
+                transcript_results = fetch_transcripts_parallel(
+                    video_ids=video_ids,
+                    fetcher=fetcher,
+                    config=tc,
+                    language_pref=detected_language,
+                    on_progress=on_progress,
+                    on_api_call=on_api_call,
+                )
+
+                # Optionally persist results via store
+                if transcript_store is not None:
+                    for tr in transcript_results:
+                        try:
+                            transcript_store.save_transcript(tr)
+                        except Exception:
+                            pass
+
+                rate_limited = [r for r in transcript_results if r.status == "rate_limited"]
+                if len(rate_limited) >= 3:
+                    warnings.append(
+                        "Transcript service unavailable; using metadata-only analysis."
+                    )
+                else:
+                    niche_result = extract_niche_summary(
+                        transcripts=transcript_results,
+                        gemini_model=gemini_model,
+                        on_api_call=on_api_call,
+                        corpus_chars=tc.corpus_chars,
+                    )
+                    transcript_niche_summary = niche_result.summary
+
+                    if transcript_niche_summary:
+                        progress("Transcript niche analysis complete", 0.95)
+
+        except Exception as exc:
+            warnings.append(f"Transcript analysis skipped: {exc}")
+
+    # ========================================================================
     # STEP 7: Build profile
     # ========================================================================
 
@@ -760,7 +839,8 @@ def analyze_seed_channel(
         recent_titles=sample_titles[:MAX_RECENT_TITLES],
         description_summary=description_summary,
         topic_categories=topic_categories,
-        channel_keywords=channel_keywords
+        channel_keywords=channel_keywords,
+        transcript_niche_summary=transcript_niche_summary,
     )
 
     progress(

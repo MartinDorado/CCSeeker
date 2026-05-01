@@ -13,11 +13,13 @@ try:
     # Try relative import (when run as module)
     from .core import analyze_seed_channel, SeedAnalysisResult
     from .core import similarity as similarity_engine
+    from .core.transcription import TranscriptionConfig
     from .analytics import feedback_tracker
 except ImportError:
     # Fallback for direct execution
     from core import analyze_seed_channel, SeedAnalysisResult
     from core import similarity as similarity_engine
+    from core.transcription import TranscriptionConfig
     from analytics import feedback_tracker
 
 try:
@@ -1021,6 +1023,8 @@ if submitted:
                     def on_seed_progress(msg: str, pct: float):
                         status.update(label=msg)
 
+                    _use_transcripts = st.session_state.get("seed_enable_transcripts", True)
+                    _tc = TranscriptionConfig(enabled=bool(_use_transcripts and seed_gemini_model))
                     result = analyze_seed_channel(
                         youtube_service=youtube,
                         channel_id=seed_channel_id,
@@ -1028,6 +1032,7 @@ if submitted:
                         gemini_model=seed_gemini_model,
                         on_progress=on_seed_progress,
                         on_api_call=_get_api_tracker(),
+                        transcription_config=_tc,
                     )
 
                 if result.error:
@@ -1176,8 +1181,20 @@ if st.session_state.get('seed_profile'):
             help="Use Gemini AI to improve similarity scoring (vibe analysis) and generate summaries. Disable to save API quota or compare results.",
             key="seed_enable_ai"
         )
+        enable_transcript_analysis = st.checkbox(
+            "Use transcript niche analysis (seed mode)",
+            value=True,
+            help=(
+                "Fetch transcripts from the seed channel's recent videos and extract a "
+                "structured niche profile via Gemini. Improves similarity vibe scoring. "
+                "Disable if the seed channel has no captions or to save quota. "
+                "Keyword-mode Deep Analysis is on the roadmap."
+            ),
+            key="seed_enable_transcripts",
+        )
     else:
         enable_ai = False
+        enable_transcript_analysis = False
 
     # Build search query from profile (needed for the button)
     search_terms = profile['primary_keywords'][:2]  # Top 2 phrases

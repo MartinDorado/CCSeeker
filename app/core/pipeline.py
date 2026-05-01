@@ -514,11 +514,24 @@ def run_search_pipeline(
             ai_scores = []
             video_titles_by_channel = df_videos.groupby('channel_id')['video_title'].apply(list).to_dict()
 
+            # Build per-channel video description excerpts (first 120 chars each)
+            video_descs_by_channel: dict = {}
+            if 'video_description' in df_videos.columns:
+                video_descs_by_channel = (
+                    df_videos.groupby('channel_id')['video_description']
+                    .apply(lambda descs: [str(d)[:120] for d in descs[:10]])
+                    .to_dict()
+                )
+
             for _, row in top_channels.iterrows():
                 channel_id = row['channel_id']
                 channel_data_for_ai = {
                     'channel_title': row['channel_title'],
-                    'video_titles': video_titles_by_channel.get(channel_id, [])
+                    'video_titles': video_titles_by_channel.get(channel_id, []),
+                    'channel_description': str(row.get('description') or ''),
+                    'topic_categories': list(row.get('topic_categories') or []),
+                    'channel_keywords': list(row.get('channel_keywords') or []),
+                    'video_descriptions': video_descs_by_channel.get(channel_id, []),
                 }
                 ai_score = generate_ai_relevance_score(
                     gemini_model,
@@ -605,6 +618,41 @@ def run_search_pipeline(
                 lambda x: x if isinstance(x, list) else []
             )
             top_channels['keywords'] = top_channels['recent_titles'].apply(_extract_keywords_from_titles)
+
+            # Enrich tags with already-fetched channel-level metadata so Jaccard
+            # tag-overlap benefits from YouTube's topic taxonomy and branding keywords.
+            def _enrich_candidate_tags(row: pd.Series) -> list:
+                base = row['tags'] if isinstance(row['tags'], list) else []
+                topic_cats = [t.lower() for t in (row.get('topic_categories') or []) if t]
+                chan_kws = [k.lower() for k in (row.get('channel_keywords') or []) if k]
+                return list(set(base + topic_cats + chan_kws))
+
+            top_channels['tags'] = top_channels.apply(_enrich_candidate_tags, axis=1)
+
+            # Enrich keywords with channel description tokens + video description tokens.
+            video_desc_tokens_by_channel: pd.DataFrame = pd.DataFrame(
+                {'channel_id': pd.Series(dtype=str), 'video_desc_keywords': pd.Series(dtype=object)}
+            )
+            if 'video_description' in df_videos_filtered.columns:
+                video_desc_tokens_by_channel = (
+                    df_videos_filtered.groupby('channel_id')['video_description']
+                    .apply(lambda descs: _extract_keywords_from_titles([str(d)[:200] for d in descs]))
+                    .reset_index()
+                    .rename(columns={'video_description': 'video_desc_keywords'})
+                )
+
+            top_channels = top_channels.merge(video_desc_tokens_by_channel, on='channel_id', how='left')
+            top_channels['video_desc_keywords'] = top_channels['video_desc_keywords'].apply(
+                lambda x: x if isinstance(x, list) else []
+            )
+
+            def _enrich_candidate_keywords(row: pd.Series) -> list:
+                base = row['keywords'] if isinstance(row['keywords'], list) else []
+                chan_desc_kws = _extract_keywords_from_titles([str(row.get('description') or '')[:300]])
+                video_desc_kws = row.get('video_desc_keywords') or []
+                return list(set(base + chan_desc_kws + (video_desc_kws if isinstance(video_desc_kws, list) else [])))
+
+            top_channels['keywords'] = top_channels.apply(_enrich_candidate_keywords, axis=1)
 
             search_log.append("🎯 Ranking channels by similarity...")
 

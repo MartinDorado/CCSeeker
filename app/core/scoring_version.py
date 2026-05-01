@@ -28,7 +28,7 @@ from typing import Literal
 # - MAJOR: Breaking changes to scoring (old feedback incompatible)
 # - MINOR: New features that don't break existing scoring
 # - PATCH: Bug fixes that don't change scoring behavior
-SCORING_VERSION = "2.0.0"
+SCORING_VERSION = "2.1.0"
 
 
 # ============================================================================
@@ -212,40 +212,75 @@ def is_version_compatible(
     current_mode: Literal["seed", "keyword"]
 ) -> bool:
     """
-    Check if feedback was collected under compatible scoring logic.
+    Check if feedback was collected under fully compatible scoring logic.
 
-    Feedback is compatible if:
-    1. Same major version number
+    Feedback is fully compatible if:
+    1. Same major.minor version (patch differences are fine)
     2. Same mode (seed/keyword)
     3. Same weights (exact match)
+
+    Cross-minor-version feedback (e.g. 2.0.x collected under 2.1.x) is
+    "soft-incompatible": the algorithmic weights are unchanged but the AI
+    blend sees richer input, so direct ranking comparisons are unreliable.
+    Use is_soft_compatible() to load that feedback for trend analysis only.
 
     Args:
         feedback_version: The scoring_version dict from a feedback entry
         current_mode: The mode to check compatibility with
 
     Returns:
-        True if feedback is compatible for ML training
-
-    Example:
-        >>> old_feedback = {"version": "2.0.0", "mode": "seed", ...}
-        >>> is_version_compatible(old_feedback, "seed")
-        True
+        True if feedback is fully compatible for ML training
     """
     if not feedback_version:
         return False
 
-    # Check mode match
     if feedback_version.get("mode") != current_mode:
         return False
 
-    # Check major version match
+    fv = feedback_version.get("version", "0.0.0").split(".")
+    cv = SCORING_VERSION.split(".")
+
+    # Major version must match
+    if fv[0] != cv[0]:
+        return False
+
+    # Minor version must also match (cross-minor = soft-incompatible)
+    if len(fv) > 1 and len(cv) > 1 and fv[1] != cv[1]:
+        return False
+
+    current_sig = get_scoring_version(current_mode)
+    return feedback_version.get("weights", {}) == current_sig.weights
+
+
+def is_soft_compatible(
+    feedback_version: dict,
+    current_mode: Literal["seed", "keyword"]
+) -> bool:
+    """
+    Check if feedback is usable for trend analysis (lenient compatibility).
+
+    Returns True when the major version and weights match, even if minor
+    versions differ.  Cross-minor-version feedback (e.g. 2.0.x vs 2.1.x)
+    is soft-incompatible: acceptable for observability/trend analysis but
+    NOT for direct ranking comparison or ML training.
+
+    Args:
+        feedback_version: The scoring_version dict from a feedback entry
+        current_mode: The mode to check compatibility with
+
+    Returns:
+        True if feedback can be used for trend analysis
+    """
+    if not feedback_version:
+        return False
+
+    if feedback_version.get("mode") != current_mode:
+        return False
+
     feedback_major = feedback_version.get("version", "0.0.0").split(".")[0]
     current_major = SCORING_VERSION.split(".")[0]
     if feedback_major != current_major:
         return False
 
-    # Check weights match
     current_sig = get_scoring_version(current_mode)
-    feedback_weights = feedback_version.get("weights", {})
-
-    return feedback_weights == current_sig.weights
+    return feedback_version.get("weights", {}) == current_sig.weights

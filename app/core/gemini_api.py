@@ -38,6 +38,72 @@ class SummaryResult:
 # AI RELEVANCE SCORING
 # ============================================================================
 
+def _build_relevance_prompt(channel_data: dict, query: str) -> str:
+    """Build the enriched relevance prompt, capped at ~3 KB."""
+    channel_title = channel_data.get("channel_title", "")
+    video_titles = channel_data.get("video_titles", [])
+    description = (channel_data.get("channel_description") or "").strip()
+    topic_categories = channel_data.get("topic_categories") or []
+    channel_keywords = channel_data.get("channel_keywords") or []
+    video_descriptions = channel_data.get("video_descriptions") or []
+
+    # Optional channel-level sections (omitted when empty)
+    desc_line = f"\n- Description: {description[:400]}" if description else ""
+    topics_line = (
+        f"\n- YouTube topic categories: {', '.join(topic_categories)}"
+        if topic_categories else ""
+    )
+    keywords_line = (
+        f"\n- Channel keywords: {', '.join(channel_keywords[:10])}"
+        if channel_keywords else ""
+    )
+
+    # Video lines: title + first description excerpt when available
+    video_lines = []
+    for i, title in enumerate(video_titles[:10]):
+        desc_excerpt = ""
+        if i < len(video_descriptions) and video_descriptions[i]:
+            desc_excerpt = f" — {str(video_descriptions[i])[:120]}"
+        video_lines.append(f"- {title}{desc_excerpt}")
+    videos_str = "\n".join(video_lines) if video_lines else "(no videos)"
+
+    prompt = (
+        f'Act as a YouTube content analyst. Evaluate how relevant this channel is to the search query.\n\n'
+        f'**Search Query:** "{query}"\n\n'
+        f'**Channel:**\n'
+        f'- Name: {channel_title}'
+        f'{desc_line}{topics_line}{keywords_line}\n\n'
+        f'**Recent Videos (titles + description excerpt):**\n'
+        f'{videos_str}\n\n'
+        f'**Instructions:**\n'
+        f'Based on all the above, rate the channel\'s relevance 0–10 '
+        f'(0 = completely irrelevant, 10 = perfect match). '
+        f'Respond with a single integer only.\n\n'
+        f'**Relevance Score (0-10):**'
+    )
+
+    # Defensive cap: keep prompt under ~3 KB by trimming description first
+    if len(prompt) > 3000:
+        description = description[:200]
+        desc_line = f"\n- Description: {description}" if description else ""
+        prompt = (
+            f'Act as a YouTube content analyst. Evaluate how relevant this channel is to the search query.\n\n'
+            f'**Search Query:** "{query}"\n\n'
+            f'**Channel:**\n'
+            f'- Name: {channel_title}'
+            f'{desc_line}{topics_line}{keywords_line}\n\n'
+            f'**Recent Videos (titles + description excerpt):**\n'
+            f'{videos_str}\n\n'
+            f'**Instructions:**\n'
+            f'Based on all the above, rate the channel\'s relevance 0–10 '
+            f'(0 = completely irrelevant, 10 = perfect match). '
+            f'Respond with a single integer only.\n\n'
+            f'**Relevance Score (0-10):**'
+        )
+
+    return prompt
+
+
 def generate_ai_relevance_score(
     model,
     channel_data: dict,
@@ -45,11 +111,13 @@ def generate_ai_relevance_score(
     on_api_call: Callable[[str], None] | None = None,
 ) -> float:
     """
-    Uses a Gemini model to score channel relevance based on video titles.
+    Uses a Gemini model to score channel relevance using enriched channel signals.
 
     Args:
         model: An initialized Gemini model instance.
-        channel_data: A dict with 'channel_title' and a list of 'video_titles'.
+        channel_data: Dict with 'channel_title', 'video_titles' (required), and
+            optionally 'channel_description', 'topic_categories', 'channel_keywords',
+            'video_descriptions' (list of first-120-char excerpts, one per video).
         query: The user's original search query.
         on_api_call: Optional callback for tracking API calls.
 
@@ -57,44 +125,26 @@ def generate_ai_relevance_score(
         A relevance score between 0.0 and 1.0, or 0.0 on failure.
 
     Notes:
-        - Processes up to 10 video titles
+        - Processes up to 10 video titles (+ description excerpts when available)
         - Returns 0.0 if no video titles provided or on API error
+        - Gracefully omits enriched sections when optional fields are missing
     """
     if not channel_data.get("video_titles"):
         return 0.0
 
-    # Track API call before making request
     if on_api_call:
         on_api_call('gemini_relevance')
 
-    # Create a concise summary of video titles
-    titles_str = "\n- ".join(channel_data["video_titles"][:10])
+    prompt = _build_relevance_prompt(channel_data, query)
 
-    prompt = f"""
-    Act as a YouTube content analyst. Your task is to evaluate how relevant a channel's content is to a given search query.
-
-    **Search Query:** "{query}"
-    **Channel Name:** "{channel_data['channel_title']}"
-
-    **Recent Video Titles:**
-    - {titles_str}
-
-    **Instructions:**
-    Based ONLY on the video titles provided, rate the channel's relevance to the search query on a scale from 0 to 10, where 0 is completely irrelevant and 10 is a perfect match.
-    Your response MUST be a single integer (e.g., 8). Do not provide any explanation.
-
-    **Relevance Score (0-10):**
-    """
     try:
         response = model.generate_content(prompt)
-        # Extract the first integer found in the response text
         match = re.search(r'\d+', response.text)
         if match:
             score = int(match.group(0))
-            return min(10, max(0, score)) / 10.0  # Normalize to 0.0-1.0
+            return min(10, max(0, score)) / 10.0
         return 0.0
     except Exception:
-        # On API error or parsing failure, return a neutral score
         return 0.0
 
 

@@ -16,7 +16,8 @@ class ChannelVideoCache:
     @staticmethod
     def _make_cache_key(channel_id: str, max_videos: int) -> str:
         """Generate cache key for a single channel"""
-        return f"ch_vids_{channel_id}_{max_videos}"
+        # v2: added duration_seconds (contentDetails) — invalidates entries lacking that field
+        return f"ch_vids_v2_{channel_id}_{max_videos}"
 
     @staticmethod
     @st.cache_data(ttl=86400)  # 24 hours
@@ -58,23 +59,28 @@ class ChannelVideoCache:
             if not video_ids:
                 return [], True  # Fresh call, but no videos
 
-            # Fetch video details
+            # Fetch video details (contentDetails for duration/Shorts filtering)
             videos_response = _youtube_service.videos().list(
-                part="snippet,statistics",
+                part="snippet,statistics,contentDetails",
                 id=",".join(video_ids)
             ).execute()
 
+            from app.core.youtube_api import _parse_iso8601_duration
+
             videos = []
             for item in videos_response.get('items', []):
+                iso_duration = item.get('contentDetails', {}).get('duration', '')
                 videos.append({
                     'channel_id': channel_id,
                     'video_id': item['id'],
                     'video_title': item['snippet']['title'],
+                    'video_description': item['snippet'].get('description', ''),
                     'published_at': item['snippet']['publishedAt'],
                     'video_views': int(item['statistics'].get('viewCount', 0)),
                     'video_likes': int(item['statistics'].get('likeCount', 0)),
                     'video_comments': int(item['statistics'].get('commentCount', 0)),
                     'video_tags': item['snippet'].get('tags', []),
+                    'duration_seconds': _parse_iso8601_duration(iso_duration),
                 })
 
             return videos, True  # True = this was a fresh API call

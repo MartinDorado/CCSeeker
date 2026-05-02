@@ -5,6 +5,7 @@ Tests synthetic data generation, ML training, and weight optimization.
 """
 
 import pytest
+import random
 import numpy as np
 import os
 import sys
@@ -99,6 +100,8 @@ class TestSyntheticDataGenerator:
 
     def test_generate_synthetic_feedback_mode_ratio(self):
         """Should respect seed_mode_ratio."""
+        random.seed(42)
+        np.random.seed(42)
         entries = generate_synthetic_feedback(
             n_searches=100, seed_mode_ratio=0.8, save_to_file=False
         )

@@ -857,6 +857,8 @@ with col1:
         type="primary" if st.session_state.search_method == "Keywords" else "secondary"
     ):
         st.session_state.search_method = "Keywords"
+        st.session_state.pop('seed_profile', None)
+        st.session_state.pop('editable_seed_query', None)
         st.rerun()
 
 with col2:
@@ -867,6 +869,9 @@ with col2:
         type="primary" if st.session_state.search_method == "Channel-as-Seed" else "secondary"
     ):
         st.session_state.search_method = "Channel-as-Seed"
+        st.session_state.pop('display_df', None)
+        st.session_state.pop('top_channels_for_outreach', None)
+        st.session_state.pop('final_query', None)
         st.rerun()
 
 # Use the session state value
@@ -970,7 +975,7 @@ if search_method:
         else:
             # For Channel-as-Seed: initialize default values (filters will be shown after analysis)
             region_input = ""
-            min_subs_input = 10000
+            min_subs_input = 0
             country_filter_input = ""
             months_ago_input = 18
             enable_ai = True  # Default for seed mode, actual toggle shown later
@@ -1149,7 +1154,7 @@ if st.session_state.get('seed_profile'):
     with c1:
         min_subs_input = st.number_input(
             "Minimum Subscribers",
-            min_value=0, value=10000, step=1000, format="%d",
+            min_value=0, value=0, step=1000, format="%d",
             help="Set to 0 to ignore.",
             key="seed_min_subs"
         )
@@ -1195,6 +1200,20 @@ if st.session_state.get('seed_profile'):
     else:
         enable_ai = False
         enable_transcript_analysis = False
+        st.checkbox(
+            "Enable AI Enhancement",
+            value=False,
+            disabled=True,
+            help="Requires a Gemini API key. Add it in the API Keys panel in the sidebar.",
+            key="seed_enable_ai_disabled"
+        )
+        st.checkbox(
+            "Use transcript niche analysis (seed mode)",
+            value=False,
+            disabled=True,
+            help="Requires a Gemini API key. Add it in the API Keys panel in the sidebar.",
+            key="seed_enable_transcripts_disabled"
+        )
 
     # Build search query from profile (needed for the button)
     search_terms = profile['primary_keywords'][:2]  # Top 2 phrases
@@ -1246,6 +1265,7 @@ if st.session_state.get('seed_profile'):
 
         if st.button("🔄 Reset", help="Reset to AI-generated default", key="reset_query"):
             st.session_state['editable_seed_query'] = default_query
+            st.session_state.pop('query_editor', None)
             st.rerun()
     
     # Main search button - placed after all search options

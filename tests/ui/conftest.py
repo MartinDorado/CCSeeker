@@ -6,6 +6,7 @@ real app script with external calls mocked at the module boundary.
 """
 import os
 import sys
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
@@ -15,6 +16,42 @@ import streamlit as st
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "app"))
 
 APP_PATH = "app/main.py"
+# AppTest re-executes module-level code (pycountry, CSS read, image load) on every
+# run() call.  3s (the default) is too tight on a cold start; 10s gives headroom.
+DEFAULT_TIMEOUT = 10
+
+
+def make_at(**initial_session_state) -> "AppTest":
+    """Create an AppTest instance with a safe timeout and optional pre-set session state."""
+    from streamlit.testing.v1 import AppTest
+    at = AppTest.from_file(APP_PATH, default_timeout=DEFAULT_TIMEOUT)
+    for key, value in initial_session_state.items():
+        at.session_state[key] = value
+    return at
+
+
+@pytest.fixture(scope="session", autouse=True)
+def warmup_apptest():
+    """Absorb the cold-start cost (Python bytecode compilation + first imports of
+    supabase, scikit-learn, pycountry, google-api-python-client, etc.) once per
+    test session so individual tests see a warm sys.modules and don't time out."""
+    from streamlit.testing.v1 import AppTest
+    try:
+        AppTest.from_file(APP_PATH, default_timeout=60).run()
+    except Exception:
+        pass  # individual tests will surface the real error if boot is broken
+
+
+@pytest.fixture
+def no_api_keys():
+    """Shadow API keys with empty strings so the app takes the 'not configured' path.
+
+    load_dotenv() uses override=False by default, so it will not overwrite an env var
+    that is already set — even to an empty string.  This ensures the 'no key' error
+    branch in main.py is reached regardless of what is in the developer's .env file.
+    """
+    with patch.dict(os.environ, {"YOUTUBE_API_KEY": "", "GEMINI_API_KEY": ""}):
+        yield
 
 
 @pytest.fixture(autouse=True)

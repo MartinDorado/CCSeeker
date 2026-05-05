@@ -83,11 +83,15 @@ class YouTubeTranscriptFetcher:
 
             proxies = {"https": self._proxy_url} if self._proxy_url else None
 
-            # Build language priority list
+            # Build language priority list.
+            # Always include the auto-generated variant for the preferred language
+            # so channels without manual captions (e.g. "a.it" for Italian) are covered.
             languages = []
             if language_pref:
                 languages.append(language_pref)
-            languages += ["en", "es", "a.en", "a.es"]  # auto-generated fallbacks
+                if language_pref not in ("en", "es"):
+                    languages.append(f"a.{language_pref}")
+            languages += ["en", "es", "a.en", "a.es"]  # English/Spanish fallbacks
 
             transcript_list = YouTubeTranscriptApi.get_transcript(
                 video_id,

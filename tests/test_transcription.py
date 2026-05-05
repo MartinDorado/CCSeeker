@@ -69,6 +69,148 @@ class TestFakeTranscriptFetcher:
 
 
 # ============================================================================
+# YouTubeTranscriptFetcher — language priority list
+# ============================================================================
+
+class TestYouTubeTranscriptFetcherLanguageList:
+    """
+    Verify the language priority list built inside fetch().
+    We mock YouTubeTranscriptApi.get_transcript to capture what languages list
+    was passed — without making any real network calls.
+    """
+
+    def _call_fetch(self, language_pref, mock_transcript_list=None):
+        """Helper: call fetcher.fetch() and return the languages arg passed to get_transcript."""
+        captured = {}
+        mock_result = mock_transcript_list or [{"text": "hello", "lang": language_pref or "en"}]
+
+        def fake_get_transcript(video_id, languages=None, proxies=None):
+            captured["languages"] = languages
+            return mock_result
+
+        fetcher = YouTubeTranscriptFetcher(channel_id="UC_test")
+        with patch(
+            "app.core.transcription.YouTubeTranscriptApi.get_transcript",
+            side_effect=fake_get_transcript,
+        ):
+            with patch("app.core.transcription.YouTubeTranscriptApi", create=True):
+                # Re-patch at the import point inside the method
+                import app.core.transcription as _mod
+                orig = None
+                try:
+                    from youtube_transcript_api import YouTubeTranscriptApi as _yta
+                    orig = _yta.get_transcript
+                    _yta.get_transcript = fake_get_transcript
+                    fetcher.fetch("vid1", language_pref)
+                except ImportError:
+                    pass
+                finally:
+                    if orig is not None:
+                        from youtube_transcript_api import YouTubeTranscriptApi as _yta
+                        _yta.get_transcript = orig
+        return captured.get("languages", [])
+
+    def test_non_english_language_includes_auto_generated_variant(self):
+        """For a non-EN/ES language pref, both 'xx' and 'a.xx' should appear before the EN fallbacks."""
+        fetcher = YouTubeTranscriptFetcher(channel_id="UC_test")
+        captured_languages = []
+
+        def fake_get_transcript(video_id, languages=None, proxies=None):
+            captured_languages.extend(languages or [])
+            return [{"text": "ciao", "lang": "it"}]
+
+        try:
+            from youtube_transcript_api import YouTubeTranscriptApi
+        except ImportError:
+            pytest.skip("youtube-transcript-api not installed")
+
+        with patch.object(YouTubeTranscriptApi, "get_transcript", side_effect=fake_get_transcript):
+            fetcher.fetch("vid_it", "it")
+
+        assert "it" in captured_languages
+        assert "a.it" in captured_languages
+        # Auto-generated Italian must come before the English fallbacks
+        assert captured_languages.index("a.it") < captured_languages.index("en")
+
+    def test_english_language_pref_does_not_duplicate_auto_en(self):
+        """EN language pref must NOT add a second 'a.en' — it's already in the fallback list."""
+        fetcher = YouTubeTranscriptFetcher(channel_id="UC_test")
+        captured_languages = []
+
+        def fake_get_transcript(video_id, languages=None, proxies=None):
+            captured_languages.extend(languages or [])
+            return [{"text": "hi", "lang": "en"}]
+
+        try:
+            from youtube_transcript_api import YouTubeTranscriptApi
+        except ImportError:
+            pytest.skip("youtube-transcript-api not installed")
+
+        with patch.object(YouTubeTranscriptApi, "get_transcript", side_effect=fake_get_transcript):
+            fetcher.fetch("vid_en", "en")
+
+        assert captured_languages.count("a.en") == 1
+
+    def test_spanish_language_pref_does_not_duplicate_auto_es(self):
+        """ES language pref must NOT add a second 'a.es'."""
+        fetcher = YouTubeTranscriptFetcher(channel_id="UC_test")
+        captured_languages = []
+
+        def fake_get_transcript(video_id, languages=None, proxies=None):
+            captured_languages.extend(languages or [])
+            return [{"text": "hola", "lang": "es"}]
+
+        try:
+            from youtube_transcript_api import YouTubeTranscriptApi
+        except ImportError:
+            pytest.skip("youtube-transcript-api not installed")
+
+        with patch.object(YouTubeTranscriptApi, "get_transcript", side_effect=fake_get_transcript):
+            fetcher.fetch("vid_es", "es")
+
+        assert captured_languages.count("a.es") == 1
+
+    def test_french_language_pref_includes_auto_fr(self):
+        """FR (another non-EN/ES language) also gets 'a.fr' injected."""
+        fetcher = YouTubeTranscriptFetcher(channel_id="UC_test")
+        captured_languages = []
+
+        def fake_get_transcript(video_id, languages=None, proxies=None):
+            captured_languages.extend(languages or [])
+            return [{"text": "bonjour", "lang": "fr"}]
+
+        try:
+            from youtube_transcript_api import YouTubeTranscriptApi
+        except ImportError:
+            pytest.skip("youtube-transcript-api not installed")
+
+        with patch.object(YouTubeTranscriptApi, "get_transcript", side_effect=fake_get_transcript):
+            fetcher.fetch("vid_fr", "fr")
+
+        assert "fr" in captured_languages
+        assert "a.fr" in captured_languages
+
+    def test_none_language_pref_omits_auto_variant(self):
+        """No language pref → no language-specific auto variant, just EN/ES fallbacks."""
+        fetcher = YouTubeTranscriptFetcher(channel_id="UC_test")
+        captured_languages = []
+
+        def fake_get_transcript(video_id, languages=None, proxies=None):
+            captured_languages.extend(languages or [])
+            return [{"text": "hello", "lang": "en"}]
+
+        try:
+            from youtube_transcript_api import YouTubeTranscriptApi
+        except ImportError:
+            pytest.skip("youtube-transcript-api not installed")
+
+        with patch.object(YouTubeTranscriptApi, "get_transcript", side_effect=fake_get_transcript):
+            fetcher.fetch("vid1", None)
+
+        assert captured_languages == ["en", "es", "a.en", "a.es"]
+
+
+# ============================================================================
 # fetch_transcripts_parallel
 # ============================================================================
 

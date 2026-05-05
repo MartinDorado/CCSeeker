@@ -801,7 +801,9 @@ def analyze_seed_channel(
                 rate_limited = [r for r in transcript_results if r.status == "rate_limited"]
                 if len(rate_limited) >= 3:
                     warnings.append(
-                        "Transcript service unavailable; using metadata-only analysis."
+                        "YouTube rate-limited transcript requests for this channel. "
+                        "Search query was built from video metadata instead. "
+                        "Try again in a few minutes or disable transcript analysis."
                     )
                 else:
                     niche_result = extract_niche_summary(

@@ -23,6 +23,7 @@ from .query_utils import (
     extract_identifier_from_url,
     resolve_channel_id,
     strip_outer_quotes,
+    build_seed_query,
 )
 
 from .scoring_version import (
@@ -119,6 +120,7 @@ __all__ = [
     "extract_identifier_from_url",
     "resolve_channel_id",
     "strip_outer_quotes",
+    "build_seed_query",
     # Relevance
     "calculate_keyword_relevance",
     # YouTube API result types

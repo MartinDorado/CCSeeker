@@ -14,12 +14,14 @@ try:
     from .core import analyze_seed_channel, SeedAnalysisResult
     from .core import similarity as similarity_engine
     from .core.transcription import TranscriptionConfig
+    from .core.query_utils import build_seed_query
     from .analytics import feedback_tracker
 except ImportError:
     # Fallback for direct execution
     from core import analyze_seed_channel, SeedAnalysisResult
     from core import similarity as similarity_engine
     from core.transcription import TranscriptionConfig
+    from core.query_utils import build_seed_query
     from analytics import feedback_tracker
 
 try:
@@ -1049,6 +1051,9 @@ if submitted:
                     # Store profile in session state for later use (as dict for backward compatibility)
                     st.session_state['seed_profile'] = result.profile.to_dict()
                     st.session_state['seed_channel_id'] = seed_channel_id
+                    st.session_state['seed_warnings'] = result.warnings or []
+                    # Clear cached query so the new profile's terms are applied fresh
+                    st.session_state.pop('editable_seed_query', None)
                     seed_profile = result.profile.to_dict()
                 else:
                     status.update(label="❌ Analysis failed", state="error")
@@ -1215,21 +1220,10 @@ if st.session_state.get('seed_profile'):
             key="seed_enable_transcripts_disabled"
         )
 
-    # Build search query from profile (needed for the button)
-    search_terms = profile['primary_keywords'][:2]  # Top 2 phrases
-        
-    # Fallback: If channel has fewer than 2 primary keywords, pad with common tags
-    if len(search_terms) < 2:
-        remaining_slots = 2 - len(search_terms)
-        search_terms += profile['common_tags'][:remaining_slots]
-
-    # Quote multi-word terms
-    quoted_terms = [
-        f'"{term}"' if ' ' in term else term 
-        for term in search_terms
-    ]
-    
-    default_query = ", ".join(quoted_terms[:2])
+    # Build search query from profile (needed for the button).
+    # Prefers transcript_niche_summary.topic_emphasis when available (richer
+    # semantic signal from actual content), then primary_keywords, then common_tags.
+    default_query = build_seed_query(profile)
 
     # Initialize session state for editable query
     if 'editable_seed_query' not in st.session_state:
@@ -1258,6 +1252,17 @@ if st.session_state.get('seed_profile'):
     # Visual term counter below the text area
     if built_query:
         render_term_counter(built_query)
+
+    # Show any warnings from the analysis (e.g. transcript rate-limiting)
+    for _w in st.session_state.get("seed_warnings", []):
+        st.warning(_w)
+
+    # Show source of query terms so the user knows whether transcripts were used
+    _niche = profile.get("transcript_niche_summary") or {}
+    if _niche.get("topic_emphasis"):
+        st.caption(f"Query terms sourced from transcript analysis (confidence: {_niche.get('confidence', 'low')})")
+    else:
+        st.caption("Query terms sourced from video metadata (transcripts unavailable — see warning above if applicable)")
 
     with col_reset:
         st.write("")  # Spacer for alignment

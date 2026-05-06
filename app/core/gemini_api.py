@@ -15,9 +15,10 @@ import pandas as pd
 from typing import Callable
 from dataclasses import dataclass, field
 
-# Allowlist for seed query output validation — rejects prompt-injected content
+# Allowlist for seed query output validation — blocks injection chars (<>{}[]\`=|)
+# while allowing common punctuation Gemini uses in search terms (&, ., :, (), etc.)
 _SEED_QUERY_VALID = re.compile(
-    r'^[a-zA-ZáéíóúñüÁÉÍÓÚÑÜ0-9\s"\',-]{1,120}$'
+    r'^[a-zA-ZáéíóúñüÁÉÍÓÚÑÜ0-9\s"\',.\-!?:;&@#()+]{1,120}$'
 )
 
 

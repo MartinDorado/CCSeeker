@@ -496,11 +496,21 @@ class TestGenerateSeedQuery:
         assert not any("<script>" in r for r in result)
 
     def test_all_invalid_returns_empty_list(self, mock_model):
-        """All invalid candidates → empty list."""
+        """All injection-character candidates → empty list."""
         mock_model.generate_content.return_value = Mock(
-            text='1. <bad>\n2. {injection}\n3. ' + 'x' * 121
+            text='1. <script>bad</script>\n2. {injection}\n3. ' + 'x' * 121
         )
         assert self._call(mock_model) == []
+
+    def test_common_punctuation_passes_validation(self, mock_model):
+        """Ampersand, period, colon, parens used by Gemini pass validation."""
+        mock_model.generate_content.return_value = Mock(
+            text='1. cooking & recipes\n2. plant-based: vegan\n3. DIY (home projects)'
+        )
+        result = self._call(mock_model)
+        assert "cooking & recipes" in result
+        assert "plant-based: vegan" in result
+        assert "DIY (home projects)" in result
 
     def test_count_respected(self, mock_model):
         """count parameter controls how many alternatives are requested and returned."""
@@ -577,8 +587,8 @@ class TestParseQueryAlternatives:
         text = "1. vegan\n2. plant-based\n3. healthy"
         assert len(_parse_query_alternatives(text, 2)) == 2
 
-    def test_invalid_lines_skipped(self):
-        text = "1. vegan cooking\n2. <bad>\n3. plant-based"
+    def test_injection_lines_skipped(self):
+        text = "1. vegan cooking\n2. <script>bad</script>\n3. plant-based"
         result = _parse_query_alternatives(text, 3)
         assert "vegan cooking" in result
         assert "plant-based" in result

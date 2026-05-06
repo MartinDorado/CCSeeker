@@ -859,6 +859,7 @@ with col1:
         st.session_state.search_method = "Keywords"
         st.session_state.pop('seed_profile', None)
         st.session_state.pop('editable_seed_query', None)
+        st.session_state.pop('alt_index', None)
         st.rerun()
 
 with col2:
@@ -1047,8 +1048,9 @@ if submitted:
                     st.session_state['seed_profile'] = result.profile.to_dict()
                     st.session_state['seed_channel_id'] = seed_channel_id
                     st.session_state['seed_warnings'] = result.warnings or []
-                    # Clear cached query so the new profile's terms are applied fresh
+                    # Clear cached query and index so the new profile's terms are applied fresh
                     st.session_state.pop('editable_seed_query', None)
+                    st.session_state.pop('alt_index', None)
                     seed_profile = result.profile.to_dict()
                 else:
                     status.update(label="❌ Analysis failed", state="error")
@@ -1198,11 +1200,14 @@ if st.session_state.get('seed_profile'):
 
     # Build search query from profile (needed for the button).
     default_query = build_seed_query(profile)
+    alternatives = profile.get('query_alternatives', [])
 
-    # Initialize session state for editable query
+    # Initialize session state for editable query and alternative index
     if 'editable_seed_query' not in st.session_state:
         st.session_state['editable_seed_query'] = default_query
-    
+    if 'alt_index' not in st.session_state:
+        st.session_state['alt_index'] = 0
+
     # Use the editable query (or default if not yet edited)
     built_query = st.session_state.get('editable_seed_query', default_query)
 
@@ -1222,7 +1227,7 @@ if st.session_state.get('seed_profile'):
             key="query_editor"
         )
         st.session_state['editable_seed_query'] = built_query
-    
+
     # Visual term counter below the text area
     if built_query:
         render_term_counter(built_query)
@@ -1235,8 +1240,19 @@ if st.session_state.get('seed_profile'):
         st.write("")  # Spacer for alignment
         st.write("")  # Spacer for alignment
 
-        if st.button("🔄 Reset", help="Reset to AI-generated default", key="reset_query"):
-            st.session_state['editable_seed_query'] = default_query
+        alt_index = st.session_state.get('alt_index', 0)
+        remaining = len(alternatives) - 1 - alt_index
+        has_next = remaining > 0
+
+        reset_help = (
+            f"Try a different AI-generated query ({remaining} alternative{'s' if remaining != 1 else ''} left)"
+            if has_next else "No more alternatives — edit manually or re-analyze the channel"
+        )
+
+        if st.button("🔄 Reset", help=reset_help, key="reset_query", disabled=not has_next):
+            next_index = alt_index + 1
+            st.session_state['alt_index'] = next_index
+            st.session_state['editable_seed_query'] = alternatives[next_index]
             st.session_state.pop('query_editor', None)
             st.rerun()
     

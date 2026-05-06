@@ -27,6 +27,7 @@ from app.core.gemini_api import (
     generate_outreach_drafts,
     generate_seed_query,
     _build_relevance_prompt,
+    _parse_query_alternatives,
 )
 
 
@@ -441,7 +442,9 @@ class TestGenerateOutreachDrafts:
 # ============================================================================
 
 class TestGenerateSeedQuery:
-    """Tests for Gemini-powered seed query generation."""
+    """Tests for Gemini-powered seed query generation (returns list of alternatives)."""
+
+    _NUMBERED = "1. \"vegan cooking\", plant-based\n2. healthy recipes, vegan food\n3. \"plant-based diet\", nutrition"
 
     def _call(self, mock_model, **kwargs):
         defaults = dict(
@@ -455,14 +458,18 @@ class TestGenerateSeedQuery:
         defaults.update(kwargs)
         return generate_seed_query(**defaults)
 
-    def test_valid_output_returned(self, mock_model):
-        """Valid query string is returned unchanged."""
-        mock_model.generate_content.return_value = Mock(text='"vegan cooking", plant-based')
+    def test_returns_list_of_alternatives(self, mock_model):
+        """Returns a list with all valid alternatives parsed from numbered output."""
+        mock_model.generate_content.return_value = Mock(text=self._NUMBERED)
         result = self._call(mock_model)
-        assert result == '"vegan cooking", plant-based'
+        assert isinstance(result, list)
+        assert len(result) == 3
+        assert result[0] == '"vegan cooking", plant-based'
+        assert result[1] == "healthy recipes, vegan food"
+        assert result[2] == '"plant-based diet", nutrition'
 
-    def test_none_model_returns_none(self):
-        """None model returns None without calling Gemini."""
+    def test_none_model_returns_empty_list(self):
+        """None model returns empty list without calling Gemini."""
         result = generate_seed_query(
             channel_description="desc",
             recent_titles=[],
@@ -471,37 +478,56 @@ class TestGenerateSeedQuery:
             language="en",
             gemini_model=None,
         )
-        assert result is None
+        assert result == []
 
-    def test_api_exception_returns_none(self, mock_model):
-        """Exception from Gemini returns None (triggers NLP fallback)."""
+    def test_api_exception_returns_empty_list(self, mock_model):
+        """Exception from Gemini returns empty list (triggers NLP fallback)."""
         mock_model.generate_content.side_effect = Exception("Rate limit")
-        result = self._call(mock_model)
-        assert result is None
+        assert self._call(mock_model) == []
 
-    def test_invalid_output_fails_validation(self, mock_model):
-        """Output with disallowed characters (e.g. script tags) returns None."""
+    def test_invalid_alternatives_excluded(self, mock_model):
+        """Candidates with disallowed characters are dropped; valid ones kept."""
         mock_model.generate_content.return_value = Mock(
-            text='<script>alert("xss")</script>'
+            text='1. vegan cooking\n2. <script>alert(1)</script>\n3. plant-based'
         )
         result = self._call(mock_model)
-        assert result is None
+        assert "vegan cooking" in result
+        assert "plant-based" in result
+        assert not any("<script>" in r for r in result)
 
-    def test_output_exceeding_120_chars_fails_validation(self, mock_model):
-        """Output longer than 120 chars returns None."""
-        mock_model.generate_content.return_value = Mock(text="a" * 121)
-        result = self._call(mock_model)
-        assert result is None
+    def test_all_invalid_returns_empty_list(self, mock_model):
+        """All invalid candidates → empty list."""
+        mock_model.generate_content.return_value = Mock(
+            text='1. <bad>\n2. {injection}\n3. ' + 'x' * 121
+        )
+        assert self._call(mock_model) == []
+
+    def test_count_respected(self, mock_model):
+        """count parameter controls how many alternatives are requested and returned."""
+        mock_model.generate_content.return_value = Mock(text=self._NUMBERED)
+        result = generate_seed_query(
+            channel_description="vegan channel",
+            recent_titles=[],
+            topic_categories=[],
+            channel_keywords=[],
+            language="en",
+            gemini_model=mock_model,
+            count=2,
+        )
+        assert len(result) <= 2
 
     def test_markdown_code_block_stripped(self, mock_model):
-        """Markdown code block wrapping is stripped before validation."""
-        mock_model.generate_content.return_value = Mock(text='```\nvegan cooking\n```')
+        """Markdown code block wrapping is stripped before parsing."""
+        mock_model.generate_content.return_value = Mock(
+            text='```\n1. vegan cooking\n2. plant-based\n```'
+        )
         result = self._call(mock_model)
-        assert result == "vegan cooking"
+        assert "vegan cooking" in result
+        assert "plant-based" in result
 
     def test_xml_delimiters_present_in_prompt(self, mock_model):
         """Channel data is wrapped in XML tags in the prompt."""
-        mock_model.generate_content.return_value = Mock(text="vegan cooking")
+        mock_model.generate_content.return_value = Mock(text="1. vegan")
         self._call(mock_model, channel_description="test description")
         prompt = mock_model.generate_content.call_args[0][0]
         assert "<channel_description>" in prompt
@@ -510,26 +536,23 @@ class TestGenerateSeedQuery:
 
     def test_description_truncated_to_300_chars(self, mock_model):
         """Long descriptions are truncated to 300 chars in the prompt."""
-        mock_model.generate_content.return_value = Mock(text="vegan")
-        long_desc = "x" * 500
-        self._call(mock_model, channel_description=long_desc)
+        mock_model.generate_content.return_value = Mock(text="1. vegan")
+        self._call(mock_model, channel_description="x" * 500)
         prompt = mock_model.generate_content.call_args[0][0]
-        # 300 x's inside the tag, not 500
         assert "x" * 300 in prompt
         assert "x" * 301 not in prompt
 
     def test_only_first_5_titles_used(self, mock_model):
         """Only first 5 recent titles are included in the prompt."""
-        mock_model.generate_content.return_value = Mock(text="cooking")
-        titles = [f"Title {i}" for i in range(10)]
-        self._call(mock_model, recent_titles=titles)
+        mock_model.generate_content.return_value = Mock(text="1. cooking")
+        self._call(mock_model, recent_titles=[f"Title {i}" for i in range(10)])
         prompt = mock_model.generate_content.call_args[0][0]
         assert "Title 4" in prompt
         assert "Title 5" not in prompt
 
     def test_empty_fields_do_not_crash(self, mock_model):
-        """Empty/None optional fields produce a valid prompt."""
-        mock_model.generate_content.return_value = Mock(text="cooking")
+        """Empty optional fields produce a valid prompt and return list."""
+        mock_model.generate_content.return_value = Mock(text="1. cooking")
         result = generate_seed_query(
             channel_description="",
             recent_titles=[],
@@ -538,17 +561,38 @@ class TestGenerateSeedQuery:
             language="en",
             gemini_model=mock_model,
         )
-        assert result == "cooking"
+        assert result == ["cooking"]
 
-    def test_single_word_query_passes_validation(self, mock_model):
-        """Single-word output is valid."""
-        mock_model.generate_content.return_value = Mock(text="vegan")
-        assert self._call(mock_model) == "vegan"
 
-    def test_quoted_multiword_passes_validation(self, mock_model):
-        """Double-quoted multi-word terms pass validation."""
-        mock_model.generate_content.return_value = Mock(text='"plant-based recipes", cooking')
-        assert self._call(mock_model) == '"plant-based recipes", cooking'
+class TestParseQueryAlternatives:
+    """Tests for the _parse_query_alternatives helper."""
+
+    def test_numbered_format_parsed(self):
+        text = "1. vegan cooking\n2. plant-based recipes\n3. healthy food"
+        assert _parse_query_alternatives(text, 3) == [
+            "vegan cooking", "plant-based recipes", "healthy food"
+        ]
+
+    def test_count_limits_results(self):
+        text = "1. vegan\n2. plant-based\n3. healthy"
+        assert len(_parse_query_alternatives(text, 2)) == 2
+
+    def test_invalid_lines_skipped(self):
+        text = "1. vegan cooking\n2. <bad>\n3. plant-based"
+        result = _parse_query_alternatives(text, 3)
+        assert "vegan cooking" in result
+        assert "plant-based" in result
+        assert not any("<" in r for r in result)
+
+    def test_fallback_to_plain_lines(self):
+        """When no numbered items found, falls back to plain line splitting."""
+        text = "vegan cooking\nplant-based recipes"
+        result = _parse_query_alternatives(text, 3)
+        assert "vegan cooking" in result
+        assert "plant-based recipes" in result
+
+    def test_empty_input_returns_empty(self):
+        assert _parse_query_alternatives("", 3) == []
 
 
 # ============================================================================

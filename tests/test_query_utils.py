@@ -223,43 +223,43 @@ class TestBuildSeedQuery:
     # seed_query_suggestion priority
     # ------------------------------------------------------------------
 
-    def test_seed_query_suggestion_takes_priority(self):
-        """Gemini-generated suggestion overrides NLP keywords entirely."""
+    def test_query_alternatives_first_item_takes_priority(self):
+        """First Gemini alternative overrides NLP keywords entirely."""
         profile = {
-            "seed_query_suggestion": '"vegan cooking", plant-based',
+            "query_alternatives": ['"vegan cooking", plant-based', "healthy recipes"],
             "primary_keywords": ["machine learning", "python"],
             "common_tags": ["ai", "data"],
         }
         assert build_seed_query(profile) == '"vegan cooking", plant-based'
 
-    def test_empty_suggestion_falls_back_to_nlp(self):
-        """Empty seed_query_suggestion triggers NLP fallback."""
+    def test_empty_alternatives_falls_back_to_nlp(self):
+        """Empty query_alternatives list triggers NLP fallback."""
         profile = {
-            "seed_query_suggestion": "",
+            "query_alternatives": [],
             "primary_keywords": ["anime", "manga"],
             "common_tags": [],
         }
         assert build_seed_query(profile) == "anime, manga"
 
-    def test_absent_suggestion_falls_back_to_nlp(self):
-        """Missing seed_query_suggestion key triggers NLP fallback."""
+    def test_absent_alternatives_falls_back_to_nlp(self):
+        """Missing query_alternatives key triggers NLP fallback."""
         profile = {"primary_keywords": ["anime"], "common_tags": ["manga"]}
         assert build_seed_query(profile) == "anime, manga"
 
-    def test_whitespace_only_suggestion_falls_back_to_nlp(self):
-        """Whitespace-only suggestion is treated as absent."""
+    def test_alternatives_returned_as_is(self):
+        """First alternative is returned verbatim regardless of max_terms."""
         profile = {
-            "seed_query_suggestion": "   ",
-            "primary_keywords": ["anime"],
-            "common_tags": ["manga"],
-        }
-        assert build_seed_query(profile) == "anime, manga"
-
-    def test_suggestion_ignores_max_terms(self):
-        """Suggestion is returned as-is regardless of max_terms."""
-        profile = {
-            "seed_query_suggestion": '"a", "b", "c"',
+            "query_alternatives": ['"a", "b", "c"'],
             "primary_keywords": [],
             "common_tags": [],
         }
         assert build_seed_query(profile, max_terms=1) == '"a", "b", "c"'
+
+    def test_only_first_alternative_used_by_build_seed_query(self):
+        """build_seed_query always returns the first alternative, not later ones."""
+        profile = {
+            "query_alternatives": ["first query", "second query", "third query"],
+            "primary_keywords": [],
+            "common_tags": [],
+        }
+        assert build_seed_query(profile) == "first query"

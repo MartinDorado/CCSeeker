@@ -526,7 +526,7 @@ class TestSeedProfile:
         assert profile.common_tags == []
         assert profile.recent_titles == []
         assert profile.description_summary == ''
-        assert profile.seed_query_suggestion == ''
+        assert profile.query_alternatives == []
         assert profile.topic_categories == []
         assert profile.channel_keywords == []
 
@@ -775,26 +775,28 @@ class TestAnalyzeSeedChannel:
                 warnings=[],
                 api_calls=2,
             )
-            mock_gsq.return_value = '"vegan cooking", plant-based'
+            mock_gsq.return_value = ['"vegan cooking", plant-based', 'healthy recipes, vegan', 'plant-based food']
 
             result = analyze_seed_channel(mock_youtube, 'UC123', gemini_model=gemini_model)
             return result, mock_gsq
 
-    def test_seed_query_suggestion_populated_with_gemini(self, mock_youtube):
-        """With a gemini_model, seed_query_suggestion is set from generate_seed_query."""
+    def test_query_alternatives_populated_with_gemini(self, mock_youtube):
+        """With a gemini_model, query_alternatives is set from generate_seed_query."""
         mock_gemini = Mock()
         result, mock_gsq = self._mock_full_analysis(mock_youtube, gemini_model=mock_gemini)
 
         assert result.profile is not None
-        assert result.profile.seed_query_suggestion == '"vegan cooking", plant-based'
+        assert result.profile.query_alternatives == [
+            '"vegan cooking", plant-based', 'healthy recipes, vegan', 'plant-based food'
+        ]
         mock_gsq.assert_called_once()
 
-    def test_seed_query_suggestion_empty_without_gemini(self, mock_youtube):
-        """Without a gemini_model, seed_query_suggestion is left as empty string."""
+    def test_query_alternatives_empty_without_gemini(self, mock_youtube):
+        """Without a gemini_model, query_alternatives is left as empty list."""
         result, mock_gsq = self._mock_full_analysis(mock_youtube, gemini_model=None)
 
         assert result.profile is not None
-        assert result.profile.seed_query_suggestion == ''
+        assert result.profile.query_alternatives == []
         mock_gsq.assert_not_called()
 
     def test_no_videos_error(self, mock_youtube):

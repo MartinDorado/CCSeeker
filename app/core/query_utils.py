@@ -214,10 +214,8 @@ def build_seed_query(profile: dict, max_terms: int = 2) -> str:
     Build a YouTube search query from a seed channel profile.
 
     Term priority:
-    1. topic_emphasis from transcript_niche_summary — Gemini-extracted phrases
-       from actual video content; highest semantic fidelity.
-    2. primary_keywords — NLP bigrams/unigrams from video titles.
-    3. common_tags — aggregated video tags; last-resort padding.
+    1. primary_keywords — NLP bigrams/unigrams from video titles.
+    2. common_tags — aggregated video tags; last-resort padding.
 
     Multi-word terms are double-quoted. Redundant terms (substring overlap) are
     skipped when padding so the same concept is not repeated.
@@ -231,17 +229,7 @@ def build_seed_query(profile: dict, max_terms: int = 2) -> str:
     """
     terms: list[str] = []
 
-    # 1. Transcript-derived topic emphasis
-    niche = profile.get("transcript_niche_summary") or {}
-    if niche:
-        raw_emphasis = [
-            t.strip()
-            for t in niche.get("topic_emphasis", [])
-            if isinstance(t, str) and t.strip()
-        ]
-        terms = raw_emphasis[:max_terms]
-
-    # 2. Pad with primary_keywords
+    # 1. Pad with primary_keywords
     for kw in profile.get("primary_keywords", []):
         if len(terms) >= max_terms:
             break
@@ -249,7 +237,7 @@ def build_seed_query(profile: dict, max_terms: int = 2) -> str:
         if kw and not _is_redundant(kw, terms):
             terms.append(kw)
 
-    # 3. Pad with common_tags
+    # 2. Pad with common_tags
     for tag in profile.get("common_tags", []):
         if len(terms) >= max_terms:
             break

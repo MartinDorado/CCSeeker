@@ -58,6 +58,7 @@ from .gemini_api import (
     generate_ai_relevance_score,
     generate_summary,
     generate_outreach_drafts,
+    generate_seed_query,
 )
 
 from .pipeline import (
@@ -126,6 +127,7 @@ __all__ = [
     "generate_ai_relevance_score",
     "generate_summary",
     "generate_outreach_drafts",
+    "generate_seed_query",
     # Pipeline
     "PipelineResult",
     "PipelineConfig",

@@ -25,6 +25,7 @@ except ImportError:
     dateutil_parser = None
 
 from .youtube_api import get_channel_stats, get_video_details
+from .gemini_api import generate_seed_query
 
 
 # ============================================================================
@@ -126,6 +127,7 @@ class SeedProfile:
     # Context data
     recent_titles: list[str] = field(default_factory=list)      # Last 20 video titles
     description_summary: str = ""                               # AI-generated summary
+    query_alternatives: list[str] = field(default_factory=list) # Gemini-generated alternatives; empty = use NLP fallback
 
     # Enhanced data from YouTube API (unused before, now captured)
     topic_categories: list[str] = field(default_factory=list)   # YouTube's topic classification
@@ -723,7 +725,27 @@ def analyze_seed_channel(
                 existing_kws.add(token)
 
     # ========================================================================
-    # STEP 6: AI summary (optional)
+    # STEP 6: Gemini seed query alternatives (optional)
+    # ========================================================================
+
+    query_alternatives: list[str] = []
+    if gemini_model:
+        progress("Generating search query alternatives...", 0.80)
+        query_alternatives = generate_seed_query(
+            channel_description=channel_description,
+            recent_titles=sample_titles[:5],
+            topic_categories=topic_categories,
+            channel_keywords=channel_keywords,
+            language=detected_language,
+            gemini_model=gemini_model,
+            count=3,
+        )
+        if on_api_call:
+            on_api_call('gemini_seed_query')
+        api_calls += 1
+
+    # ========================================================================
+    # STEP 7: AI summary (optional)
     # ========================================================================
 
     description_summary = ""
@@ -759,6 +781,7 @@ def analyze_seed_channel(
         common_tags=common_tags[:MAX_COMMON_TAGS],
         recent_titles=sample_titles[:MAX_RECENT_TITLES],
         description_summary=description_summary,
+        query_alternatives=query_alternatives,
         topic_categories=topic_categories,
         channel_keywords=channel_keywords,
     )

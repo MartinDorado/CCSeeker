@@ -526,6 +526,7 @@ class TestSeedProfile:
         assert profile.common_tags == []
         assert profile.recent_titles == []
         assert profile.description_summary == ''
+        assert profile.seed_query_suggestion == ''
         assert profile.topic_categories == []
         assert profile.channel_keywords == []
 
@@ -742,6 +743,59 @@ class TestAnalyzeSeedChannel:
 
         for key in required_keys:
             assert key in profile_dict, f"Missing required key: {key}"
+
+    def _mock_full_analysis(self, mock_youtube, gemini_model=None):
+        """Helper: run analyze_seed_channel with mocked YouTube + optional Gemini."""
+        with patch('app.core.seed_topics.get_channel_stats') as mock_stats, \
+             patch('app.core.seed_topics.get_video_details') as mock_videos, \
+             patch('app.core.seed_topics.generate_seed_query') as mock_gsq:
+
+            mock_stats.return_value = Mock(
+                stats=[{
+                    'channel_id': 'UC123',
+                    'subscribers': 50000,
+                    'uploads_playlist_id': 'UU123',
+                    'description': 'A vegan cooking channel',
+                    'topic_categories': ['Food'],
+                    'channel_keywords': ['vegan'],
+                    'default_language': 'en',
+                }],
+                api_calls=1,
+            )
+            mock_youtube.channels().list().execute.return_value = {
+                'items': [{'snippet': {'title': 'Vegan Kitchen', 'description': 'Vegan recipes', 'categoryId': '26'}}]
+            }
+            mock_videos.return_value = Mock(
+                videos=[
+                    {'video_id': f'v{i}', 'video_title': 'Vegan recipe', 'video_description': 'desc',
+                     'video_tags': ['vegan', 'cooking'], 'video_views': 1000,
+                     'video_likes': 50, 'video_comments': 5, 'published_at': '2024-01-01T00:00:00Z'}
+                    for i in range(3)
+                ],
+                warnings=[],
+                api_calls=2,
+            )
+            mock_gsq.return_value = '"vegan cooking", plant-based'
+
+            result = analyze_seed_channel(mock_youtube, 'UC123', gemini_model=gemini_model)
+            return result, mock_gsq
+
+    def test_seed_query_suggestion_populated_with_gemini(self, mock_youtube):
+        """With a gemini_model, seed_query_suggestion is set from generate_seed_query."""
+        mock_gemini = Mock()
+        result, mock_gsq = self._mock_full_analysis(mock_youtube, gemini_model=mock_gemini)
+
+        assert result.profile is not None
+        assert result.profile.seed_query_suggestion == '"vegan cooking", plant-based'
+        mock_gsq.assert_called_once()
+
+    def test_seed_query_suggestion_empty_without_gemini(self, mock_youtube):
+        """Without a gemini_model, seed_query_suggestion is left as empty string."""
+        result, mock_gsq = self._mock_full_analysis(mock_youtube, gemini_model=None)
+
+        assert result.profile is not None
+        assert result.profile.seed_query_suggestion == ''
+        mock_gsq.assert_not_called()
 
     def test_no_videos_error(self, mock_youtube):
         """Should return error when channel has no videos."""

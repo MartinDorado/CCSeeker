@@ -227,6 +227,11 @@ def build_seed_query(profile: dict, max_terms: int = 2) -> str:
     Returns:
         Comma-separated search query string, e.g. '"machine learning", python'.
     """
+    # Prefer Gemini-generated query when available
+    suggestion = profile.get("seed_query_suggestion", "").strip()
+    if suggestion:
+        return suggestion
+
     terms: list[str] = []
 
     # 1. Pad with primary_keywords

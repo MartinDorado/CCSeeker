@@ -19,6 +19,7 @@ from app.core.query_utils import (
     validate_and_truncate_query,
     extract_identifier_from_url,
     strip_outer_quotes,
+    build_seed_query,
 )
 
 
@@ -136,3 +137,84 @@ class TestStripOuterQuotes:
         """Single quote characters are not stripped."""
         assert strip_outer_quotes('"') == '"'
         assert strip_outer_quotes("'") == "'"
+
+
+class TestBuildSeedQuery:
+    """Tests for build_seed_query function."""
+
+    # ------------------------------------------------------------------
+    # primary_keywords as primary source
+    # ------------------------------------------------------------------
+
+    def test_two_primary_keywords_used_directly(self):
+        profile = {
+            "primary_keywords": ["machine learning tutorials", "python data science"],
+            "common_tags": [],
+        }
+        assert build_seed_query(profile) == '"machine learning tutorials", "python data science"'
+
+    def test_single_word_primary_keyword_not_quoted(self):
+        profile = {"primary_keywords": ["python", "automation"], "common_tags": []}
+        assert build_seed_query(profile) == "python, automation"
+
+    def test_primary_keywords_mixed_quoting(self):
+        profile = {"primary_keywords": ["machine learning", "python"], "common_tags": []}
+        assert build_seed_query(profile) == '"machine learning", python'
+
+    def test_primary_keywords_truncated_to_max_terms(self):
+        profile = {"primary_keywords": ["a", "b", "c", "d"], "common_tags": []}
+        assert build_seed_query(profile) == "a, b"
+
+    def test_max_terms_override(self):
+        profile = {"primary_keywords": ["a", "b", "c"], "common_tags": []}
+        assert build_seed_query(profile, max_terms=1) == "a"
+        assert build_seed_query(profile, max_terms=3) == "a, b, c"
+
+    # ------------------------------------------------------------------
+    # Fallback to common_tags
+    # ------------------------------------------------------------------
+
+    def test_primary_keywords_falls_back_to_primary_keywords(self):
+        profile = {
+            "primary_keywords": ["data science", "machine learning"],
+            "common_tags": ["python"],
+        }
+        assert build_seed_query(profile) == '"data science", "machine learning"'
+
+    def test_common_tags_used_when_primary_keywords_exhausted(self):
+        profile = {"primary_keywords": ["anime"], "common_tags": ["manga", "japan"]}
+        assert build_seed_query(profile) == "anime, manga"
+
+    def test_common_tags_redundancy_skipped(self):
+        profile = {
+            "primary_keywords": ["anime reviews"],
+            "common_tags": ["anime", "japan"],
+        }
+        result = build_seed_query(profile)
+        assert "anime reviews" in result or '"anime reviews"' in result
+        assert result.count("anime") == 1
+        assert "japan" in result
+
+    def test_padding_skips_redundant_term(self):
+        """common_tags substring of an existing term are skipped."""
+        profile = {
+            "primary_keywords": ["machine learning tutorials"],
+            "common_tags": ["machine learning", "unrelated topic"],
+        }
+        result = build_seed_query(profile)
+        assert '"machine learning tutorials"' in result
+        assert "machine learning," not in result
+        assert "unrelated topic" in result
+
+    # ------------------------------------------------------------------
+    # Edge cases
+    # ------------------------------------------------------------------
+
+    def test_empty_profile_returns_empty_string(self):
+        assert build_seed_query({}) == ""
+
+    def test_whitespace_only_terms_ignored(self):
+        profile = {"primary_keywords": ["  ", "python tutorials"], "common_tags": []}
+        result = build_seed_query(profile)
+        assert '"python tutorials"' in result
+        assert "  " not in result

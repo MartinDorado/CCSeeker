@@ -23,6 +23,7 @@ from .query_utils import (
     extract_identifier_from_url,
     resolve_channel_id,
     strip_outer_quotes,
+    build_seed_query,
 )
 
 from .scoring_version import (
@@ -77,19 +78,6 @@ from .seed_topics import (
     calculate_subscriber_tier,
 )
 
-from .transcription import (
-    # Config & result types
-    TranscriptionConfig,
-    TranscriptResult,
-    NicheExtractionResult,
-    # Fetchers
-    YouTubeTranscriptFetcher,
-    FakeTranscriptFetcher,
-    # Functions
-    fetch_transcripts_parallel,
-    extract_niche_summary,
-)
-
 from .similarity import (
     # Callback interface
     SimilarityCallbacks,
@@ -119,6 +107,7 @@ __all__ = [
     "extract_identifier_from_url",
     "resolve_channel_id",
     "strip_outer_quotes",
+    "build_seed_query",
     # Relevance
     "calculate_keyword_relevance",
     # YouTube API result types
@@ -154,14 +143,6 @@ __all__ = [
     "analyze_seed_channel",
     "detect_language",
     "calculate_subscriber_tier",
-    # Transcription
-    "TranscriptionConfig",
-    "TranscriptResult",
-    "NicheExtractionResult",
-    "YouTubeTranscriptFetcher",
-    "FakeTranscriptFetcher",
-    "fetch_transcripts_parallel",
-    "extract_niche_summary",
     # Similarity module
     "SimilarityCallbacks",
     "jaccard_similarity",

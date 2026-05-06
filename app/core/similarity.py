@@ -439,20 +439,6 @@ def gemini_similarity_analysis(
         genai.configure(api_key=gemini_api_key)
         model = genai.GenerativeModel('gemini-2.0-flash-lite')
 
-        # Build comparison prompt — prepend deep niche profile when available
-        niche_summary = seed_profile.get('transcript_niche_summary', {})
-        niche_section = ""
-        if niche_summary:
-            niche_section = f"""
-DEEP NICHE PROFILE (from transcripts):
-- Niche: {niche_summary.get('niche', '')}
-- Audience: {niche_summary.get('audience', '')}
-- Style: {niche_summary.get('style', '')}
-- Topic emphasis: {', '.join(niche_summary.get('topic_emphasis', []))}
-- Tone: {niche_summary.get('tone', '')}
-- (analysis confidence: {niche_summary.get('confidence', 'low')})
-"""
-
         prompt = f"""
 You are a YouTube content strategist. Compare these two channels and rate their similarity.
 
@@ -462,7 +448,7 @@ SEED CHANNEL:
 - Summary: {seed_profile.get('description_summary', 'N/A')}
 - Recent titles: {', '.join(seed_profile.get('recent_titles', [])[:5])}
 - Main topics: {', '.join(seed_profile.get('primary_keywords', []))}
-{niche_section}
+
 CANDIDATE CHANNEL:
 - Name: {candidate.get('channel_name') or candidate.get('channel_title', 'Unknown')}
 - Subscribers: {candidate.get('subscribers', 0):,}

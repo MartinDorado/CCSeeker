@@ -8,6 +8,19 @@ CCSeeker is an AI-powered YouTube creator discovery tool that automates finding 
 **License:** Apache 2.0
 **Author:** Martin Dorado
 
+## Engineering Standard
+
+**CCSeeker is architected to be maintainable, distributable, secure, and scalable.** This is a hard constraint, not a guideline — code that does not comply with this standard must not be built inside CCSeeker.
+
+What this means in practice:
+
+- **Maintainable** — Code must be readable, modular, and testable. No spaghetti logic, no hidden side effects, no magic constants. New contributors should be able to understand and modify any module without reverse-engineering the whole system.
+- **Distributable** — Components must remain decoupled enough to be extracted, reused, or independently deployed. Core business logic stays Streamlit-agnostic. No tight coupling between UI, data, and AI layers.
+- **Secure** — API keys never hardcoded. No secrets in logs or error messages. User inputs validated at system boundaries. Dependencies kept up-to-date and minimal.
+- **Scalable** — Design for growth in data volume, API rate limits, and concurrent users. Caching, quota management, and async-friendly patterns are first-class concerns, not afterthoughts.
+
+Before building any feature, ask: does this fit a system designed to last? If not, redesign it.
+
 ## Tech Stack
 
 - **Python 3.11** - Core language

@@ -27,6 +27,14 @@ Thumbs.db
 
 # Claude Code temporary files
 tmpclaude-*
+.claude/worktrees/
+
+# Playwright MCP session artifacts
+.playwright-mcp/
+
+# Streamlit dev logs
+streamlit_output.log
+streamlit_error.log
 
 # Local tool settings
 .claude/settings.local.json
